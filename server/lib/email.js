@@ -2,7 +2,7 @@
 const nodemailer = require('nodemailer');
 
 // ═══════════════════════════════════════════════════════════
-// Email — Alemayehu Plastic Manufacturing
+// Email — Dream More Affiliate Market
 //  • Provider: Resend (preferred) or SMTP (fallback)
 // ═══════════════════════════════════════════════════════════
 
@@ -22,9 +22,9 @@ const transporter = nodemailer.createTransport({
 const stripSlash = (s) => String(s || '').trim().replace(/\/+$/, '');
 
 const BRAND = {
-  name: 'Alemayehu Plastic Manufacturing',
-  shortName: 'Alemayehu Plastic',
-  tagline: 'Quality plastic products manufactured in Ethiopia',
+  name: 'Dream More Affiliate Market',
+  shortName: 'Dream More',
+  tagline: 'Right work at right time',
   supportEmail:
     process.env.SUPPORT_EMAIL ||
     process.env.EMAIL_FROM ||
@@ -170,13 +170,13 @@ async function sendWelcomeEmail(email, name) {
 
             <p>
               Thank you for creating an account with
-              <strong>${BRAND.name}</strong> — your trusted source for
-              high-quality plastic products manufactured right here in Ethiopia.
+              <strong>${BRAND.name}</strong>, a digital marketplace for
+              discovering products and exploring listings.
             </p>
 
             <p>
               Your account is ready. You can log in right now and start
-              exploring our product catalogue.
+              exploring the marketplace.
             </p>
 
             <a href="${shopUrl}" class="cta">
@@ -189,9 +189,9 @@ async function sendWelcomeEmail(email, name) {
               What you can do now:
             </p>
             <ul class="feature-list">
-              <li><span class="dot">✓</span><span>Browse our full range of plastic products</span></li>
-              <li><span class="dot">✓</span><span>See prices, sizes, and stock availability in real time</span></li>
-              <li><span class="dot">✓</span><span>Contact us directly for bulk orders and custom manufacturing</span></li>
+              <li><span class="dot">✓</span><span>Browse products from a range of categories</span></li>
+              <li><span class="dot">✓</span><span>Review product details and availability</span></li>
+              <li><span class="dot">✓</span><span>Contact our team if you need help with shopping</span></li>
             </ul>
 
             <div class="divider"></div>
@@ -221,18 +221,17 @@ async function sendWelcomeEmail(email, name) {
   const text = `
 Welcome aboard, ${name || 'there'}!
 
-Thank you for creating an account with ${BRAND.name} — your trusted
-source for high-quality plastic products manufactured right here in
-Ethiopia.
+Thank you for creating an account with ${BRAND.name}, a digital marketplace
+for discovering products and exploring listings.
 
 Your account is ready. You can log in right now and start exploring:
 
     ${shopUrl}
 
 What you can do now:
-  - Browse our full range of plastic products
-  - See prices, sizes, and stock availability in real time
-  - Contact us directly for bulk orders and custom manufacturing
+  - Browse products from a range of categories
+  - Review product details and availability
+  - Contact our team if you need help with shopping
 
 Need help? Contact us at ${BRAND.supportEmail}.
 
@@ -248,8 +247,79 @@ Need help? Contact us at ${BRAND.supportEmail}.
   });
 }
 
+async function sendOrderApprovalEmail(order) {
+  if (!order || !order.customerEmail) {
+    throw new Error('sendOrderApprovalEmail: order customer email is required');
+  }
+
+  const safeName = escapeHtml(order.customerName || 'there');
+  const safeOrderNumber = escapeHtml(order.orderNumber);
+  const items = (order.items || []).map((item) => {
+    const quantity = Number(item.quantity) || 0;
+    const unitPrice = Number(item.unitPrice) || 0;
+    const lineTotal = new Intl.NumberFormat('en-ET', {
+      style: 'currency',
+      currency: 'ETB',
+      maximumFractionDigits: 2,
+    }).format(unitPrice * quantity);
+    return {
+      html: `<li style="margin:8px 0;">${escapeHtml(item.productName)} × ${quantity} — ${lineTotal}</li>`,
+      text: `- ${item.productName} x ${quantity}: ETB ${(unitPrice * quantity).toFixed(2)}`,
+    };
+  });
+  const total = new Intl.NumberFormat('en-ET', {
+    style: 'currency',
+    currency: 'ETB',
+    maximumFractionDigits: 2,
+  }).format(Number(order.total) || 0);
+  const safeAddress = escapeHtml(order.shippingAddress || '');
+  const ordersUrl = `${BRAND.website}/orders`;
+
+  const html = `
+    <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#20283a;line-height:1.6;">
+      <div style="background:#20283a;padding:24px;color:#fff;text-align:center;">
+        <h1 style="margin:0;">${BRAND.name}</h1>
+      </div>
+      <div style="padding:24px;background:#fff;">
+        <h2>Your order is confirmed</h2>
+        <p>Hello ${safeName},</p>
+        <p>Your order <strong>${safeOrderNumber}</strong> has been approved and confirmed. We will prepare it for delivery.</p>
+        <h3>Order summary</h3>
+        <ul style="padding-left:20px;">${items.map((item) => item.html).join('')}</ul>
+        <p><strong>Order total: ${total}</strong></p>
+        <p><strong>Delivery address:</strong><br>${safeAddress}</p>
+        <p style="text-align:center;margin:28px 0;">
+          <a href="${ordersUrl}" style="display:inline-block;padding:12px 20px;background:#f47822;color:#20283a;text-decoration:none;border-radius:8px;font-weight:bold;">View your orders</a>
+        </p>
+        <p>If you have questions, contact our support team.</p>
+      </div>
+    </div>`;
+  const text = [
+    `Hello ${order.customerName || 'there'},`,
+    '',
+    `Your order ${order.orderNumber} has been approved and confirmed.`,
+    '',
+    'Order summary:',
+    ...items.map((item) => item.text),
+    `Order total: ETB ${(Number(order.total) || 0).toFixed(2)}`,
+    `Delivery address: ${order.shippingAddress || ''}`,
+    '',
+    `View your orders: ${ordersUrl}`,
+    '',
+    `— ${BRAND.name}`,
+  ].join('\n');
+
+  return sendEmail({
+    to: order.customerEmail,
+    subject: `Order ${order.orderNumber} confirmed`,
+    text,
+    html,
+  });
+}
+
 module.exports = {
   sendWelcomeEmail,
+  sendOrderApprovalEmail,
   sendEmail,
   transporter,
 };

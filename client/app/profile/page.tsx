@@ -234,7 +234,7 @@ export default function ProfilePage() {
 
   if (status === "loading") {
     return (
-      <div className="min-h-screen bg-[#faf6ee] flex items-center justify-center">
+      <div className="profile-theme min-h-screen bg-[var(--cream)] flex items-center justify-center">
         <div className="flex flex-col items-center gap-4">
           <div className="w-12 h-12 border-4 border-[#3a2a1e] border-t-[#e0a83c] rounded-full animate-spin" />
           <p className="text-[#7a6a58] font-sans text-sm">
@@ -260,7 +260,7 @@ export default function ProfilePage() {
   );
 
   return (
-    <div className="min-h-screen bg-[#faf6ee] pt-24 pb-16">
+    <div className="profile-theme min-h-screen bg-[var(--cream)] pt-24 pb-16">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 lg:px-8 space-y-6">
         {/* PROFILE CARD */}
         <div className="bg-white rounded-2xl border border-[#f0e8d8] shadow-sm overflow-hidden">
@@ -312,7 +312,7 @@ export default function ProfilePage() {
               {/* User info */}
               <div className="flex-1 text-center sm:text-left min-w-0">
                 <h1 className="text-xl sm:text-2xl font-bold text-[#1a1410] font-serif tracking-tight">
-                  {user.name || t("profile.default_name", "Alemayehu User")}
+                  {user.name || t("profile.default_name", "Dream More User")}
                 </h1>
                 <p className="text-[#7a6a58] text-sm mt-1 flex items-center justify-center sm:justify-start gap-1.5">
                   <Mail size={14} />

@@ -2,59 +2,61 @@
 const express = require('express');
 const router = express.Router();
 const slugify = require('slugify');
-const cloudinary = require('cloudinary').v2;
+const fs = require('fs');
+const path = require('path');
 const prisma = require('../lib/prisma');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const UPLOAD_ROOT = path.resolve(__dirname, '..', 'uploads');
 
 // ═══════════════════════════════════════════════════════════
-// Alemayehu Plastic — Products API
-//  • Storage: Cloudinary (images[0], images[1], ... are full URLs)
+// Dream More Affiliate Market — Products API
+//  • Storage: local disk (/uploads)
 //  • Database: Neon (PostgreSQL) via Prisma
 //  • Order/OrderItem/Article/Cart/CartItem models have been removed
 // ═══════════════════════════════════════════════════════════
 
-// ── Cloudinary helpers ──────────────────────────────────────
-const isCloudinaryUrl = (url) =>
-  typeof url === 'string' &&
-  /res\.cloudinary\.com/i.test(url);
-
-/**
- * Extract the Cloudinary public_id from a secure URL.
- *   https://res.cloudinary.com/<cloud>/image/upload/v1712.../alemayehu-plastic/products/abc.jpg
- *   → alemayehu-plastic/products/abc
- */
-function extractPublicId(url) {
-  if (!isCloudinaryUrl(url)) return null;
+// ── Local upload cleanup ────────────────────────────────────
+function getLocalUploadPath(url) {
+  if (typeof url !== 'string' || !url.trim()) return null;
   try {
-    const afterUpload = url.split('/upload/')[1];
-    if (!afterUpload) return null;
-    // Strip version segment like "v1712345678/"
-    const withoutVersion = afterUpload.replace(/^v\d+\//, '');
-    // Strip extension
-    return withoutVersion.replace(/\.[^/.]+$/, '');
+    const pathname = new URL(url, 'http://localhost').pathname;
+    if (!pathname.startsWith('/uploads/')) return null;
+    const relativePath = pathname
+      .slice('/uploads/'.length)
+      .split('/')
+      .map((segment) => decodeURIComponent(segment));
+    if (
+      relativePath.some(
+        (segment) => !segment || segment === '.' || segment === '..'
+      )
+    ) {
+      return null;
+    }
+    const filePath = path.resolve(UPLOAD_ROOT, ...relativePath);
+    const relativeToRoot = path.relative(UPLOAD_ROOT, filePath);
+    if (
+      relativeToRoot.startsWith('..') ||
+      path.isAbsolute(relativeToRoot)
+    ) {
+      return null;
+    }
+    return filePath;
   } catch {
     return null;
   }
 }
 
-/**
- * Delete one or more Cloudinary images by URL.
- * Silently ignores non-Cloudinary URLs and failures.
- */
-async function deleteCloudinaryImages(urls) {
+async function deleteLocalImages(urls) {
   if (!Array.isArray(urls) || urls.length === 0) return;
-  const publicIds = urls.map(extractPublicId).filter(Boolean);
-  if (publicIds.length === 0) return;
-
-  await Promise.all(
-    publicIds.map((pid) =>
-      cloudinary.uploader
-        .destroy(pid, { resource_type: 'image', invalidate: true })
-        .catch((err) =>
-          console.warn(`⚠️ Cloudinary delete failed for ${pid}:`, err.message)
-        )
-    )
+  const filePaths = urls.map(getLocalUploadPath).filter(Boolean);
+  const results = await Promise.allSettled(
+    filePaths.map((filePath) => fs.promises.unlink(filePath))
   );
+  for (const result of results) {
+    if (result.status === 'rejected' && result.reason.code !== 'ENOENT') {
+      console.warn('Local product image cleanup failed:', result.reason.message);
+    }
+  }
 }
 
 // ============================================================
@@ -314,7 +316,7 @@ router.get('/:id', async (req, res) => {
 
 // ============================================================
 // POST /api/products — Create product (ADMIN ONLY)
-// images[] must be Cloudinary URLs from POST /api/upload
+// images[] contains URLs returned by POST /api/upload
 // ============================================================
 router.post('/', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -325,18 +327,11 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
       return res.status(401).json({ error: 'User not authenticated' });
     }
 
-    // ── Normalise images (Cloudinary URLs only) ─────────────
+    // ── Normalise images ────────────────────────────────────
     const incomingImages = Array.isArray(body.images) ? body.images : [];
     const cleanImages = incomingImages.filter(
       (u) => typeof u === 'string' && u.trim().length > 0
     );
-
-    // Warn if any non-Cloudinary URL is passed
-    for (const img of cleanImages) {
-      if (!isCloudinaryUrl(img)) {
-        console.warn(`⚠️ Non-Cloudinary image URL received: ${img}`);
-      }
-    }
 
     // ── Discount price ──────────────────────────────────────
     let discountPriceValue = body.discountPrice;
@@ -370,7 +365,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
       discountPrice: discountPriceValue,
       stock: stockValue,
       sku: body.sku || `SKU-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      images: cleanImages, // ← Cloudinary URLs (empty array if none)
+      images: cleanImages,
       tags: Array.isArray(body.tags) ? body.tags : [],
       warranty: body.warranty || null,
       videoUrl: body.videoUrl || null,
@@ -484,7 +479,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
 
 // ============================================================
 // PUT /api/products/:id — Update product (ADMIN ONLY)
-// Old Cloudinary images that are no longer referenced get deleted.
+// Local images that are no longer referenced get deleted.
 // ============================================================
 router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -570,9 +565,9 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       include: { category: true, subCategory: true },
     });
 
-    // ── Delete orphaned Cloudinary images ───────────────────
+    // ── Delete orphaned local images ─────────────────────────
     // Any image that existed before but is not in the new array
-    // is removed from Cloudinary to free storage.
+    // is removed from local storage to free disk space.
     if (updateData.images !== undefined) {
       const oldImages = Array.isArray(existingProduct.images)
         ? existingProduct.images
@@ -580,8 +575,8 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       const newImages = updateData.images;
       const removed = oldImages.filter((u) => !newImages.includes(u));
       if (removed.length > 0) {
-        deleteCloudinaryImages(removed).catch((err) =>
-          console.warn('⚠️ Cloudinary cleanup failed:', err.message)
+        deleteLocalImages(removed).catch((err) =>
+          console.warn('Local product image cleanup failed:', err.message)
         );
       }
     }
@@ -624,7 +619,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
 
 // ============================================================
 // DELETE /api/products/:id — Delete product (ADMIN ONLY)
-// Also deletes its Cloudinary images.
+// Also deletes its local images.
 // ============================================================
 router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -649,10 +644,10 @@ router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
       prisma.product.delete({ where: { id } }),
     ]);
 
-    // ── 2. Delete Cloudinary images (fire-and-forget) ───────
+    // ── 2. Delete local images (fire-and-forget) ────────────
     if (Array.isArray(existingProduct.images) && existingProduct.images.length) {
-      deleteCloudinaryImages(existingProduct.images).catch((err) =>
-        console.warn('⚠️ Cloudinary cleanup failed on delete:', err.message)
+      deleteLocalImages(existingProduct.images).catch((err) =>
+        console.warn('Local product image cleanup failed on delete:', err.message)
       );
     }
 

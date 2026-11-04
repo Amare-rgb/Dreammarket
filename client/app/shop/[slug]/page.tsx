@@ -104,7 +104,7 @@ export default async function ProductDetailsPage({
           id: rawObj.id,
           slug: rawObj.slug || rawObj.id,
           name: rawObj.name || "Untitled Product",
-          category: rawObj.category?.name || "Plastic Products",
+          category: rawObj.category?.name || "Other Products",
           description: rawObj.description || "",
           price: Number(rawObj.price || 0),
           discountPrice:

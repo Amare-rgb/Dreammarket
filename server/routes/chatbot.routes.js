@@ -11,7 +11,10 @@ require("dotenv").config();
 const prisma = new PrismaClient();
 
 // ============== OPENROUTER AI CONFIGURATION ==============
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY?.trim();
+const HAS_VALID_OPENROUTER_API_KEY =
+  typeof OPENROUTER_API_KEY === "string" &&
+  OPENROUTER_API_KEY.startsWith("sk-or-v1-");
 
 // OpenRouter API endpoint (OpenAI-compatible)
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
@@ -20,7 +23,7 @@ const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
 // (not required, but recommended by OpenRouter)
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "https://alemayehplastic.com";
-const SITE_NAME = "Alemayehu Plastic Manufacturing";
+const SITE_NAME = "Dream More Affiliate Market";
 
 // Free & fast models on OpenRouter (in priority order).
 // These are auto-tried until one works.
@@ -32,11 +35,15 @@ const OPENROUTER_MODELS = [
   "mistralai/mistral-7b-instruct:free",
 ];
 
-console.log("🤖 Chatbot running with OpenRouter AI integration");
-console.log(
-  "🔑 OpenRouter API Key configured:",
-  OPENROUTER_API_KEY ? "✅ Yes" : "❌ No"
-);
+if (HAS_VALID_OPENROUTER_API_KEY) {
+  console.log("🤖 Chatbot running with OpenRouter AI integration");
+} else {
+  console.warn(
+    OPENROUTER_API_KEY
+      ? "⚠️ OPENROUTER_API_KEY is invalid; chatbot is using rule-based responses. Configure a valid OpenRouter key to enable AI responses."
+      : "⚠️ OPENROUTER_API_KEY is not configured; chatbot is using rule-based responses."
+  );
+}
 
 // ============== OPTIONAL AUTH ==============
 const optionalAuth = async (req, res, next) => {
@@ -108,26 +115,26 @@ class ChatbotAI {
   }
 
   getSystemPrompt() {
-    return `You are Alemayehu Plastic Manufacturing's AI assistant, a helpful plastic products chatbot.
+    return `You are Dream More Affiliate Market's AI assistant, a helpful digital marketplace chatbot.
 
 **Your Role:**
-- Help customers find plastic products (containers, household items, industrial parts, packaging, pipes, custom orders)
-- Provide product information, pricing, and availability
-- Assist with orders and general inquiries
+- Help customers discover products and browse marketplace listings
+- Provide accurate product information, pricing, and availability from the listings
+- Assist with shopping questions and general inquiries
 - Be friendly, professional, and knowledgeable
 
-**About Alemayehu Plastic Manufacturing:**
-- Leading plastic manufacturer in Ethiopia
-- Products: Containers & Storage, Household Plastic, Industrial Parts, Packaging, Pipes & Fittings, Custom Manufacturing
-- Mission: Manufacturing durable, high-quality plastic products for homes, businesses and industries
-- Serving Ethiopian homes, businesses, and industries
+**About Dream More Affiliate Market:**
+- A digital marketplace for discovering products and exploring listings
+- Listings across the categories currently available in the store
+- Mission: Make product discovery and online shopping easier
+- Help shoppers find information and connect with support
 
 **Response Guidelines:**
 1. Be concise but informative (2-3 sentences max)
 2. Use emojis naturally to make responses engaging
 3. Suggest specific products when possible
 4. If you don't know something, suggest alternative ways to help
-5. Keep responses focused on plastic products and services
+5. Keep responses focused on marketplace listings and shopping support
 6. All prices are in Ethiopian Birr (ETB)
 
 **Available Products:**
@@ -172,7 +179,7 @@ Generate helpful, friendly, and accurate responses to user queries.`;
       this.initialized = true;
       console.log("✅ Chatbot initialized with", products.length, "products");
 
-      if (OPENROUTER_API_KEY && !this.modelTested) {
+      if (HAS_VALID_OPENROUTER_API_KEY && !this.modelTested) {
         await this.findWorkingModel();
       }
     } catch (error) {
@@ -182,6 +189,10 @@ Generate helpful, friendly, and accurate responses to user queries.`;
 
   async findWorkingModel() {
     this.modelTested = true;
+    if (!HAS_VALID_OPENROUTER_API_KEY) {
+      return;
+    }
+
     console.log("🔍 Testing OpenRouter API connection...");
 
     for (const model of OPENROUTER_MODELS) {
@@ -264,10 +275,7 @@ Generate helpful, friendly, and accurate responses to user queries.`;
   }
 
   async generateAIResponse(message, context) {
-    if (!OPENROUTER_API_KEY) {
-      console.warn(
-        "⚠️ OPENROUTER_API_KEY not configured, using fallback responses"
-      );
+    if (!HAS_VALID_OPENROUTER_API_KEY) {
       const lowerMessage = message.toLowerCase().trim();
       return await this.processRuleBasedIntent(lowerMessage, context);
     }
@@ -494,8 +502,6 @@ Generate helpful, friendly, and accurate responses to user queries.`;
       this.matchesPattern(message, [
         "about",
         "company",
-        "alemayehu",
-        "alemayehu plastic",
         "who are you",
       ])
     ) {
@@ -547,9 +553,9 @@ Generate helpful, friendly, and accurate responses to user queries.`;
 
     const name = context.userName || "Guest";
     const responses = [
-      `${greeting}${name ? " " + name : ""}! 👋 Welcome to Alemayehu Plastic Manufacturing. How can I help you with our plastic products today?`,
-      `Hello${name ? " " + name : ""}! 🏭 I'm your Alemayehu Plastic assistant. Need help finding the right plastic products?`,
-      `Hi there${name ? " " + name : ""}! 📦 Ready to explore our plastic catalog? Let me know what you need.`,
+      `${greeting}${name ? " " + name : ""}! 👋 Welcome to Dream More Affiliate Market. How can I help you discover products today?`,
+      `Hello${name ? " " + name : ""}! 👋 I'm your Dream More assistant. Need help finding a product?`,
+      `Hi there${name ? " " + name : ""}! 🛍️ Ready to explore the marketplace? Let me know what you need.`,
     ];
     return responses[Math.floor(Math.random() * responses.length)];
   }
@@ -557,7 +563,7 @@ Generate helpful, friendly, and accurate responses to user queries.`;
   getLoginHelpResponse() {
     return (
       `🔐 **Login/Register Help**\n\n` +
-      `To access all features of Alemayehu Plastic Manufacturing:\n\n` +
+      `To access all features of Dream More Affiliate Market:\n\n` +
       `1. Go to the login page (click "Sign In" in the navbar)\n` +
       `2. Enter your email and password\n` +
       `3. Click "Sign In"\n\n` +
@@ -577,7 +583,7 @@ Generate helpful, friendly, and accurate responses to user queries.`;
       .trim();
 
     if (!keywords || keywords.length < 2) {
-      return `What type of plastic products are you looking for? We have containers, household plastic, industrial parts, packaging, pipes, and custom manufacturing! 📦`;
+      return `What kind of product are you looking for? Browse the marketplace or tell me what you need and I can help search the available listings.`;
     }
 
     const searchResults = this.products.filter(
@@ -590,7 +596,7 @@ Generate helpful, friendly, and accurate responses to user queries.`;
     );
 
     if (searchResults.length === 0) {
-      return `I couldn't find any products matching "${keywords}". 🤔 Could you try different keywords? We have containers, household plastic, industrial parts, packaging, pipes, and custom orders.`;
+      return `I couldn't find any products matching "${keywords}". 🤔 Try a different search term or browse the marketplace categories.`;
     }
 
     if (searchResults.length > 5) {
@@ -617,7 +623,7 @@ Generate helpful, friendly, and accurate responses to user queries.`;
     ];
 
     if (categories.length === 0) {
-      return "We have various plastic products available. Please check our website for the complete catalog. 📋";
+      return "Browse the Dream More digital marketplace to explore the available product listings. 📋";
     }
 
     return `We offer products in these categories:\n\n${categories
@@ -734,10 +740,10 @@ Generate helpful, friendly, and accurate responses to user queries.`;
   getHelpResponse() {
     return (
       `I can help you with:\n\n` +
-      `🔍 **Product Search** - "Find storage containers"\n` +
-      `💰 **Pricing** - "How much is a plastic bucket?"\n` +
-      `📊 **Availability** - "Is PVC pipe in stock?"\n` +
-      `📂 **Categories** - "Show me industrial parts"\n` +
+      `🔍 **Product Search** - "Find a product"\n` +
+      `💰 **Pricing** - "How much does this product cost?"\n` +
+      `📊 **Availability** - "Is this item available?"\n` +
+      `📂 **Categories** - "Show me available categories"\n` +
       `🛒 **Ordering** - "How to place an order?"\n` +
       `🔐 **Login** - "How to login"\n` +
       `📞 **Contact** - "Get customer support"\n\n` +
@@ -747,18 +753,18 @@ Generate helpful, friendly, and accurate responses to user queries.`;
 
   getAboutResponse() {
     return (
-      `🏭 **About Alemayehu Plastic Manufacturing**\n\n` +
-      `Alemayehu Plastic Manufacturing is a leading Ethiopian plastic manufacturer dedicated to producing durable, high-quality plastic products.\n\n` +
-      `🏆 **Our Mission**: Manufacturing quality plastic products built to last\n` +
-      `📦 **Our Products**: Containers, Household Plastic, Industrial Parts, Packaging, Pipes & Fittings, Custom Orders\n` +
-      `👥 **Our Clients**: Homes, businesses, and industries across Ethiopia\n\n` +
-      `We serve Ethiopian homes, businesses, and industries with excellence! ✨`
+      `🛍️ **About Dream More Affiliate Market**\n\n` +
+      `Dream More Affiliate Market is a digital marketplace where shoppers can discover products and explore listings online.\n\n` +
+      `✨ **Our Promise**: A simple, helpful shopping experience\n` +
+      `🔎 **Our Marketplace**: Product listings from a range of categories\n` +
+      `👥 **Our Community**: Shoppers looking for quality and value\n\n` +
+      `Find something you love with Dream More!`
     );
   }
 
   getContactResponse() {
     return (
-      `📞 **Contact Alemayehu Plastic Manufacturing**\n\n` +
+      `📞 **Contact Dream More Affiliate Market**\n\n` +
       `📧 Email: support@alemayehplastic.com\n` +
       `📱 Phone: +251 900 000 000\n` +
       `🕐 Hours: Mon-Sat 8AM - 6PM EAT (East Africa Time)\n` +
@@ -772,7 +778,7 @@ Generate helpful, friendly, and accurate responses to user queries.`;
     const responses = [
       `Thank you for chatting${name ? " " + name : ""}! 📦 Have a great day! Feel free to come back anytime.`,
       `Goodbye${name ? " " + name : ""}! 👋 If you have more questions, I'm always here to help.`,
-      `Thanks for visiting Alemayehu Plastic Manufacturing${name ? ", " + name : ""}! 🏭 Hope to see you again soon!`,
+      `Thanks for visiting Dream More Affiliate Market${name ? ", " + name : ""}! Hope to see you again soon!`,
     ];
     return responses[Math.floor(Math.random() * responses.length)];
   }
@@ -781,10 +787,10 @@ Generate helpful, friendly, and accurate responses to user queries.`;
     const suggestions = [
       "I can help you find products, check prices, or assist with orders.",
       "Would you like to browse our products by category?",
-      "I can tell you about our containers, household plastic, or industrial parts.",
+      "I can help you search listings, check product details, or get shopping support.",
       "Need help with something specific? Just ask!",
     ];
-    return `I'm not sure I understand. 🤔\n\n${suggestions[Math.floor(Math.random() * suggestions.length)]}\n\nTry asking about:\n• "Find storage containers"\n• "Show me industrial parts"\n• "How much is a plastic bucket?"\n• "Help with ordering"`;
+    return `I'm not sure I understand. 🤔\n\n${suggestions[Math.floor(Math.random() * suggestions.length)]}\n\nTry asking about:\n• "Find a product"\n• "Show me available categories"\n• "How much does this product cost?"\n• "Help with shopping"`;
   }
 
   async saveChatHistory(userId, conversationId, userMessage, botResponse) {

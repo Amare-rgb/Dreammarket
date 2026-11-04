@@ -32,7 +32,12 @@ interface StatsData {
   stats: {
     products: number;
     customers: number;
+    orders: number | null;
+    pendingOrders: number | null;
+    salesRevenue: number | null;
+    articles: number | null;
   };
+  unavailableStats: string[];
   recentProducts: Product[];
 }
 
@@ -83,13 +88,17 @@ api.interceptors.response.use(
 // ============================================================
 const StatsCard: React.FC<StatsCardProps> = ({ title, value, subtitle }) => {
   return (
-    <div className="bg-white rounded-xl border border-gray-200 p-4 hover:shadow-lg transition-all duration-200">
+    <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 transition-shadow duration-200 hover:shadow-md">
       <div className="flex-1">
-        <p className="text-xs font-medium text-gray-500 uppercase tracking-wider">
+        <p className="truncate text-[10px] font-medium uppercase tracking-wider text-gray-500">
           {title}
         </p>
-        <p className="text-2xl font-bold text-gray-900 mt-1">{value}</p>
-        {subtitle && <p className="text-xs text-gray-500 mt-1">{subtitle}</p>}
+        <p className="mt-0.5 text-xl font-bold leading-tight text-gray-900">
+          {value}
+        </p>
+        {subtitle && (
+          <p className="mt-1 text-[10px] leading-4 text-gray-500">{subtitle}</p>
+        )}
       </div>
     </div>
   );
@@ -211,7 +220,14 @@ export default function DashboardPage() {
           stats: {
             products: response.data.stats.products || 0,
             customers: response.data.stats.customers || 0,
+            orders: response.data.stats.orders ?? null,
+            pendingOrders: response.data.stats.pendingOrders ?? null,
+            salesRevenue: response.data.stats.salesRevenue ?? null,
+            articles: response.data.stats.articles ?? null,
           },
+          unavailableStats: Array.isArray(response.data.unavailableStats)
+            ? response.data.unavailableStats
+            : [],
           recentProducts: Array.isArray(response.data.recentProducts)
             ? response.data.recentProducts
             : [],
@@ -268,7 +284,7 @@ export default function DashboardPage() {
     return (
       <div className="flex items-center justify-center min-h-[60vh]">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#EB6D3D] mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading dashboard...</p>
         </div>
       </div>
@@ -282,7 +298,7 @@ export default function DashboardPage() {
           <p className="text-red-600 mb-4">{error}</p>
           <button
             onClick={fetchDashboardData}
-            className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors"
+            className="px-4 py-2 bg-[#EB6D3D] text-[#20283a] rounded-lg hover:bg-[#cf5427] hover:text-white transition-colors"
           >
             Retry
           </button>
@@ -298,7 +314,7 @@ export default function DashboardPage() {
           <p className="text-gray-600 mb-4">No data available</p>
           <button
             onClick={fetchDashboardData}
-            className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors"
+            className="px-4 py-2 bg-[#EB6D3D] text-[#20283a] rounded-lg hover:bg-[#cf5427] hover:text-white transition-colors"
           >
             Refresh
           </button>
@@ -307,7 +323,7 @@ export default function DashboardPage() {
     );
   }
 
-  const { stats, recentProducts } = data;
+  const { stats, unavailableStats, recentProducts } = data;
 
   return (
     <div className="space-y-6">
@@ -329,7 +345,7 @@ export default function DashboardPage() {
           </button>
           <button
             onClick={fetchDashboardData}
-            className="flex items-center space-x-2 px-3 py-1.5 text-xs text-white bg-yellow-500 rounded-lg hover:bg-yellow-600 transition-colors"
+            className="flex items-center space-x-2 px-3 py-1.5 text-xs text-[#20283a] bg-[#EB6D3D] rounded-lg hover:bg-[#cf5427] hover:text-white transition-colors"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>Refresh</span>
@@ -337,11 +353,39 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      {/* Stats Cards — only Products & Customers now */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+      {/* Marketplace overview */}
+      <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 xl:grid-cols-3">
         <StatsCard title="Total Products" value={stats.products} />
         <StatsCard title="Total Customers" value={stats.customers} />
+        <StatsCard
+          title="Total Orders"
+          value={stats.orders ?? "Unavailable"}
+        />
+        <StatsCard
+          title="Orders to process"
+          value={stats.pendingOrders ?? "Unavailable"}
+        />
+        <StatsCard
+          title="Sales revenue"
+          value={
+            stats.salesRevenue === null
+              ? "Unavailable"
+              : `ETB ${formatCurrency(stats.salesRevenue)}`
+          }
+        />
+        <StatsCard title="Articles" value={stats.articles ?? "Unavailable"} />
       </div>
+      {unavailableStats.length > 0 && (
+        <div
+          role="status"
+          className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900"
+        >
+          Order and article metrics are unavailable because their database
+          tables are not installed ({unavailableStats.join(", ")}). Resolve the
+          Prisma migration baseline and apply the pending migration to enable
+          them.
+        </div>
+      )}
 
       {/* Recent Products Table */}
       <div className="bg-white rounded-xl border border-gray-200 overflow-hidden">

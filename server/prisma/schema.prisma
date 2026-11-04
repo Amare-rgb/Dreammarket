@@ -5,14 +5,22 @@ generator client {
 }
 
 datasource db {
-  provider  = "postgresql"
-  url       = env("DATABASE_URL")
-  directUrl = env("DIRECT_URL")
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
 }
 
 enum Role {
   USER
   ADMIN
+}
+
+enum OrderStatus {
+  PENDING
+  CONFIRMED
+  PROCESSING
+  SHIPPED
+  DELIVERED
+  CANCELLED
 }
 
 model User {
@@ -35,6 +43,7 @@ model User {
   addresses    Address[]
   categories   Category[]    @relation("CategoryCreator")
   chatMessages ChatMessage[]
+  articles     Article[]
 
   @@index([role])
   @@index([createdAt])
@@ -64,14 +73,14 @@ model ChatMessage {
 // UNIFIED PROFILE MODEL
 // ============================================
 model Profile {
-  id         String    @id @default(cuid())
-  userId     String    @unique
+  id         String  @id @default(cuid())
+  userId     String  @unique
   shopName   String?
   shopDesc   String?
   logo       String?
   phone      String?
-  isVerified Boolean   @default(false)
-  totalSales Int       @default(0)
+  isVerified Boolean @default(false)
+  totalSales Int     @default(0)
   address    String?
   banner     String?
 
@@ -151,13 +160,73 @@ model Product {
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
-  category    Category  @relation(fields: [categoryId], references: [id])
-  subCategory Category? @relation("ProductSubCategory", fields: [subCategoryId], references: [id])
+  category    Category    @relation(fields: [categoryId], references: [id])
+  subCategory Category?   @relation("ProductSubCategory", fields: [subCategoryId], references: [id])
   reviews     Review[]
+  orderItems  OrderItem[]
 
   @@index([categoryId])
   @@index([sku])
   @@map("products")
+}
+
+model Order {
+  id              String      @id @default(cuid())
+  orderNumber     String      @unique
+  customerName    String
+  customerEmail   String
+  customerPhone   String
+  shippingAddress String      @db.Text
+  note            String?     @db.Text
+  paymentMethod   String      @default("CASH_ON_DELIVERY")
+  paymentProofUrl String?
+  status          OrderStatus @default(PENDING)
+  total           Decimal     @db.Decimal(12, 2)
+  createdAt       DateTime    @default(now())
+  updatedAt       DateTime    @updatedAt
+
+  items OrderItem[]
+
+  @@index([status, createdAt])
+  @@index([customerEmail])
+  @@map("orders")
+}
+
+model OrderItem {
+  id          String   @id @default(cuid())
+  orderId     String
+  productId   String?
+  productName String
+  sku         String
+  quantity    Int
+  unitPrice   Decimal  @db.Decimal(10, 2)
+  createdAt   DateTime @default(now())
+
+  order   Order    @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+
+  @@index([orderId])
+  @@index([productId])
+  @@map("order_items")
+}
+
+model Article {
+  id          String   @id @default(cuid())
+  title       String
+  slug        String   @unique
+  description String   @db.Text
+  content     String   @db.Text
+  image       String?
+  note        String?  @db.Text
+  published   Boolean  @default(false)
+  authorId    String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  author User? @relation(fields: [authorId], references: [id], onDelete: SetNull)
+
+  @@index([published, createdAt])
+  @@map("articles")
 }
 
 model Review {
@@ -194,34 +263,34 @@ model Address {
 }
 
 // ============================================
-// SETTINGS MODEL — rebranded for Alemayehu Plastic
+// SETTINGS MODEL
 // ============================================
 model Settings {
-  id                   String   @id @default(cuid())
-  siteName             String   @default("Alemayehu Plastic Manufacturing")
-  siteDescription      String?  @default("Quality plastic products manufactured in Ethiopia")
-  adminEmail           String   @default("admin@alemayehplastic.com")
-  adminPhone           String?  @default("+251 900 000 000")
-  address              String?  @default("Bahir Dar, Ethiopia")
-  timezone             String   @default("Africa/Addis_Ababa")
-  dateFormat           String   @default("MM/DD/YYYY")
-  storeName            String   @default("Alemayehu Plastic Manufacturing")
-  storeEmail           String   @default("info@alemayehplastic.com")
-  storePhone           String?  @default("+251 900 000 000")
-  storeAddress         String?  @default("Bahir Dar, Ethiopia")
-  currency             String   @default("ETB")
-  taxRate              Float    @default(15)
-  logo                 String?  @default("")
-  favicon              String?  @default("")
-  twoFactorAuth        Boolean  @default(false)
-  sessionTimeout       Int      @default(60)
-  emailNotifications   Boolean  @default(true)
-  orderNotifications   Boolean  @default(true)
-  productNotifications Boolean  @default(true)
-  userNotifications    Boolean  @default(true)
-  marketingEmails      Boolean  @default(false)
-  themeColor           String   @default("#e0a83c")
-  darkMode             Boolean  @default(false)
+  id                   String  @id @default(cuid())
+  siteName             String  @default("Dream More Affiliate Market")
+  siteDescription      String? @default("Discover trusted products and great deals.")
+  adminEmail           String  @default("admin@alemayehplastic.com")
+  adminPhone           String? @default("+251 900 000 000")
+  address              String? @default("Bahir Dar, Ethiopia")
+  timezone             String  @default("Africa/Addis_Ababa")
+  dateFormat           String  @default("MM/DD/YYYY")
+  storeName            String  @default("Dream More Affiliate Market")
+  storeEmail           String  @default("info@alemayehplastic.com")
+  storePhone           String? @default("+251 900 000 000")
+  storeAddress         String? @default("Bahir Dar, Ethiopia")
+  currency             String  @default("ETB")
+  taxRate              Float   @default(15)
+  logo                 String? @default("")
+  favicon              String? @default("")
+  twoFactorAuth        Boolean @default(false)
+  sessionTimeout       Int     @default(60)
+  emailNotifications   Boolean @default(true)
+  orderNotifications   Boolean @default(true)
+  productNotifications Boolean @default(true)
+  userNotifications    Boolean @default(true)
+  marketingEmails      Boolean @default(false)
+  themeColor           String  @default("#e0a83c")
+  darkMode             Boolean @default(false)
 
   contactEmail      String? @default("support@alemayehplastic.com")
   contactPhone      String? @default("+251 900 000 000")

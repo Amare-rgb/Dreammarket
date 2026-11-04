@@ -1,13 +1,30 @@
 {
-  "name": "alemayehu-plastic-server",
+  "name": "dream-more-affiliate-market-server",
   "version": "1.0.0",
-  "description": "Alemayehu Plastic Manufacturing Backend API Server",
+  "description": "Dream More Affiliate Market Backend API Server",
   "main": "server.js",
   "engines": {
     "node": "24.x"
   },
   "prisma": {
     "seed": "node prisma/seed.js"
+  },
+  "nodemonConfig": {
+    "watch": [
+      "server.js",
+      "routes",
+      "lib",
+      "middleware",
+      "jobs"
+    ],
+    "ext": "js,json",
+    "ignore": [
+      "node_modules/**",
+      "uploads/**",
+      "prisma/**",
+      ".env"
+    ],
+    "delay": "500ms"
   },
   "scripts": {
     "start": "node server.js",
@@ -31,20 +48,18 @@
     "ecommerce",
     "api"
   ],
-  "author": "Alemayehu Plastic Manufacturing",
+  "author": "Dream More Affiliate Market",
   "license": "ISC",
   "dependencies": {
     "@prisma/client": "^5.22.0",
     "axios": "^1.7.9",
     "bcryptjs": "^2.4.3",
-    "cloudinary": "^1.41.3",
     "cors": "^2.8.6",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-rate-limit": "^7.5.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
-    "multer-storage-cloudinary": "^4.0.0",
     "nodemailer": "^6.9.16",
     "prisma": "^5.22.0",
     "serverless-http": "^4.0.0",

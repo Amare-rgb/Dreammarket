@@ -6,22 +6,21 @@
 
 :root {
   /* ============================================================
-     ALEMAYEHU PLASTIC — GOLD / DARK BROWN THEME
-     (No green — matches ABE TIBEB reference style)
+     DREAM MORE — ORANGE / NAVY BRAND THEME
      ============================================================ */
 
-  /* Dark browns (replace all greens) */
-  --green-950: #1a1410;   /* deepest — hero bg */
-  --green-900: #2a1f18;   /* dark brown */
-  --green-800: #3a2a1e;   /* mid brown */
-  --green-700: #6b5238;   /* warm brown */
-  --green-500: #b98a3e;   /* amber-brown bridge */
+  /* Brand navy */
+  --green-950: #20283a;
+  --green-900: #30384f;
+  --green-800: #3c465f;
+  --green-700: #58627a;
+  --green-500: #F47822;
 
-  /* Gold accents (replace lime) */
-  --lime: #e0a83c;        /* main gold */
-  --gold: #e0a83c;
-  --gold-light: #f0c872;
-  --gold-deep: #c8871e;
+  /* Brand orange */
+  --lime: #F47822;
+  --gold: #F47822;
+  --gold-light: #f28a63;
+  --gold-deep: #cf5427;
 
   /* Creams */
   --cream: #faf6ee;
@@ -29,39 +28,46 @@
   --white: #ffffff;
 
   /* Text */
-  --ink: #1c1610;
-  --muted: #7a6a58;
-  --line: rgba(28, 22, 16, .12);
+  --ink: #20283a;
+  --muted: #667085;
+  --line: rgba(32, 40, 58, .12);
 
   /* Fonts */
   --serif: "Playfair Display", Georgia, serif;
   --sans: "DM Sans", Arial, sans-serif;
 
-  --shadow: 0 25px 60px rgba(58, 42, 30, .15);
+  --shadow: 0 25px 60px rgba(32, 40, 58, .15);
 
   /* shadcn tokens */
-  --background: 40 40% 96%;
-  --foreground: 30 25% 10%;
+  --background: 0 0% 98%;
+  --foreground: 225 29% 17%;
   --card: 0 0% 100%;
-  --card-foreground: 30 25% 10%;
+  --card-foreground: 225 29% 17%;
   --popover: 0 0% 100%;
-  --popover-foreground: 30 25% 10%;
-  --primary: 30 35% 15%;
-  --primary-foreground: 40 80% 65%;
-  --secondary: 40 30% 88%;
-  --secondary-foreground: 30 35% 15%;
-  --muted-fg: 30 10% 45%;
-  --accent: 40 80% 60%;
-  --accent-foreground: 30 35% 12%;
+  --popover-foreground: 225 29% 17%;
+  --primary: 225 29% 27%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 220 20% 94%;
+  --secondary-foreground: 225 29% 17%;
+  --muted-fg: 220 10% 46%;
+  --accent: 24 90% 55%;
+  --accent-foreground: 225 29% 17%;
   --destructive: 0 84.2% 60.2%;
   --destructive-foreground: 210 40% 98%;
-  --border: 30 15% 85%;
-  --input: 30 15% 85%;
-  --ring: 40 80% 55%;
+  --border: 220 15% 88%;
+  --input: 220 15% 88%;
+  --ring: 24 90% 55%;
   --radius: 0.75rem;
 }
 
 .dark {
+  --cream: #111722;
+  --cream-dark: #232b38;
+  --white: #1b2430;
+  --ink: #f3f4f6;
+  --muted: #a7b0be;
+  --line: rgba(226, 232, 240, 0.14);
+  --shadow: 0 25px 60px rgba(0, 0, 0, 0.35);
   --background: 30 35% 8%;
   --foreground: 40 40% 94%;
   --card: 30 30% 10%;
@@ -77,9 +83,186 @@
   --ring: 40 80% 60%;
 }
 
+.dark body {
+  background-color: var(--cream);
+  color: var(--ink);
+}
+
+.dark header {
+  background-color: #151d29;
+  background-image: none;
+  border-color: rgba(226, 232, 240, 0.14);
+}
+
+.dark :is(.bg-white, .bg-gray-50, .bg-slate-50, .bg-slate-100) {
+  background-color: #1b2430 !important;
+}
+
+.dark [class~="bg-[#faf6ef]"],
+.dark [class~="bg-[#f7f8fa]"],
+.dark [class~="bg-[#f4ecde]"] {
+  background-color: #232b38 !important;
+}
+
+.dark :is(
+  .text-gray-900,
+  .text-slate-900,
+  .text-slate-800,
+  .text-slate-700,
+  .text-slate-600,
+  .text-slate-500
+) {
+  color: #e2e8f0;
+}
+
+.dark [class*="text-[#20283a]"],
+.dark [class*="text-[#1a1410]"] {
+  color: #e2e8f0 !important;
+}
+
+.dark :is(
+  .border-gray-100,
+  .border-gray-200,
+  .border-slate-100,
+  .border-slate-200,
+  .border-slate-300
+) {
+  border-color: rgba(226, 232, 240, 0.16);
+}
+
+.dark [class~="border-[#eadfce]"],
+.dark [class~="border-[#f0e8d8]"] {
+  border-color: rgba(226, 232, 240, 0.16) !important;
+}
+
+.dark [class*="bg-[#faf6ee]"],
+.dark [class*="bg-[#faf6ef]"],
+.dark [class*="bg-[#fbf8f1]"],
+.dark [class*="bg-[#f5eee1]"],
+.dark [class*="bg-[#f5f0e6]"],
+.dark [class*="bg-[#f0e8d8]"],
+.dark [class*="bg-[#eee6d8]"],
+.dark [class*="bg-[#f7f8fa]"],
+.dark [class*="bg-[#f4ecde]"],
+.dark [class*="bg-[#fafafa]"],
+.dark [class~="bg-yellow-50"],
+.dark [class~="bg-yellow-100"] {
+  background-color: #232b38 !important;
+}
+
+.dark [class*="text-[#2a1f18]"],
+.dark [class*="text-[#1a1410]"],
+.dark [class*="text-[#3a2a1e]"],
+.dark [class*="text-[#20283a]"] {
+  color: #e2e8f0 !important;
+}
+
+.dark [class*="text-[#7a6a58]"] {
+  color: #aeb8c6 !important;
+}
+
+.dark [class*="border-[#eee6d8]"],
+.dark [class*="border-[#f0e8d8]"],
+.dark [class*="border-[#3a2a1e]"],
+.dark [class*="border-yellow-200"] {
+  border-color: rgba(226, 232, 240, 0.16) !important;
+}
+
+.dark .shop-theme {
+  color: #e2e8f0;
+  background-color: var(--cream);
+}
+
+.dark .shop-theme [class~="bg-white"] {
+  background-color: #1b2430 !important;
+}
+
+.dark .shop-theme [class*="bg-[#faf6ee]"],
+.dark .shop-theme [class*="bg-[#f5f0e6]"],
+.dark .shop-theme [class*="bg-[#f0e8d8]"] {
+  background-color: #232b38 !important;
+}
+
+.dark .shop-theme [class~="bg-gray-100"],
+.dark .shop-theme [class~="bg-gray-200"] {
+  background-color: #303a49 !important;
+}
+
+.dark .shop-theme [class*="text-[#1a1410]"],
+.dark .shop-theme [class*="text-[#3a2a1e]"] {
+  color: #e2e8f0 !important;
+}
+
+.dark .shop-theme [class*="text-[#7a6a58]"] {
+  color: #aeb8c6 !important;
+}
+
+.dark .shop-theme [class*="border-[#3a2a1e]"] {
+  border-color: rgba(226, 232, 240, 0.16) !important;
+}
+
+.dark .shop-theme input,
+.dark .shop-theme select {
+  color-scheme: dark;
+}
+
+.dark .home-theme,
+.dark .profile-theme {
+  color: #e2e8f0;
+  background-color: var(--cream);
+}
+
+.dark :is(.home-theme, .profile-theme) [class*="bg-[#faf6ee]"],
+.dark :is(.home-theme, .profile-theme) [class*="bg-[#fbf8f1]"],
+.dark :is(.home-theme, .profile-theme) [class*="bg-[#f5eee1]"],
+.dark :is(.home-theme, .profile-theme) [class*="bg-[#f5f0e6]"],
+.dark :is(.home-theme, .profile-theme) [class*="bg-[#f0e8d8]"],
+.dark :is(.home-theme, .profile-theme) [class*="bg-[#eee6d8]"],
+.dark :is(.home-theme, .profile-theme) [class*="bg-yellow-50"],
+.dark :is(.home-theme, .profile-theme) [class*="bg-yellow-100"],
+.dark :is(.home-theme, .profile-theme) [class*="bg-gray-50"],
+.dark :is(.home-theme, .profile-theme) [class*="bg-gray-100"],
+.dark :is(.home-theme, .profile-theme) [class*="bg-gray-200"] {
+  background-color: #232b38 !important;
+}
+
+.dark :is(.home-theme, .profile-theme) [class~="bg-white"] {
+  background-color: #1b2430 !important;
+}
+
+.dark :is(.home-theme, .profile-theme) [class*="text-[#2a1f18]"],
+.dark :is(.home-theme, .profile-theme) [class*="text-[#1a1410]"],
+.dark :is(.home-theme, .profile-theme) [class*="text-[#3a2a1e]"],
+.dark :is(.home-theme, .profile-theme) [class*="text-[#20283a]"] {
+  color: #e2e8f0 !important;
+}
+
+.dark :is(.home-theme, .profile-theme) [class*="text-[#7a6a58]"] {
+  color: #aeb8c6 !important;
+}
+
+.dark :is(.home-theme, .profile-theme) [class*="border-[#eee6d8]"],
+.dark :is(.home-theme, .profile-theme) [class*="border-[#f0e8d8]"],
+.dark :is(.home-theme, .profile-theme) [class*="border-[#3a2a1e]"],
+.dark :is(.home-theme, .profile-theme) [class*="border-yellow-200"] {
+  border-color: rgba(226, 232, 240, 0.16) !important;
+}
+
+.dark :is(.home-theme, .profile-theme) input,
+.dark :is(.home-theme, .profile-theme) textarea,
+.dark :is(.home-theme, .profile-theme) select {
+  color: #e2e8f0;
+  color-scheme: dark;
+}
+
+.dark :is(.home-theme, .profile-theme) input::placeholder,
+.dark :is(.home-theme, .profile-theme) textarea::placeholder {
+  color: #94a3b8;
+}
+
 @layer base {
   * {
-    border-color: rgba(28, 22, 16, 0.12);
+    border-color: rgba(32, 40, 58, 0.12);
   }
 
   body {
@@ -99,7 +282,7 @@
   }
 }
 
-/* Alemayehu brand mark (gold, no green) */
+/* Dream More brand mark */
 .brand-mark {
   position: relative;
   width: 28px;

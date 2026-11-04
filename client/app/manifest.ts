@@ -3,23 +3,23 @@ import type { MetadataRoute } from 'next'
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'Alemayehu Plastic Manufacturing',
-    short_name: 'Alemayehu Plastic',
-    description: 'Quality plastic products manufactured in Ethiopia',
+    name: 'Dream More Affiliate Market',
+    short_name: 'Dream More',
+    description: 'Discover trusted products and great deals with Dream More Affiliate Market.',
     start_url: '/',
     display: 'standalone',
-    background_color: '#faf6ee',
-    theme_color: '#e0a83c',
+    background_color: '#f7f8fa',
+    theme_color: '#F47822',
     icons: [
       {
-        src: '/banners/plastik.png',
+        src: '/banners/photo.jpg',
         sizes: '192x192',
-        type: 'image/png',
+        type: 'image/jpeg',
       },
       {
-        src: '/banners/plastik.png',
+        src: '/banners/photo.jpg',
         sizes: '512x512',
-        type: 'image/png',
+        type: 'image/jpeg',
       },
     ],
   }

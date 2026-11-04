@@ -2,7 +2,7 @@
 const nodemailer = require('nodemailer');
 
 // ═══════════════════════════════════════════════════════════
-// Email — Alemayehu Plastic Manufacturing
+// Email — Dream More Affiliate Market
 //  • Provider: Resend (preferred) or SMTP (fallback)
 //  • No order/order-related emails (Order model removed)
 // ═══════════════════════════════════════════════════════════
@@ -10,9 +10,9 @@ const nodemailer = require('nodemailer');
 const stripSlash = (s) => String(s || '').trim().replace(/\/+$/, '');
 
 const BRAND = {
-  name: 'Alemayehu Plastic Manufacturing',
-  shortName: 'Alemayehu Plastic',
-  tagline: 'Quality plastic products manufactured in Ethiopia',
+  name: 'Dream More Affiliate Market',
+  shortName: 'Dream More',
+  tagline: 'Right work at right time',
   supportEmail:
     process.env.SUPPORT_EMAIL ||
     process.env.EMAIL_FROM ||
@@ -183,10 +183,10 @@ async function sendWelcomeEmail(email, name) {
     bodyHtml: `
       <p>
         Thank you for creating an account with
-        <strong>${BRAND.name}</strong> — your trusted source for
-        high-quality plastic products manufactured right here in Ethiopia.
+        <strong>${BRAND.name}</strong>, a digital marketplace for
+        discovering products and exploring listings.
       </p>
-      <p>Your account is ready. Start exploring our product catalogue now:</p>
+      <p>Your account is ready. Start exploring the digital marketplace:</p>
       <p style="text-align:center;">
         <a href="${productsUrl}" class="cta">Browse products →</a>
       </p>
@@ -194,9 +194,9 @@ async function sendWelcomeEmail(email, name) {
         What you can do now:
       </p>
       <ul style="padding-left:20px; color:#555555;">
-        <li>Browse our full range of plastic products</li>
-        <li>See prices, sizes, and stock availability in real time</li>
-        <li>Contact us directly for bulk orders and custom manufacturing</li>
+        <li>Browse products from a range of categories</li>
+        <li>Review product details and availability</li>
+        <li>Contact our team if you need help with shopping</li>
       </ul>
       <p style="font-size:13px; color:#777777; margin-top:24px;">
         Need help? Reply to this email or reach us at
@@ -208,18 +208,17 @@ async function sendWelcomeEmail(email, name) {
   const text = `
 Welcome aboard, ${name || 'there'}!
 
-Thank you for creating an account with ${BRAND.name} — your trusted
-source for high-quality plastic products manufactured right here in
-Ethiopia.
+Thank you for creating an account with ${BRAND.name}, a digital marketplace
+for discovering products and exploring listings.
 
-Your account is ready. Browse our catalogue:
+Your account is ready. Explore the digital marketplace:
 
     ${productsUrl}
 
 What you can do now:
-  - Browse our full range of plastic products
-  - See prices, sizes, and stock availability in real time
-  - Contact us directly for bulk orders and custom manufacturing
+  - Browse products from a range of categories
+  - Review product details and availability
+  - Contact our team if you need help with shopping
 
 Need help? Contact us at ${BRAND.supportEmail}.
 

@@ -26,28 +26,26 @@ const sora = Sora({
 // ============================================================
 export const metadata: Metadata = {
   title: {
-    default: "Alemayehu Plastic Manufacturing",
-    template: "%s | Alemayehu Plastic Manufacturing",
+    default: "Dream More Affiliate Market",
+    template: "%s | Dream More Affiliate Market",
   },
   description:
-    "High-quality plastic products for homes, businesses and industries across Ethiopia.",
-  applicationName: "Alemayehu Plastic Manufacturing",
+    "Discover trusted products and great deals with Dream More Affiliate Market.",
+  applicationName: "Dream More Affiliate Market",
   manifest: "/manifest.json",
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: "Alemayehu Plastic",
+    title: "Dream More",
   },
   icons: {
     icon: [
-      { url: "/banners/plastik.png", sizes: "any" },
-      { url: "/banners/plastik.png", type: "image/png", sizes: "192x192" },
-      { url: "/banners/plastik.png", type: "image/png", sizes: "512x512" },
+      { url: "/banners/photo.jpg", type: "image/jpeg", sizes: "any" },
     ],
     apple: [
-      { url: "/banners/plastik.png", sizes: "180x180", type: "image/png" },
+      { url: "/banners/photo.jpg", sizes: "180x180", type: "image/jpeg" },
     ],
-    shortcut: ["/banners/plastik.png"],
+    shortcut: ["/banners/photo.jpg"],
   },
   formatDetection: {
     telephone: false,
@@ -63,9 +61,9 @@ export const viewport: Viewport = {
   maximumScale: 5,
   themeColor: [
     // Light mode browser UI
-    { media: "(prefers-color-scheme: light)", color: "#e0a83c" },
+    { media: "(prefers-color-scheme: light)", color: "#F47822" },
     // Dark mode browser UI
-    { media: "(prefers-color-scheme: dark)", color: "#1a1410" },
+    { media: "(prefers-color-scheme: dark)", color: "#20283a" },
   ],
 };
 

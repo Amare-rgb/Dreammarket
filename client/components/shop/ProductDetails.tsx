@@ -4,7 +4,9 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
+import { ShoppingCart } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
+import { readCart, writeCart } from "@/app/lib/cart";
 
 // ✅ Local type — no dependency on `@/data/products`
 export interface Product {
@@ -272,6 +274,7 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
 
   const [selectedImage, setSelectedImage] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
+  const [cartMessage, setCartMessage] = useState("");
 
   const effectivePrice =
     product.discountPrice !== null &&
@@ -294,8 +297,57 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
     : 0;
   const currentImage = hasImages ? images[safeIndex] : null;
 
+  const addToCart = () => {
+    try {
+      const cart = readCart();
+      const existing = cart.find((item) => item.productId === product.id);
+      const nextQuantity = (existing?.quantity || 0) + 1;
+      if (nextQuantity > product.stock) {
+        setCartMessage(
+          t("checkout.stock_limit", "There is not enough stock for another item.")
+        );
+        return;
+      }
+
+      if (existing) {
+        writeCart(
+          cart.map((item) =>
+            item.productId === product.id
+              ? {
+                  ...item,
+                  name: product.name,
+                  slug: product.slug,
+                  image: currentImage,
+                  unitPrice: effectivePrice,
+                  quantity: nextQuantity,
+                }
+              : item
+          )
+        );
+      } else {
+        writeCart([
+          ...cart,
+          {
+            productId: product.id,
+            name: product.name,
+            slug: product.slug,
+            image: currentImage,
+            unitPrice: effectivePrice,
+            quantity: 1,
+          },
+        ]);
+      }
+      setCartMessage(t("checkout.added_to_cart", "Added to your order."));
+    } catch (error) {
+      console.error("Could not save product to the cart:", error);
+      setCartMessage(
+        t("checkout.cart_save_error", "Could not save your order. Please try again.")
+      );
+    }
+  };
+
   return (
-    <main className="min-h-screen bg-[#faf6ee]">
+    <main className="shop-theme min-h-screen bg-[var(--cream)]">
       {/* Top navigation */}
       <div className="border-b border-[#3a2a1e]/10 bg-white">
         <div className="mx-auto max-w-7xl px-5 py-3 sm:px-8 lg:px-12">
@@ -393,22 +445,22 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
                 </span>
 
                 <span className="text-[11px] font-medium text-[#7a6a58]">
-                  {t("product.direct_from_factory", "Direct from our factory")}
+                  {t("product.direct_from_factory", "Marketplace listing")}
                 </span>
               </div>
 
-              <h1 className="font-serif-heading text-3xl sm:text-4xl font-medium leading-[1.02] tracking-[-0.04em] text-[#1a1410]">
+              <h1 className="font-serif-heading text-center text-3xl font-medium leading-[1.02] tracking-[-0.04em] text-[#1a1410] sm:text-4xl">
                 {product.name}
               </h1>
 
-              <p className="mt-4 text-sm leading-6 text-[#7a6a58]">
+              <p className="mt-4 text-center text-sm leading-6 text-[#7a6a58]">
                 {product.description}
               </p>
 
               <div className="my-5 h-px bg-[#3a2a1e]/10" />
 
               {/* Price */}
-              <div className="flex items-baseline gap-2.5">
+              <div className="flex flex-wrap items-baseline justify-center gap-2.5 text-center">
                 <span className="font-serif-heading text-3xl font-semibold tracking-[-0.035em] text-[#1a1410]">
                   ETB {effectivePrice.toLocaleString()}
                 </span>
@@ -445,14 +497,34 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
 
               {/* Contact CTA */}
               <div className="mt-6 flex flex-col sm:flex-row items-center gap-3">
+                <button
+                  type="button"
+                  onClick={addToCart}
+                  disabled={product.stock < 1}
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-[#20283a] bg-[#20283a] px-6 text-sm font-bold text-white shadow-lg transition hover:bg-[#30384f] disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <ShoppingCart size={17} />
+                  {t("checkout.add_to_order", "Add to order")}
+                </button>
                 <Link
                   href="/contact"
-                  className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#1a1410] px-6 text-sm font-bold text-white shadow-lg transition-all duration-200 hover:bg-[#2a1f18] hover:text-[#e0a83c] hover:shadow-xl"
+                  className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#EB6D3D] px-6 text-sm font-bold text-[#20283a] shadow-lg transition-all duration-200 hover:bg-[#cf5427] hover:text-white hover:shadow-xl"
                 >
                   <span>{t("product.request_quote", "Request a Quote")}</span>
                   <span className="text-base font-bold">→</span>
                 </Link>
               </div>
+              {cartMessage && (
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#EB6D3D]/30 bg-white px-4 py-3 text-sm text-[#20283a]">
+                  <span role="status">{cartMessage}</span>
+                  <Link
+                    href="/checkout"
+                    className="font-bold text-[#cf5427] underline underline-offset-2"
+                  >
+                    {t("checkout.go_to_checkout", "Go to checkout")}
+                  </Link>
+                </div>
+              )}
 
               {/* Benefits */}
               <div className="mt-6 grid gap-2.5 sm:grid-cols-3">
@@ -464,7 +536,7 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
                   <p className="mt-0.5 text-[11px] leading-4 text-[#7a6a58]">
                     {t(
                       "product.benefit_delivery_desc",
-                      "Direct from our factory."
+                      "Explore the product details and contact us if you need help."
                     )}
                   </p>
                 </div>

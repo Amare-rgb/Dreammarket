@@ -3,70 +3,29 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const http = require('http');
-
-// ✅ Shared Prisma client (singleton) — connects to Neon
+const path = require('path');
 const prisma = require('./lib/prisma');
-
-// ✅ Cloudinary (for image storage)
-const cloudinary = require('cloudinary').v2;
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 const isProd = process.env.NODE_ENV === 'production';
 
-// ═══════════════════════════════════════════════════════════
-// CLOUDINARY CONFIG
-// ═══════════════════════════════════════════════════════════
-const cloudinaryConfigured = !!(
-  process.env.CLOUDINARY_CLOUD_NAME &&
-  process.env.CLOUDINARY_API_KEY &&
-  process.env.CLOUDINARY_API_SECRET
-);
+const platformName = 'dreamhost';
+const isServerless = false;
 
-if (cloudinaryConfigured) {
-  cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
-    secure: true,
-  });
-}
-
-// ═══════════════════════════════════════════════════════════
-// PLATFORM DETECTION
-// ═══════════════════════════════════════════════════════════
-const isNetlify = !!(process.env.NETLIFY || process.env.NETLIFY_LOCAL);
-const isVercel = !!process.env.VERCEL;
-const isRailway = !!(
-  process.env.RAILWAY_ENVIRONMENT ||
-  process.env.RAILWAY_PROJECT_ID ||
-  process.env.RAILWAY_PUBLIC_DOMAIN
-);
-const isServerless =
-  isNetlify || isVercel || !!process.env.AWS_LAMBDA_FUNCTION_NAME;
-
-const platformName = isNetlify
-  ? 'netlify'
-  : isVercel
-  ? 'vercel'
-  : isRailway
-  ? 'railway'
-  : 'node';
-
-// ═══════════════════════════════════════════════════════════
-// TRUST PROXY — Railway sits behind a proxy
-// ═══════════════════════════════════════════════════════════
 app.set('trust proxy', 1);
 
 // ═══════════════════════════════════════════════════════════
-// HARD-CODED PRODUCTION ORIGINS (safety net — always allowed)
+// PRODUCTION ORIGINS — EDIT to your real DreamHost domains
 // ═══════════════════════════════════════════════════════════
 const PRODUCTION_FRONTEND_ORIGINS = [
-  'https://alemayehuplasticm.vercel.app',
+  'https://dreamhost.com',
+  'https://www.dreamhost.com',
 ];
 
 const PRODUCTION_BACKEND_ORIGINS = [
-  'https://alemayehuplasticm-production.up.railway.app',
+  'https://api.dreamhost.com',
+  'https://dreamhost.com',
 ];
 
 // ═══════════════════════════════════════════════════════════
@@ -101,7 +60,7 @@ app.use((req, res, next) => {
 });
 
 // ═══════════════════════════════════════════════════════════
-// CORS — MUST come before all routes
+// CORS
 // ═══════════════════════════════════════════════════════════
 const stripSlash = (o) => String(o).trim().replace(/\/+$/, '');
 
@@ -112,13 +71,9 @@ const extraOrigins = (process.env.ALLOWED_ORIGINS || '')
 
 const allowedOrigins = new Set(
   [
-    // ✅ Your real production frontend (always allowed)
     ...PRODUCTION_FRONTEND_ORIGINS,
-
-    // ✅ Your own backend origin (useful for same-origin/server calls)
     ...PRODUCTION_BACKEND_ORIGINS,
 
-    // Env-driven (Railway service variables)
     process.env.CLIENT_URL,
     process.env.FRONTEND_URL,
     process.env.NEXT_PUBLIC_SITE_URL,
@@ -129,7 +84,7 @@ const allowedOrigins = new Set(
     // Local dev
     'http://localhost:3000',
     'http://localhost:3001',
-    'http://localhost:5173', // Vite default
+    'http://localhost:5173',
     'http://localhost:5174',
     'http://localhost:8888',
     'http://127.0.0.1:3000',
@@ -141,31 +96,24 @@ const allowedOrigins = new Set(
     .map(stripSlash)
 );
 
-// Regex fallbacks (all Vercel / Railway preview URLs accepted)
-const VERCEL_REGEX   = /^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.vercel\.app$/i;
-const NETLIFY_REGEX  = /^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.netlify\.app$/i;
-const RAILWAY_REGEX  = /^https:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.up\.railway\.app$/i;
-const NGROK_REGEX    = /^https?:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.ngrok(-free)?\.(io|app|dev)$/i;
-const LAN_REGEX      = /^https?:\/\/(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/;
+// Regex fallbacks
+const CUSTOM_DOMAIN_REGEX = /^https?:\/\/([a-z0-9-]+\.)+[a-z]{2,}$/i;
+const NGROK_REGEX = /^https?:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.ngrok(-free)?\.(io|app|dev)$/i;
+const LAN_REGEX = /^https?:\/\/(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/;
 
 function isOriginAllowed(origin) {
-  // No origin → curl / Postman / server-to-server → allow
-  if (!origin) return true;
+  if (!origin) return true; // curl / Postman / server-to-server
 
   const cleaned = stripSlash(origin);
-
-  // Explicit allowlist
   if (allowedOrigins.has(cleaned)) return true;
 
-  // Regex allowlists
-  if (VERCEL_REGEX.test(cleaned))  return true;
-  if (NETLIFY_REGEX.test(cleaned)) return true;
-  if (RAILWAY_REGEX.test(cleaned)) return true;
+  // Custom domain (DreamHost)
+  if (CUSTOM_DOMAIN_REGEX.test(cleaned)) return true;
 
-  // Dev-only extra allowlists
+  // Dev-only
   if (!isProd) {
     if (NGROK_REGEX.test(cleaned)) return true;
-    if (LAN_REGEX.test(cleaned))   return true;
+    if (LAN_REGEX.test(cleaned)) return true;
   }
 
   return false;
@@ -174,9 +122,7 @@ function isOriginAllowed(origin) {
 const corsOptions = {
   origin(origin, callback) {
     if (isOriginAllowed(origin)) return callback(null, true);
-
     console.warn(`⚠️ CORS blocked for origin: ${origin}`);
-    // Return `false` (not an Error) → preflight still resolves, browser blocks
     return callback(null, false);
   },
   credentials: true,
@@ -194,17 +140,12 @@ const corsOptions = {
   ],
   exposedHeaders: ['Content-Disposition', 'Content-Length'],
   optionsSuccessStatus: 204,
-  maxAge: 86400, // cache preflight for 24h
+  maxAge: 86400,
   preflightContinue: false,
 };
 
-// Apply CORS to every request
 app.use(cors(corsOptions));
-
-// Explicit OPTIONS handler — bulletproofs preflight behind Railway's proxy
 app.options('*', cors(corsOptions));
-
-// Also handle bare OPTIONS on root & /api (some proxies rewrite paths)
 app.options('/', cors(corsOptions));
 app.options('/api', cors(corsOptions));
 
@@ -215,18 +156,26 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 
 // ═══════════════════════════════════════════════════════════
+// STATIC UPLOADS (local disk)
+// ═══════════════════════════════════════════════════════════
+app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
+
+// ═══════════════════════════════════════════════════════════
 // IMPORT ROUTES
 // ═══════════════════════════════════════════════════════════
-const authRoutes            = require('./routes/auth.routes');
-const adminRoutes           = require('./routes/admin.routes');
-const adminDashboardRoutes  = require('./routes/admin.dashboard');
-const categoriesRoutes      = require('./routes/categories.routes');
-const productsRoutes        = require('./routes/products.routes');
-const uploadRoutes          = require('./routes/upload.routes');
-const usersRoutes           = require('./routes/users.routes');
-const settingsRoutes        = require('./routes/settings.routes');
-const profileRoutes         = require('./routes/profile.routes');
-const chatbotRoutes         = require('./routes/chatbot.routes');
+const authRoutes = require('./routes/auth.routes');
+const adminRoutes = require('./routes/admin.routes');
+const adminDashboardRoutes = require('./routes/admin.dashboard');
+const categoriesRoutes = require('./routes/categories.routes');
+const productsRoutes = require('./routes/products.routes');
+const uploadRoutes = require('./routes/upload.routes');
+const usersRoutes = require('./routes/users.routes');
+const settingsRoutes = require('./routes/settings.routes');
+const profileRoutes = require('./routes/profile.routes');
+const adminOrdersRoutes = require('./routes/admin.orders.routes');
+const ordersRoutes = require('./routes/orders.routes');
+const articlesRoutes = require('./routes/articles.routes');
+const chatbotRoutes = require('./routes/chatbot.routes');
 
 // ═══════════════════════════════════════════════════════════
 // API ROUTER
@@ -242,6 +191,9 @@ apiRouter.use('/products', productsRoutes);
 apiRouter.use('/upload', uploadRoutes);
 apiRouter.use('/users', usersRoutes);
 apiRouter.use('/profile', profileRoutes);
+apiRouter.use('/admin/orders', adminOrdersRoutes);
+apiRouter.use('/orders', ordersRoutes);
+apiRouter.use('/articles', articlesRoutes);
 apiRouter.use('/chatbot', chatbotRoutes);
 
 // ═══════════════════════════════════════════════════════════
@@ -257,15 +209,12 @@ const healthHandler = async (req, res) => {
       timestamp: new Date().toISOString(),
       environment: process.env.NODE_ENV || 'development',
       platform: platformName,
-      storage: cloudinaryConfigured ? 'cloudinary' : 'not-configured',
+      storage: 'local',
       database: {
         connected: true,
-        provider: 'neon',
+        provider: 'postgresql-local',
+        host: process.env.DB_HOST || 'localhost',
         userCount,
-      },
-      services: {
-        chatbot: process.env.OPENROUTER_API_KEY ? 'enabled' : 'disabled',
-        cloudinary: cloudinaryConfigured ? 'enabled' : 'disabled',
       },
     });
   } catch (error) {
@@ -291,23 +240,25 @@ app.use('/api', apiRouter);
 // ═══════════════════════════════════════════════════════════
 const rootInfo = (req, res) => {
   res.json({
-    name: 'Alemayehu Plastic Manufacturing API Server',
+    name: 'DreamHost API Server',
     version: '1.0.0',
     status: 'Running',
     platform: platformName,
-    storage: cloudinaryConfigured ? 'cloudinary' : 'not-configured',
-    database: 'neon-postgresql',
+    storage: 'local',
+    database: 'postgresql-local',
     endpoints: {
       auth: '/api/auth',
       admin: '/api/admin',
       adminDashboard: '/api/admin/dashboard',
       categories: '/api/categories',
-      chatbot: '/api/chatbot',
       products: '/api/products',
+      orders: '/api/admin/orders',
+      articles: '/api/articles',
       upload: '/api/upload',
       users: '/api/users',
       profile: '/api/profile',
       settings: '/api/admin/settings',
+      chatbot: '/api/chatbot',
       health: '/api/health',
     },
   });
@@ -334,30 +285,17 @@ app.use((req, res) => {
 // ═══════════════════════════════════════════════════════════
 app.use((err, req, res, next) => {
   console.error('❌ Global error handler:', err);
-
   if (res.headersSent) return next(err);
 
   if (err.type === 'entity.too.large') {
-    return res.status(413).json({
-      success: false,
-      error: 'File is too large. Please upload a file under 10 MB.',
-    });
+    return res.status(413).json({ success: false, error: 'File is too large. Max 10 MB.' });
   }
-
   if (err.type === 'entity.parse.failed') {
-    return res.status(400).json({
-      success: false,
-      error: 'Invalid JSON in request body.',
-    });
+    return res.status(400).json({ success: false, error: 'Invalid JSON in request body.' });
   }
-
   if (err.code === 'LIMIT_FILE_SIZE') {
-    return res.status(413).json({
-      success: false,
-      error: 'File too large. Max 10 MB.',
-    });
+    return res.status(413).json({ success: false, error: 'File too large. Max 10 MB.' });
   }
-
   if (err.message && err.message.toLowerCase().includes('cors')) {
     return res.status(403).json({
       success: false,
@@ -381,25 +319,24 @@ process.on('unhandledRejection', (reason) => {
 });
 process.on('uncaughtException', (err) => {
   console.error('❌ Uncaught Exception:', err);
+  process.exit(1);
 });
 
 // ═══════════════════════════════════════════════════════════
-// STARTUP
+// STARTUP (DreamHost runs a persistent Node process)
 // ═══════════════════════════════════════════════════════════
 if (!isServerless) {
   let server;
-  let keepAliveTimer;
 
   const gracefulShutdown = async (signal) => {
     console.log(`\n🛑 Received ${signal}. Shutting down gracefully...`);
     try {
-      if (keepAliveTimer) clearInterval(keepAliveTimer);
       if (server) {
         await new Promise((resolve) => server.close(resolve));
         console.log('✅ HTTP server closed');
       }
       await prisma.$disconnect();
-      console.log('✅ Database disconnected');
+      console.log('✅ Local PostgreSQL disconnected');
       process.exit(0);
     } catch (err) {
       console.error('❌ Error during shutdown:', err);
@@ -411,12 +348,46 @@ if (!isServerless) {
   process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
   (async () => {
+    const backendAlreadyRunning = await new Promise((resolve) => {
+      const request = http.get(
+        { hostname: '127.0.0.1', port: PORT, path: '/healthz', timeout: 2000 },
+        (response) => {
+          let body = '';
+          response.setEncoding('utf8');
+          response.on('data', (chunk) => {
+            body += chunk;
+          });
+          response.on('end', () => {
+            try {
+              const health = JSON.parse(body);
+              resolve(response.statusCode === 200 && health.status === 'OK');
+            } catch {
+              resolve(false);
+            }
+          });
+        }
+      );
+
+      request.on('timeout', () => {
+        request.destroy();
+        resolve(false);
+      });
+      request.on('error', () => resolve(false));
+    });
+
+    if (backendAlreadyRunning) {
+      console.log(
+        `✅ DreamMore backend is already healthy on port ${PORT}; reusing the running server. Stop its original process before restarting it.`
+      );
+      return;
+    }
+
     let dbConnected = false;
     try {
       await prisma.$connect();
       dbConnected = true;
       const userCount = await prisma.user.count();
-      console.log(`✅ Neon database connected (${userCount} users)`);
+      console.log(`✅ Local PostgreSQL connected (${userCount} users)`);
 
       const adminUser = await prisma.user.findFirst({ where: { role: 'ADMIN' } });
       console.log(
@@ -425,58 +396,43 @@ if (!isServerless) {
           : '⚠️ No admin user found. Run: npx prisma db seed'
       );
     } catch (error) {
-      console.error('❌ Neon database connection failed:', error.message);
-      console.error('Please check your DATABASE_URL in .env');
+      console.error('❌ Local PostgreSQL connection failed:', error.message);
+      console.error('Check DATABASE_URL in .env (e.g. postgresql://user:pass@localhost:5432/dbname)');
     }
 
     server = http.createServer(app);
     server.keepAliveTimeout = 65 * 1000;
     server.headersTimeout = 66 * 1000;
+    server.on('error', (error) => {
+      const portAlreadyInUse = error.code === 'EADDRINUSE';
+      if (portAlreadyInUse) {
+        console.warn(
+          `⚠️ Port ${PORT} is already in use. The existing server will remain available; stop it from its original terminal before starting another instance.`
+        );
+      } else {
+        console.error('❌ HTTP server failed to start:', error);
+      }
 
-    // ✅ Listen on 0.0.0.0 so Railway's router can reach the container
+      prisma
+        .$disconnect()
+        .catch((disconnectError) => {
+          console.error('❌ Failed to disconnect the database:', disconnectError);
+        })
+        .finally(() => {
+          process.exitCode = portAlreadyInUse ? 0 : 1;
+        });
+    });
+
+    // ✅ Bind 0.0.0.0 so DreamHost's reverse proxy can reach the app
     server.listen(PORT, '0.0.0.0', () => {
-      const railwayUrl = process.env.RAILWAY_PUBLIC_DOMAIN
-        ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
-        : null;
-      const backendUrl =
-        railwayUrl ||
-        process.env.BACKEND_URL ||
-        `http://localhost:${PORT}`;
-
-      console.log('\n🏭 Alemayehu Plastic Server running on ' + backendUrl);
+      const backendUrl = process.env.BACKEND_URL || `http://localhost:${PORT}`;
+      console.log('\n🏭 DreamHost Server running on ' + backendUrl);
       console.log('🌍 Environment: ' + (process.env.NODE_ENV || 'development'));
       console.log('🚆 Platform: ' + platformName);
-      console.log(
-        '📁 Storage: ' +
-          (cloudinaryConfigured ? 'Cloudinary ✅' : 'Not configured ⚠️')
-      );
-      console.log('💾 Database: ' + (dbConnected ? 'Neon Connected ✅' : 'Not Connected ⚠️'));
-      console.log(
-        '🤖 Chatbot: ' +
-          (process.env.OPENROUTER_API_KEY
-            ? 'OpenRouter AI enabled ✅'
-            : 'Fallback mode ⚠️')
-      );
+      console.log('💾 Database: ' + (dbConnected ? 'Local PostgreSQL Connected ✅' : 'Not Connected ❌'));
       console.log('🔓 Allowed origins:');
       allowedOrigins.forEach((o) => console.log('   • ' + o));
     });
-
-    // Neon keep-alive (prevents cold-start timeouts)
-    const keepAliveMs =
-      process.env.DB_KEEPALIVE_MS !== undefined
-        ? Number(process.env.DB_KEEPALIVE_MS)
-        : 4 * 60 * 1000;
-
-    if (keepAliveMs > 0) {
-      keepAliveTimer = setInterval(async () => {
-        try {
-          await prisma.$queryRaw`SELECT 1`;
-        } catch (err) {
-          console.warn('⚠️ Neon keep-alive ping failed:', err.message);
-        }
-      }, keepAliveMs);
-      keepAliveTimer.unref();
-    }
   })();
 }
 

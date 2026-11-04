@@ -5,8 +5,9 @@ import Link from "next/link";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUpRight, Search, X } from "lucide-react";
+import { ArrowUpRight, Search, ShoppingCart, X } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
+import { readCart, writeCart } from "@/app/lib/cart";
 
 // ✅ Local type — no dependency on `@/data/products`
 export interface Product {
@@ -227,6 +228,80 @@ export default function Products() {
   const [selectedLiter, setSelectedLiter] = useState<string>("All");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("size-low");
+  const [cartFeedback, setCartFeedback] = useState<{
+    productId: string;
+    message: string;
+    isError: boolean;
+  } | null>(null);
+
+  const addToCart = (product: Product, image: string | null) => {
+    try {
+      const cart = readCart();
+      const existing = cart.find((item) => item.productId === product.id);
+      const nextQuantity = (existing?.quantity || 0) + 1;
+      if (nextQuantity > product.stock) {
+        setCartFeedback({
+          productId: product.id,
+          message: t(
+            "checkout.stock_limit",
+            "There is not enough stock for another item."
+          ),
+          isError: true,
+        });
+        return;
+      }
+
+      const nextCart = existing
+        ? cart.map((item) =>
+            item.productId === product.id
+              ? {
+                  ...item,
+                  name: product.name,
+                  slug: product.slug,
+                  image,
+                  unitPrice:
+                    product.discountPrice != null &&
+                    product.discountPrice < product.price
+                      ? product.discountPrice
+                      : product.price,
+                  quantity: nextQuantity,
+                }
+              : item
+          )
+        : [
+            ...cart,
+            {
+              productId: product.id,
+              name: product.name,
+              slug: product.slug,
+              image,
+              unitPrice:
+                product.discountPrice != null &&
+                product.discountPrice < product.price
+                  ? product.discountPrice
+                  : product.price,
+              quantity: 1,
+            },
+          ];
+
+      writeCart(nextCart);
+      setCartFeedback({
+        productId: product.id,
+        message: t("checkout.added_to_cart", "Added to your order."),
+        isError: false,
+      });
+    } catch (error) {
+      console.error("Could not save product to the cart:", error);
+      setCartFeedback({
+        productId: product.id,
+        message: t(
+          "checkout.cart_save_error",
+          "Could not save your order. Please try again."
+        ),
+        isError: true,
+      });
+    }
+  };
 
   const getCategoryLabel = (catName: string) => {
     const lower = catName.toLowerCase();
@@ -295,7 +370,7 @@ export default function Products() {
 
         if (Array.isArray(rawProducts) && rawProducts.length > 0) {
           const mapped: Product[] = (rawProducts as ApiProduct[]).map((p) => {
-            const categoryName = p.category?.name || "Plastic Products";
+            const categoryName = p.category?.name || "Other Products";
 
             // ✅ Cloudinary-only — drop non-URL images
             const imageList: string[] = Array.isArray(p.images)
@@ -439,7 +514,7 @@ export default function Products() {
     search.trim() !== "";
 
   return (
-    <main className="min-h-screen bg-[#faf6ee]">
+    <main className="shop-theme min-h-screen bg-[var(--cream)]">
       {/* Hero */}
       <section className="relative overflow-hidden bg-[#1a1410] px-5 pb-16 pt-28 sm:px-8 lg:px-12 lg:pb-20 lg:pt-36">
         <div
@@ -454,17 +529,17 @@ export default function Products() {
         <div className="relative mx-auto max-w-7xl">
           <div className="max-w-3xl">
             <h1 className="font-serif-heading text-5xl font-medium leading-[0.98] tracking-[-0.045em] text-[#faf6ee] sm:text-6xl lg:text-7xl">
-              {t("shop.hero_title_1", "Precision Plastic,")}
+              {t("shop.hero_title_1", "Discover more,")}
               <br />
               <span className="text-[#e0a83c]">
-                {t("shop.hero_title_2", "straight from the factory.")}
+                {t("shop.hero_title_2", "all in one marketplace.")}
               </span>
             </h1>
 
             <p className="mt-6 max-w-2xl text-base leading-7 text-[#faf6ee]/75 sm:text-lg">
               {t(
                 "shop.hero_subtitle",
-                "Explore durable containers, household plastic items, industrial components, packaging solutions and custom-manufactured plastic products from Alemayehu Plastic Manufacturing."
+                "Browse digital marketplace listings, compare product details, and find useful picks from a range of categories."
               )}
             </p>
           </div>
@@ -487,7 +562,7 @@ export default function Products() {
                   onChange={(e) => setSearch(e.target.value)}
                   placeholder={t(
                     "shop.search_placeholder",
-                    "Search plastic products, containers, packaging..."
+                    "Search products, categories, and listings..."
                   )}
                   className="h-11 w-full rounded-xl border border-[#3a2a1e]/10 bg-[#faf6ee]/60 pl-11 pr-4 text-sm text-[#1a1410] outline-none transition placeholder:text-[#7a6a58]/60 focus:border-[#b98a3e] focus:bg-white focus:ring-4 focus:ring-[#e0a83c]/20"
                 />
@@ -506,7 +581,7 @@ export default function Products() {
                         onClick={() => setSelectedCategory(category)}
                         className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all duration-200 ${
                           active
-                            ? "bg-[#1a1410] text-[#e0a83c] shadow-md"
+                            ? "bg-[#EB6D3D] text-[#20283a] shadow-md"
                             : "bg-[#faf6ee] text-[#7a6a58] hover:bg-[#f0e8d8] hover:text-[#1a1410]"
                         }`}
                       >
@@ -557,7 +632,7 @@ export default function Products() {
                         onClick={() => setSelectedLiter(liter)}
                         className={`rounded-full px-3 py-1 text-[11px] font-bold transition-all duration-200 ${
                           active
-                            ? "bg-[#b98a3e] text-white shadow-md"
+                            ? "bg-[#EB6D3D] text-[#20283a] shadow-md"
                             : "bg-[#faf6ee] text-[#7a6a58] hover:bg-[#f0e8d8] hover:text-[#1a1410]"
                         }`}
                       >
@@ -701,7 +776,7 @@ export default function Products() {
                       </span>
                     </Link>
 
-                    <div className="flex flex-1 flex-col justify-between p-3 sm:p-3.5">
+                    <div className="flex flex-1 flex-col p-3 sm:p-3.5">
                       <div>
                         <Link
                           href={`/shop/${encodeURIComponent(product.slug)}`}
@@ -716,7 +791,7 @@ export default function Products() {
                           {product.description ||
                             t(
                               "shop.default_card_desc",
-                              "Durable plastic product engineered for everyday use."
+                              "Explore product details and discover useful finds for everyday life."
                             )}
                         </p>
                       </div>
@@ -736,6 +811,38 @@ export default function Products() {
                           </span>
                         )}
                       </div>
+                      <button
+                        type="button"
+                        onClick={() => addToCart(product, imageUrl)}
+                        disabled={!isAvailable}
+                        className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#20283a] px-3 text-xs font-bold text-white transition hover:bg-[#30384f] disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        <ShoppingCart size={15} />
+                        {t("checkout.add_to_order", "Add to cart")}
+                      </button>
+                      {cartFeedback?.productId === product.id && (
+                        <p
+                          role="status"
+                          className={`mt-2 text-center text-xs ${
+                            cartFeedback.isError
+                              ? "text-red-600"
+                              : "text-green-700"
+                          }`}
+                        >
+                          {cartFeedback.message}
+                          {!cartFeedback.isError && (
+                            <>
+                              {" "}
+                              <Link
+                                href="/checkout"
+                                className="font-semibold underline underline-offset-2"
+                              >
+                                {t("checkout.go_to_checkout", "Checkout")}
+                              </Link>
+                            </>
+                          )}
+                        </p>
+                      )}
                     </div>
                   </div>
                 );
@@ -747,7 +854,7 @@ export default function Products() {
                 <Search size={22} />
               </div>
               <h3 className="font-serif-heading text-xl font-bold text-[#1a1410]">
-                {t("shop.no_products_title", "No plastic products found")}
+                {t("shop.no_products_title", "No products found")}
               </h3>
               <p className="mx-auto mt-2 max-w-md text-xs leading-6 text-[#7a6a58]">
                 {t(
@@ -762,7 +869,7 @@ export default function Products() {
                   setSelectedCategory("All");
                   setSelectedLiter("All");
                 }}
-                className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#1a1410] px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-[#e0a83c] transition hover:bg-[#2a1f18]"
+                className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#EB6D3D] px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-[#20283a] transition hover:bg-[#cf5427] hover:text-white"
               >
                 {t("shop.clear_filters", "Clear all filters")}
               </button>

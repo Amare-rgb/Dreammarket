@@ -10,9 +10,11 @@ import {
   ArrowUp,
   ArrowUpRight,
   ChevronRight,
+  ShoppingCart,
 } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
 import { useLanguage } from "@/context/LanguageContext";
+import { readCart, writeCart } from "@/app/lib/cart";
 
 // ============================================================
 // Types
@@ -39,6 +41,20 @@ interface ProductData {
   discountPrice?: number | string | null;
 }
 
+interface HomeProductData {
+  id: string;
+  slug?: string;
+  name: string;
+  description?: string | null;
+  image?: string | null;
+  images?: string[] | null;
+  category?: { name?: string | null } | string | null;
+  price: number | string;
+  discountPrice?: number | string | null;
+  stock?: number | null;
+  unitOfMeasurement?: string | null;
+}
+
 interface CategoryItem {
   id: string;
   title: string;
@@ -61,9 +77,11 @@ const API_BASE_URL = RAW_API_BASE.replace(/\/+$/, "");
 // ============================================================
 // Site assets — files in /public are served from the root
 // ============================================================
-const HERO_VIDEO = "/banners/heroplastic.mp4";
-const HERO_POSTER = "/banners/carplastik.jpg";
-const FACILITY_IMAGE = "/banners/carplastik.jpg";
+const HERO_VIDEOS = [
+  "/banners/7504621-uhd_3840_2160_25fps.mp4",
+  "/banners/7659850-uhd_3840_2160_25fps.mp4",
+];
+const HERO_POSTER = "/banners/photo.jpg";
 
 // ============================================================
 // Mounted detection (server-safe)
@@ -179,11 +197,13 @@ function CategoryCard({
   priceLabel,
   productsLabel,
   fromLabel,
+  priority = false,
 }: {
   product: CategoryItem;
   priceLabel: string;
   productsLabel: string;
   fromLabel: string;
+  priority?: boolean;
 }) {
   const cells: (string | null)[] = [...product.images];
   while (cells.length < 4) cells.push(null);
@@ -198,7 +218,7 @@ function CategoryCard({
     : `${fromLabel} ${formatPrice(product.minPrice as number)}`;
 
   return (
-    <Link
+    <a
       href={`/shop?category=${encodeURIComponent(product.slug)}`}
       className="group relative flex w-full flex-col overflow-hidden rounded-[14px] border border-[#eee6d8] bg-white shadow-[0_2px_10px_rgba(58,42,30,0.06)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_14px_32px_rgba(58,42,30,0.14)]"
     >
@@ -213,7 +233,8 @@ function CategoryCard({
                 fill
                 sizes="(max-width: 640px) 25vw, 12vw"
                 className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.06]"
-                loading="lazy"
+                loading={priority && i === 0 ? "eager" : "lazy"}
+                fetchPriority={priority && i === 0 ? "high" : "auto"}
                 unoptimized
               />
             ) : (
@@ -259,7 +280,7 @@ function CategoryCard({
           <ChevronRight size={14} strokeWidth={2.5} />
         </span>
       </div>
-    </Link>
+    </a>
   );
 }
 
@@ -389,11 +410,11 @@ function ProductCards() {
               {t("home.featured_subtitle", "Explore top categories")}
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
+          <div className="flex w-full snap-x snap-mandatory gap-4 overflow-x-auto pb-4">
             {[1, 2, 3, 4, 5].map((i) => (
               <div
                 key={i}
-                className="h-[270px] w-full animate-pulse rounded-[14px] bg-gray-200"
+                className="h-[270px] w-[220px] shrink-0 animate-pulse snap-start rounded-[14px] bg-gray-200 sm:w-[250px]"
               />
             ))}
           </div>
@@ -438,17 +459,338 @@ function ProductCards() {
           </p>
         </div>
 
-        <div className="grid w-full grid-cols-2 gap-4 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5">
-          {categories.map((product) => (
-            <CategoryCard
+        <nav
+          aria-label={t("home.featured_title", "Featured Categories")}
+          className="mb-5 flex snap-x snap-mandatory gap-2 overflow-x-auto pb-2"
+        >
+          {categories.map((category) => (
+            <a
+              key={category.id}
+              href={`/shop?category=${encodeURIComponent(category.slug)}`}
+              className="flex min-h-10 min-w-[110px] shrink-0 snap-start items-center justify-center rounded-full border border-[#eee6d8] bg-white px-4 text-center text-xs font-semibold text-[#2a1f18] transition hover:border-[#F47822] hover:text-[#F47822]"
+            >
+              <span className="line-clamp-1">{category.title}</span>
+            </a>
+          ))}
+        </nav>
+
+        <div className="flex w-full snap-x snap-mandatory gap-4 overflow-x-auto pb-4">
+          {categories.map((product, index) => (
+            <div
               key={product.id}
-              product={product}
-              priceLabel={priceLabel}
-              productsLabel={productsLabel}
-              fromLabel={fromLabel}
-            />
+              className="w-[220px] shrink-0 snap-start sm:w-[250px]"
+            >
+              <CategoryCard
+                product={product}
+                priceLabel={priceLabel}
+                productsLabel={productsLabel}
+                fromLabel={fromLabel}
+                priority={index === 0}
+              />
+            </div>
           ))}
         </div>
+      </div>
+    </section>
+  );
+}
+
+function HomeProducts() {
+  const { t } = useLanguage();
+  const [products, setProducts] = useState<HomeProductData[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const [cartFeedback, setCartFeedback] = useState<{
+    productId: string;
+    message: string;
+    isError: boolean;
+  } | null>(null);
+
+  const addToCart = (product: HomeProductData, image: string | null) => {
+    try {
+      const cart = readCart();
+      const existing = cart.find((item) => item.productId === product.id);
+      const nextQuantity = (existing?.quantity || 0) + 1;
+      const stock = Number(product.stock) || 0;
+
+      if (nextQuantity > stock) {
+        setCartFeedback({
+          productId: product.id,
+          message: t(
+            "checkout.stock_limit",
+            "There is not enough stock for another item."
+          ),
+          isError: true,
+        });
+        return;
+      }
+
+      const price = Number(product.price) || 0;
+      const discountPrice =
+        product.discountPrice != null ? Number(product.discountPrice) : null;
+      const unitPrice =
+        discountPrice !== null && discountPrice > 0 && discountPrice < price
+          ? discountPrice
+          : price;
+      const slug = product.slug || product.id;
+
+      writeCart(
+        existing
+          ? cart.map((item) =>
+              item.productId === product.id
+                ? {
+                    ...item,
+                    name: product.name,
+                    slug,
+                    image,
+                    unitPrice,
+                    quantity: nextQuantity,
+                  }
+                : item
+            )
+          : [
+              ...cart,
+              {
+                productId: product.id,
+                name: product.name,
+                slug,
+                image,
+                unitPrice,
+                quantity: 1,
+              },
+            ]
+      );
+      setCartFeedback({
+        productId: product.id,
+        message: t("checkout.added_to_cart", "Added to your order."),
+        isError: false,
+      });
+    } catch (cartError) {
+      console.error("Could not save product to the cart:", cartError);
+      setCartFeedback({
+        productId: product.id,
+        message: t(
+          "checkout.cart_save_error",
+          "Could not save your order. Please try again."
+        ),
+        isError: true,
+      });
+    }
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchProducts = async () => {
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/api/products/public?limit=24`,
+          { cache: "no-store" }
+        );
+        if (!response.ok) {
+          throw new Error(`Products API returned ${response.status}`);
+        }
+
+        const payload: unknown = await response.json();
+        const rawProducts: unknown = Array.isArray(payload)
+          ? payload
+          : payload &&
+            typeof payload === "object" &&
+            "products" in payload
+          ? (payload as { products?: unknown }).products
+          : [];
+
+        if (!Array.isArray(rawProducts)) {
+          throw new Error("Products API returned an invalid response");
+        }
+
+        if (isMounted) {
+          setProducts(rawProducts as HomeProductData[]);
+        }
+      } catch (fetchError) {
+        console.error("Failed to fetch home page products:", fetchError);
+        if (isMounted) {
+          setError(
+            fetchError instanceof Error
+              ? fetchError.message
+              : "Failed to load products"
+          );
+        }
+      } finally {
+        if (isMounted) setLoading(false);
+      }
+    };
+
+    fetchProducts();
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  return (
+    <section
+      id="featured-products"
+      className="scroll-mt-20 bg-white px-4 py-12 sm:px-6 sm:py-14 lg:px-10"
+    >
+      <div className="mx-auto max-w-7xl">
+        <div className="mb-6 flex items-end justify-between gap-4">
+          <div>
+            <h2 className="text-[20px] font-semibold leading-tight text-[#2a1f18] sm:text-[22px]">
+              {t("home.products_heading_prefix", "Browse our products")}{" "}
+              <span className="text-[#F47822]">
+                {t("home.products_heading_accent", "you will love.")}
+              </span>
+            </h2>
+            <p className="mt-1 text-[12px] text-[#7a6a58]">
+              {t("home.products_subtitle", "Explore our latest products.")}
+            </p>
+          </div>
+          <Link
+            href="/shop"
+            className="shrink-0 text-xs font-semibold text-[#F47822] hover:underline"
+          >
+            {t("nav.view_all", "View all products")} <ArrowRight size={14} className="ml-1 inline" />
+          </Link>
+        </div>
+
+        {loading ? (
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+            {Array.from({ length: 12 }, (_, index) => (
+              <div
+                key={index}
+                className="animate-pulse overflow-hidden rounded-2xl border border-[#eee6d8] bg-white p-2.5"
+              >
+                <div className="aspect-square rounded-xl bg-gray-200" />
+                <div className="mt-3 h-4 w-3/4 rounded bg-gray-200" />
+                <div className="mt-2 h-4 w-1/2 rounded bg-gray-100" />
+              </div>
+            ))}
+          </div>
+        ) : error ? (
+          <p className="rounded-xl bg-[#faf6ee] px-4 py-6 text-center text-sm text-[#7a6a58]">
+            {t("home.products_load_error", "Products could not be loaded right now. Please try again later.")}
+          </p>
+        ) : products.length === 0 ? (
+          <p className="rounded-xl bg-[#faf6ee] px-4 py-6 text-center text-sm text-[#7a6a58]">
+            {t("home.no_products", "No products are available yet. Please check back soon.")}
+          </p>
+        ) : (
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+            {products.map((product, index) => {
+              const price = Number(product.price) || 0;
+              const discountPrice =
+                product.discountPrice != null
+                  ? Number(product.discountPrice)
+                  : null;
+              const hasDiscount =
+                discountPrice !== null &&
+                discountPrice > 0 &&
+                discountPrice < price;
+              const image =
+                (Array.isArray(product.images)
+                  ? product.images.map(resolveImage).find(Boolean)
+                  : null) || resolveImage(product.image);
+              const category =
+                typeof product.category === "string"
+                  ? product.category
+                  : product.category?.name;
+
+              const isAvailable = Number(product.stock) > 0;
+
+              return (
+                <div
+                  key={product.id}
+                  className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-[#eee6d8] bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
+                >
+                  <Link
+                    href={`/shop/${encodeURIComponent(product.slug || product.id)}`}
+                    className="group flex flex-1 flex-col"
+                  >
+                    <div className="relative aspect-square overflow-hidden bg-[#faf6ee]">
+                      {image ? (
+                        <Image
+                          src={image}
+                          alt={product.name}
+                          fill
+                          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
+                          className="object-cover transition-transform duration-300 group-hover:scale-105"
+                          loading={index < 2 ? "eager" : "lazy"}
+                          fetchPriority={index < 2 ? "high" : "auto"}
+                          unoptimized
+                        />
+                      ) : (
+                        <div className="flex h-full items-center justify-center text-sm font-semibold text-[#b98a3e]">
+                          {product.name.slice(0, 2).toUpperCase()}
+                        </div>
+                      )}
+                      {category && (
+                        <span className="absolute left-2 top-2 max-w-[calc(100%-1rem)] truncate rounded-full bg-white/95 px-2 py-1 text-[10px] font-semibold text-[#2a1f18]">
+                          {category}
+                        </span>
+                      )}
+                    </div>
+                    <div className="flex flex-1 flex-col p-3">
+                      <h3 className="line-clamp-2 min-h-10 text-center text-sm font-semibold text-[#2a1f18] group-hover:text-[#F47822]">
+                        {product.name}
+                      </h3>
+                      <p className="mt-1 line-clamp-2 text-center text-xs leading-relaxed text-[#7a6a58]">
+                        {product.description?.trim() ||
+                          t(
+                            "shop.default_card_desc",
+                            "Explore product details and discover useful finds for everyday life."
+                          )}
+                      </p>
+                      <div className="mt-2 flex flex-wrap items-baseline justify-center gap-x-2 gap-y-1 text-center">
+                        <span className="text-sm font-bold text-[#2a1f18]">
+                          ETB {(hasDiscount ? discountPrice : price).toLocaleString()}
+                        </span>
+                        {hasDiscount && (
+                          <span className="text-xs text-gray-400 line-through">
+                            ETB {price.toLocaleString()}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </Link>
+                  <div className="px-3 pb-3">
+                    <button
+                      type="button"
+                      onClick={() => addToCart(product, image)}
+                      disabled={!isAvailable}
+                      className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#20283a] px-3 text-xs font-bold text-white transition hover:bg-[#30384f] disabled:cursor-not-allowed disabled:opacity-50"
+                    >
+                      <ShoppingCart size={15} />
+                      {t("checkout.add_to_order", "Add to cart")}
+                    </button>
+                    {cartFeedback?.productId === product.id && (
+                      <p
+                        role="status"
+                        className={`mt-2 text-center text-xs ${
+                          cartFeedback.isError
+                            ? "text-red-600"
+                            : "text-green-700"
+                        }`}
+                      >
+                        {cartFeedback.message}
+                        {!cartFeedback.isError && (
+                          <>
+                            {" "}
+                            <Link
+                              href="/checkout"
+                              className="font-semibold underline underline-offset-2"
+                            >
+                              {t("checkout.go_to_checkout", "Checkout")}
+                            </Link>
+                          </>
+                        )}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </section>
   );
@@ -482,6 +824,7 @@ function Eyebrow({
 export default function HomePage() {
   const [showBackTop, setShowBackTop] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
+  const [heroVideoIndex, setHeroVideoIndex] = useState(0);
   const videoRef = useRef<HTMLVideoElement>(null);
   const mounted = useMounted();
   const { settings } = useSettings();
@@ -521,7 +864,7 @@ export default function HomePage() {
     document.addEventListener("visibilitychange", handleVisibility);
     return () =>
       document.removeEventListener("visibilitychange", handleVisibility);
-  }, []);
+  }, [heroVideoIndex, videoFailed]);
 
   useEffect(() => {
     const handleScroll = () => {
@@ -533,7 +876,7 @@ export default function HomePage() {
   }, []);
 
   return (
-    <main className="overflow-hidden bg-[var(--cream)] text-[var(--ink)]">
+    <main className="home-theme overflow-hidden bg-[var(--cream)] text-[var(--ink)]">
       {/* HERO */}
       <section
         id="home"
@@ -548,16 +891,25 @@ export default function HomePage() {
           ) : (
             <video
               ref={videoRef}
-              src={HERO_VIDEO}
+              key={HERO_VIDEOS[heroVideoIndex]}
+              src={HERO_VIDEOS[heroVideoIndex]}
               poster={HERO_POSTER}
               className="absolute inset-0 h-full w-full object-cover"
               autoPlay
               muted
-              loop
               playsInline
-              preload="auto"
+              preload="metadata"
               disablePictureInPicture
-              onError={() => setVideoFailed(true)}
+              onEnded={() =>
+                setHeroVideoIndex((index) => (index + 1) % HERO_VIDEOS.length)
+              }
+              onError={() => {
+                if (heroVideoIndex < HERO_VIDEOS.length - 1) {
+                  setHeroVideoIndex((index) => index + 1);
+                } else {
+                  setVideoFailed(true);
+                }
+              }}
             />
           )}
         </div>
@@ -572,33 +924,36 @@ export default function HomePage() {
         <div className="absolute inset-0 z-[2] bg-[radial-gradient(circle_at_72%_48%,rgba(224,168,60,.18),transparent_28%)]" />
         <div className="pointer-events-none absolute inset-x-0 top-0 z-[2] h-[140px] bg-gradient-to-b from-black/50 to-transparent" />
 
-        <div className="relative z-10 mx-auto flex w-[min(1180px,calc(100%-48px))] items-end justify-between gap-[70px] pb-[72px] pt-[110px]">
-          <div className="max-w-[620px] animate-fade-in-up">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#e0a83c]/40 bg-[#2a1f18]/70 px-3.5 py-1.5 text-[10px] font-semibold tracking-[0.16em] text-[#f0c872] backdrop-blur-sm">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#e0a83c]" />
-              {t("home.hero_badge", "PLASTIC MANUFACTURING")}
+        <div className="relative z-10 mx-auto flex w-[min(1180px,calc(100%-48px))] justify-center pb-[72px] pt-[110px]">
+          <div className="flex max-w-[620px] flex-col items-center text-center animate-fade-in-up">
+            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#EB6D3D]/40 bg-[#2a1f18]/70 px-3.5 py-1.5 text-[10px] font-semibold tracking-[0.16em] text-[#F47822] backdrop-blur-sm">
+              <span className="h-1.5 w-1.5 rounded-full bg-[#EB6D3D]" />
+              {t("home.hero_badge", "YOUR DIGITAL MARKETPLACE")}
             </div>
 
-            <h1 className="mb-5 text-[clamp(30px,3.6vw,48px)] font-bold leading-[1.1] tracking-[-0.02em] text-[#faf6ee]">
-              {t("home.hero_title_prefix", "Alemayehu")}
-              <span className="mt-1.5 block text-[clamp(15px,1.4vw,20px)] font-medium tracking-[0.06em] text-[#e0a83c]">
-                {t("home.hero_title_accent", "Plastic")}
+            <h1 className="mb-5 max-w-[760px] text-[clamp(34px,4.2vw,56px)] font-bold leading-[1.1] tracking-[-0.02em] text-[#faf6ee]">
+              {t("home.hero_title_prefix", "Dream More")}
+              <span className="mt-2 block text-[clamp(22px,3vw,38px)] font-semibold tracking-[-0.01em] text-[#F47822]">
+                {t(
+                  "home.hero_title_accent",
+                  "Affiliate Market & Article Platform"
+                )}
               </span>
             </h1>
 
             <p className="mb-7 max-w-[540px] text-[14px] leading-[1.75] text-white/80">
               {t(
                 "home.hero_subtitle",
-                "Manufacturing high-quality plastic products for homes, businesses and industries across Ethiopia."
+                "Discover products from a range of categories, compare listings, and shop with confidence—all in one convenient digital marketplace."
               )}
             </p>
 
-            <div className="flex items-center gap-4 max-sm:flex-col max-sm:items-start">
+            <div className="flex items-center justify-center gap-4 max-sm:flex-col max-sm:items-center">
               <Link
                 href="/shop"
-                className="flex min-h-[44px] items-center justify-center gap-2.5 rounded-xl border border-[#e7b14d] bg-[linear-gradient(135deg,#e8aa3d,#d88d1d)] px-6 text-[13px] font-semibold text-[#1d1408] shadow-[0_10px_26px_rgba(216,141,29,0.32)] transition hover:-translate-y-0.5 hover:shadow-[0_14px_32px_rgba(216,141,29,0.42)]"
+                className="flex min-h-[44px] items-center justify-center gap-2.5 rounded-xl border border-[#EB6D3D] bg-[#EB6D3D] px-6 text-[13px] font-semibold text-white shadow-[0_10px_26px_rgba(235,109,61,0.32)] transition hover:-translate-y-0.5 hover:bg-[#cf5427] hover:shadow-[0_14px_32px_rgba(235,109,61,0.42)]"
               >
-                <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-[#1d1408]/30 bg-[#f8d38d] text-[9px]">
+                <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-white/40 bg-white/15 text-[9px]">
                   ✓
                 </span>
                 {t("home.hero_btn_explore", "Shop Collection")}
@@ -631,13 +986,13 @@ export default function HomePage() {
         <div className="mx-auto grid w-[min(1180px,calc(100%-48px))] grid-cols-[1.1fr_.9fr] items-center gap-10 max-lg:grid-cols-1 max-lg:gap-5">
           <div>
             <Eyebrow>
-              {t("home.intro_eyebrow", "THE ALEMAYEHU DIFFERENCE")}
+              {t("home.intro_eyebrow", "A BETTER WAY TO DISCOVER PRODUCTS")}
             </Eyebrow>
 
             <h2 className="text-[clamp(20px,2.1vw,28px)] font-semibold leading-[1.25] tracking-[-0.015em] text-[#2a1f18]">
-              {t("home.intro_heading_prefix", "Quality plastic")}{" "}
-              <em className="font-semibold not-italic text-[#b98a3e]">
-                {t("home.intro_heading_accent", "built to perform")}
+              {t("home.intro_heading_prefix", "Good finds")}{" "}
+              <em className="font-semibold not-italic text-[#F47822]">
+                {t("home.intro_heading_accent", "made easy to find")}
               </em>{" "}
               {t("home.intro_heading_suffix", "for everyday life.")}
             </h2>
@@ -647,17 +1002,17 @@ export default function HomePage() {
             <p className="mb-3 text-[13px] leading-[1.7] text-[var(--muted)]">
               {t(
                 "home.intro_p1",
-                "We manufacture durable plastic products with modern production methods, strict quality control and dependable service for homes, businesses and industrial buyers across Ethiopia."
+                "Dream More Affiliate Market brings product discovery online, helping shoppers browse listings, compare details, and connect with sellers from one convenient place."
               )}
             </p>
 
             <Link
               href="/about"
-              className="inline-flex items-center gap-1.5 border-b border-[#b98a3e] pb-0.5 text-[12px] font-semibold text-[#b98a3e]"
+              className="inline-flex items-center gap-1.5 border-b border-[#EB6D3D] pb-0.5 text-[12px] font-semibold text-[#F47822]"
             >
               {t(
                 "home.intro_btn",
-                "Learn more about Alemayehu Plastic Manufacturing"
+                "Learn more about Dream More Affiliate Market"
               )}
               <ArrowRight size={13} />
             </Link>
@@ -668,14 +1023,17 @@ export default function HomePage() {
       {/* FEATURED CATEGORIES */}
       <ProductCards />
 
+      {/* FEATURED PRODUCTS */}
+      <HomeProducts />
+
       {/* FACILITY SECTION */}
       <section id="facility" className="scroll-mt-20 bg-white py-14 sm:py-16">
         <div className="mx-auto grid w-[min(1180px,calc(100%-48px))] grid-cols-[.95fr_1.05fr] items-center gap-12 max-lg:grid-cols-1 max-lg:gap-8">
           <div className="relative h-[380px] w-full max-lg:h-[320px]">
-            <div className="relative h-full w-full overflow-hidden rounded-2xl bg-[#f6f0e2]">
+            <div className="relative h-full w-full overflow-hidden rounded-2xl bg-white">
               <Image
-                src={FACILITY_IMAGE}
-                alt="Alemayehu Plastic Manufacturing Facility"
+                src="/banners/images.jpeg"
+                alt="A team working together"
                 fill
                 sizes="(max-width: 1024px) 100vw, 50vw"
                 className="object-cover"
@@ -684,51 +1042,51 @@ export default function HomePage() {
               />
             </div>
 
-            <div className="absolute bottom-4 left-0 z-10 flex w-[180px] items-center gap-2 rounded-r-xl bg-[#e0a83c] p-3 shadow-[0_16px_36px_rgba(58,42,30,.25)] max-sm:bottom-0 max-sm:w-[160px] max-sm:p-2.5">
+            <div className="absolute bottom-4 left-0 z-10 flex w-[180px] items-center gap-2 rounded-r-xl bg-[#F4753E] p-3 shadow-[0_16px_36px_rgba(58,42,30,.25)] max-sm:bottom-0 max-sm:w-[160px] max-sm:p-2.5">
               <div className="grid">
                 <strong className="text-[13px] font-semibold leading-tight text-[#1a1410]">
-                  {t("home.facility_title", "Alemayehu Plastic")}
+                  {t("home.facility_title", "Dream More")}
                 </strong>
                 <small className="mt-0.5 text-[8px] uppercase tracking-wider text-[#1a1410]/80">
-                  {t("home.facility_motto", "Strong. Safe. Lasting.")}
+                  {t("home.facility_motto", "Right work at right time")}
                 </small>
               </div>
             </div>
           </div>
 
           <div>
-            <Eyebrow>{t("home.facility_eyebrow", "INSIDE OUR FACTORY")}</Eyebrow>
+            <Eyebrow>{t("home.facility_eyebrow", "SHOP SMARTER ONLINE")}</Eyebrow>
 
             <h2 className="text-[clamp(20px,2.1vw,28px)] font-semibold leading-[1.25] tracking-[-0.015em] text-[#2a1f18]">
-              {t("home.facility_heading_prefix", "Engineered")}{" "}
-              <em className="font-semibold not-italic text-[#b98a3e]">
-                {t("home.facility_heading_accent", "from the ground up.")}
+              {t("home.facility_heading_prefix", "Your marketplace")}{" "}
+              <em className="font-semibold not-italic text-[#F47822]">
+                {t("home.facility_heading_accent", "for everyday discoveries.")}
               </em>
             </h2>
 
             <p className="mt-4 text-[15px] leading-[1.65] text-[#3a2a1e]">
               {t("home.facility_lead_1", "At")}{" "}
               <strong className="font-semibold">
-                {t("home.facility_title", "Alemayehu Plastic Manufacturing")}
+                {t("home.facility_title", "Dream More Affiliate Market")}
               </strong>
               {t(
                 "home.facility_lead_2",
-                ", every product is built with precision using modern machinery and tested materials."
+                " connects shoppers with product listings from across the marketplace."
               )}
             </p>
 
             <p className="mt-3 max-w-[520px] text-[13px] leading-[1.75] text-[var(--muted)]">
               {t(
                 "home.facility_body",
-                "From raw material selection to final packaging, our production line follows strict quality standards. We focus on durability, safety and sustainability — creating plastic products that serve Ethiopian homes, businesses and industries reliably."
+                "Browse available products, review the details that matter, and reach out when you need help. Dream More makes discovering and shopping online simple."
               )}
             </p>
 
             <Link
               href="#contact"
-              className="mt-6 inline-flex items-center gap-4 rounded-lg border border-[#b98a3e] px-4 py-2.5 text-[12px] font-semibold text-[#b98a3e] transition hover:bg-[#b98a3e] hover:text-white"
+              className="mt-6 inline-flex items-center gap-4 rounded-lg border border-[#EB6D3D] px-4 py-2.5 text-[12px] font-semibold text-[#cf5427] transition hover:bg-[#EB6D3D] hover:text-[#20283a]"
             >
-              {t("home.facility_btn", "Request a Quote")}
+              {t("home.facility_btn", "Explore Products")}
               <ArrowRight size={15} />
             </Link>
           </div>
@@ -746,8 +1104,8 @@ export default function HomePage() {
 
         <div className="relative mx-auto max-w-[720px] px-6 text-center">
           <h2 className="text-[clamp(22px,2.6vw,32px)] font-semibold leading-[1.2] tracking-[-0.015em] text-white">
-            {t("home.cta_heading_prefix", "Need plastic products")}{" "}
-            <em className="font-semibold not-italic text-[#e0a83c]">
+            {t("home.cta_heading_prefix", "Ready to discover")}{" "}
+            <em className="font-semibold not-italic text-[#F47822]">
               {t("home.cta_heading_accent", "at scale?")}
             </em>
           </h2>
@@ -755,7 +1113,7 @@ export default function HomePage() {
           <p className="mx-auto mt-3 max-w-[480px] text-[13px] leading-[1.75] text-white/65">
             {t(
               "home.cta_subtitle",
-              "Interested in our products, bulk pricing or a custom manufacturing order? We'd love to hear from you."
+              "Explore marketplace listings or contact our team if you have a question. We’re here to help make your shopping experience easier."
             )}
           </p>
 

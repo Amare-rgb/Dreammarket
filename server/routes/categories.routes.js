@@ -5,8 +5,8 @@ const prisma = require('../lib/prisma');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 // ═══════════════════════════════════════════════════════════
-// Categories API — Alemayehu Plastic
-//  • Storage: Cloudinary (image is a full URL)
+// Categories API — Dream More Affiliate Market
+//  • Storage: local uploads or other external image URLs
 //  • Database: Neon (PostgreSQL) via Prisma
 //  • No Order/Article/Cart references
 // ═══════════════════════════════════════════════════════════
@@ -25,13 +25,9 @@ const CATEGORY_PUBLIC_SELECT = {
   updatedAt: true,
 };
 
-// ── Cloudinary / URL normalizer ────────────────────────────
-const isCloudinaryUrl = (url) =>
-  typeof url === 'string' && /res\.cloudinary\.com/i.test(url);
-
 /**
  * Normalise an image value:
- *   - Cloudinary / http(s) URL → kept as-is
+ *   - http(s) URL → kept as-is
  *   - null / '' / undefined     → null
  *   - anything else (local path, garbage) → null (rejected)
  */
@@ -40,7 +36,7 @@ function normaliseImage(value) {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
-  if (/^https?:\/\//i.test(trimmed)) return trimmed; // Cloudinary or external
+  if (/^https?:\/\//i.test(trimmed)) return trimmed;
   // Reject anything that isn't a full URL (local paths like /uploads/xxx)
   console.warn(`⚠️ Rejected non-URL image value: ${trimmed}`);
   return null;
@@ -240,7 +236,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
         .json({ error: 'Invalid user session. Please login again.' });
     }
 
-    // Normalise image — only Cloudinary/external URLs accepted
+    // Normalise image — only full external URLs are accepted
     const normalizedImage = normaliseImage(image);
 
     if (image && !normalizedImage) {

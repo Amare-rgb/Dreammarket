@@ -1,257 +1,192 @@
-// app/about/page.tsx
-'use client';
+"use client";
 
-import React, { useSyncExternalStore } from 'react';
-import Link from 'next/link';
-import Image from 'next/image';
+import Link from "next/link";
 import {
-  Factory,
-  ArrowRight,
-  CheckCircle,
+  ArrowUpRight,
+  Eye,
+  GraduationCap,
   HeartHandshake,
-  ShieldCheck,
-  Recycle,
-} from 'lucide-react';
-import { useSettings } from '@/context/SettingsContext';
-import { useLanguage } from '@/context/LanguageContext';
+  Lightbulb,
+  Target,
+} from "lucide-react";
+import { useLanguage } from "@/context/LanguageContext";
 
-// ============================================================
-// ✅ Hydration-safe "mounted" hook
-//    Returns false on the server + first client render
-//    Returns true after the component has hydrated
-// ============================================================
-const subscribe = () => () => {};
-const getClientSnapshot = () => true;
-const getServerSnapshot = () => false;
+const impactStats = [
+  { value: "5+", label: "about.stat_years", fallback: "Years of Excellence" },
+  { value: "30+", label: "about.stat_projects", fallback: "Projects Delivered" },
+  { value: "150+", label: "about.stat_students", fallback: "Students Trained" },
+  { value: "16+", label: "about.stat_courses", fallback: "Active Courses" },
+];
 
-function useMounted() {
-  return useSyncExternalStore(subscribe, getClientSnapshot, getServerSnapshot);
-}
-
-// ─── Default fallback (must match between server and client) ───
-const DEFAULT_SITE_NAME = 'Alemayehu Plastic Manufacturing';
+const drivers = [
+  {
+    title: "about.mission_title",
+    titleFallback: "Mission",
+    description: "about.mission",
+    descriptionFallback:
+      "To empower Africa through digital innovation by building world-class products and training the next generation of creators.",
+    Icon: Target,
+  },
+  {
+    title: "about.vision_title",
+    titleFallback: "Vision",
+    description: "about.vision",
+    descriptionFallback:
+      "To become Africa's leading digital ecosystem — a hub where technology, education, and innovation converge.",
+    Icon: Eye,
+  },
+  {
+    title: "about.values_title",
+    titleFallback: "Values",
+    description: "about.values",
+    descriptionFallback:
+      "Excellence, integrity, community, and relentless pursuit of innovation in everything we do.",
+    Icon: HeartHandshake,
+  },
+  {
+    title: "about.impact_title",
+    titleFallback: "Impact",
+    description: "about.impact",
+    descriptionFallback:
+      "Transforming African businesses and empowering thousands of young professionals to compete globally.",
+    Icon: Lightbulb,
+  },
+];
 
 export default function AboutPage() {
-  const { settings } = useSettings();
   const { t } = useLanguage();
-  const mounted = useMounted();
-
-  // ✅ CRITICAL: On server + first client render → use the default.
-  //    Only after mount → use the real settings value.
-  //    This guarantees the server HTML matches the client's first render.
-  const siteName = mounted
-    ? settings?.siteName || DEFAULT_SITE_NAME
-    : DEFAULT_SITE_NAME;
-
-  const siteDescription = mounted ? settings?.siteDescription || '' : '';
 
   return (
-    <main className="min-h-screen bg-gray-50">
-      {/* Hero Section */}
-      <section className="relative min-h-[320px] md:min-h-[380px] flex items-center justify-center overflow-hidden">
-        <div
-          className="absolute inset-0 bg-cover bg-center bg-no-repeat"
-          style={{
-            backgroundImage: 'url(/banners/carplastik.jpg)',
-            backgroundColor: '#1a1410',
-          }}
-        />
-        <div className="absolute inset-0 bg-gradient-to-r from-[#1a1410]/95 via-[#1a1410]/80 to-[#2a1f18]/90" />
-
-        <div className="relative z-10 max-w-4xl mx-auto px-4 text-center text-white py-12">
-          <h1 className="text-3xl sm:text-4xl md:text-5xl font-bold mb-3 leading-tight font-serif">
-            {t('about.hero_title_prefix', 'About')}{' '}
-            <span className="text-yellow-400">{siteName}</span>
+    <main className="min-h-screen bg-white text-slate-900">
+      <section className="relative overflow-hidden bg-[#20283a] px-5 py-20 text-center text-white sm:py-28">
+        <div className="pointer-events-none absolute -right-24 -top-32 h-96 w-96 rounded-full bg-[#F47822]/20 blur-3xl" />
+        <div className="relative mx-auto max-w-4xl">
+          <p className="mb-4 text-sm font-semibold uppercase tracking-[0.2em] text-[#ffad72]">
+            {t("about.hero_eyebrow", "About DreamMore")}
+          </p>
+          <h1 className="text-4xl font-bold leading-tight sm:text-5xl md:text-6xl">
+            {t("about.hero_title", "We Are a Digital Innovation Ecosystem")}
           </h1>
-          <p className="text-sm md:text-base text-yellow-100 max-w-2xl mx-auto leading-relaxed">
-            {siteDescription ||
-              t(
-                'about.hero_subtitle',
-                'Manufacturing durable, high-quality plastic products for homes, businesses and industries — engineered with precision and built to last.'
-              )}
+          <p className="mx-auto mt-6 max-w-3xl text-base leading-7 text-white/75 sm:text-lg">
+            {t(
+              "about.hero_description",
+              "DreamMore was founded with a bold vision: to bridge the gap between Africa's digital potential and the world-class technology needed to realize it."
+            )}
           </p>
         </div>
       </section>
 
-      {/* Our Story */}
-      <section className="py-12 md:py-16">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 items-center">
-            {/* Story Content */}
-            <div className="space-y-4">
-              <div className="inline-flex items-center gap-1.5 text-[10px] font-bold text-yellow-700 uppercase tracking-wider bg-yellow-100 px-2.5 py-1 rounded-full">
-                <Factory size={12} />
-                {t('about.heritage_badge', 'Our Heritage')}
-              </div>
-              <h2 className="text-2xl sm:text-3xl font-bold text-gray-900 leading-tight">
-                {t(
-                  'about.story_title',
-                  'Engineering Reliable Plastic Solutions for Modern Ethiopia'
-                )}
-              </h2>
-              <p className="text-sm text-gray-600 leading-relaxed">
-                {t(
-                  'about.story_p1_before',
-                  'Founded with a commitment to quality craftsmanship,'
-                )}{' '}
-                <strong>{siteName}</strong>{' '}
-                {t(
-                  'about.story_p1_after',
-                  'has grown from a small local workshop into a trusted national plastic manufacturer.'
-                )}
-              </p>
-              <p className="text-sm text-gray-600 leading-relaxed">
-                {t(
-                  'about.story_p2',
-                  'We combine modern manufacturing technology with carefully selected raw materials. From durable containers to precision industrial components, we produce plastic products that serve Ethiopian homes, businesses and industries reliably.'
-                )}
-              </p>
-
-              <div className="space-y-2 pt-1">
-                {[
-                  t(
-                    'about.feature_1',
-                    '100% Quality-Tested Plastic Products'
-                  ),
-                  t(
-                    'about.feature_2',
-                    'Recyclable & Eco-Friendly Manufacturing'
-                  ),
-                  t(
-                    'about.feature_3',
-                    'Nationwide Distribution & Delivery Support'
-                  ),
-                  t(
-                    'about.feature_4',
-                    'Fair Pricing & Direct Business Partnerships'
-                  ),
-                ].map((item, idx) => (
-                  <div key={idx} className="flex items-center gap-2">
-                    <CheckCircle
-                      className="text-yellow-500 flex-shrink-0"
-                      size={14}
-                    />
-                    <span className="text-xs font-semibold text-gray-800">
-                      {item}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
-
-            {/* Visual Image */}
-            <div className="relative">
-              <div className="relative aspect-[4/3] rounded-2xl overflow-hidden shadow-xl border-4 border-white">
-                <Image
-                  src="/banners/carplastik.jpg"
-                  alt={`${siteName} factory floor`}
-                  fill
-                  className="object-cover"
-                  sizes="(max-width: 768px) 100vw, 50vw"
-                  priority
-                />
-              </div>
-            </div>
-          </div>
-        </div>
-      </section>
-
-      {/* Core Values */}
-      <section className="py-12 bg-white border-y border-gray-100">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6">
-          <div className="text-center max-w-3xl mx-auto mb-10">
-            <h2 className="text-2xl font-bold text-gray-900 mb-2">
-              {t('about.values_title', 'Our Core Principles')}
+      <section className="px-5 py-16 sm:py-20">
+        <div className="mx-auto grid max-w-6xl gap-10 lg:grid-cols-[1.15fr_0.85fr] lg:items-center">
+          <div>
+            <p className="mb-3 text-sm font-bold uppercase tracking-[0.16em] text-[#e86b25]">
+              {t("about.story_eyebrow", "About DreamMore")}
+            </p>
+            <h2 className="text-3xl font-bold leading-tight sm:text-4xl">
+              {t("about.story_title", "A collaborative team building a digital future")}
             </h2>
-            <p className="text-sm text-gray-500">
+            <p className="mt-5 text-base leading-7 text-slate-600">
               {t(
-                'about.values_subtitle_prefix',
-                'The guiding values that drive'
-              )}{' '}
-              {siteName} {t('about.values_subtitle_suffix', 'every day')}
+                "about.story_description",
+                "DreamMore is a collaborative group of dynamic youth and active team members dedicated to education, digital marketing, and a wide range of tech-related services. We prioritize a client-centered approach, supported by our versatile service offerings and an unwavering commitment to quality."
+              )}
+            </p>
+            <p className="mt-5 text-base leading-8 text-slate-600" lang="am">
+              {t(
+                "about.story_amharic",
+                "ድሪም-ሞር የወጣትና የታታሪዎች ስብስብ ሲሆን በሀገራችን ላይ በትምህርቱ ዘርፍ፤ በድጂታል ማርኬቲንግ እና በሌሎች ቴክኖሎጂ ዘርፎች ስራዎች እና ሁለገብ ድጂታል ሃሳቦች ላይ በአንክሮ የሚሰራ ሩቅ አላሚ፤ ቀልጣፋ እና ዘመኑን የዋጁ ስራዎች ላይ የሚያተኩር ለሁሉም ደንበኞቻችን ፍላጎት ዋልታ እና የጋራ መድረክ የሆነ ሃገር በቀል ድርጅት ነው፡፡"
+              )}
+            </p>
+            <p className="mt-5 text-base leading-7 text-slate-600">
+              {t(
+                "about.mission_statement",
+                "Our mission is to deliver outstanding services tailored to the unique needs of each client, ensuring quality, efficiency, and innovation in every aspect of our work."
+              )}
+            </p>
+            <p className="mt-4 text-base leading-7 text-slate-600">
+              {t(
+                "about.commitment",
+                "At DreamMore, we are committed to excellence, innovation, and social impact. Our team of skilled professionals works tirelessly to deliver high-quality services that meet the unique needs of our clients."
+              )}
+            </p>
+            <Link
+              href="https://www.dreammoredigitals.com/team"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="mt-7 inline-flex items-center gap-2 rounded-lg bg-[#F47822] px-5 py-3 text-sm font-semibold text-white transition hover:bg-[#df6417]"
+            >
+              {t("about.meet_team", "Meet Our Team")}
+              <ArrowUpRight size={17} />
+            </Link>
+          </div>
+
+          <div className="rounded-3xl bg-gradient-to-br from-[#20283a] to-[#35415b] p-7 text-white shadow-xl sm:p-9">
+            <div className="mb-7 flex h-14 w-14 items-center justify-center rounded-2xl bg-[#F47822]">
+              <GraduationCap size={29} />
+            </div>
+            <h3 className="text-2xl font-bold">
+              {t("about.education_title", "Education, technology, and opportunity")}
+            </h3>
+            <p className="mt-4 leading-7 text-white/70">
+              {t(
+                "about.education_description",
+                "We bring together digital services and practical learning to help businesses grow and equip the next generation of African creators."
+              )}
             </p>
           </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-            <div className="p-6 rounded-2xl bg-yellow-50/60 border border-yellow-100 text-center space-y-3 hover:shadow-lg transition-shadow">
-              <div className="w-11 h-11 rounded-2xl bg-yellow-500 text-white flex items-center justify-center mx-auto shadow-md">
-                <ShieldCheck size={22} />
-              </div>
-              <h3 className="text-base font-bold text-gray-900">
-                {t('about.value_quality_title', 'Uncompromising Quality')}
-              </h3>
-              <p className="text-xs text-gray-600 leading-relaxed">
-                {t(
-                  'about.value_quality_desc',
-                  'Every plastic product is thoroughly tested to guarantee durability, safety and consistency.'
-                )}
-              </p>
-            </div>
-
-            <div className="p-6 rounded-2xl bg-yellow-50/60 border border-yellow-100 text-center space-y-3 hover:shadow-lg transition-shadow">
-              <div className="w-11 h-11 rounded-2xl bg-yellow-500 text-white flex items-center justify-center mx-auto shadow-md">
-                <Recycle size={22} />
-              </div>
-              <h3 className="text-base font-bold text-gray-900">
-                {t('about.value_global_title', 'Industrial Standards')}
-              </h3>
-              <p className="text-xs text-gray-600 leading-relaxed">
-                {t(
-                  'about.value_global_desc',
-                  'We adhere to modern manufacturing standards, serving domestic buyers and industrial partners.'
-                )}
-              </p>
-            </div>
-
-            <div className="p-6 rounded-2xl bg-yellow-50/60 border border-yellow-100 text-center space-y-3 hover:shadow-lg transition-shadow">
-              <div className="w-11 h-11 rounded-2xl bg-yellow-500 text-white flex items-center justify-center mx-auto shadow-md">
-                <HeartHandshake size={22} />
-              </div>
-              <h3 className="text-base font-bold text-gray-900">
-                {t(
-                  'about.value_customer_title',
-                  'Customer-First Commitment'
-                )}
-              </h3>
-              <p className="text-xs text-gray-600 leading-relaxed">
-                {t(
-                  'about.value_customer_desc',
-                  'Our team provides full customer support and technical guidance to ensure your business succeeds.'
-                )}
-              </p>
-            </div>
-          </div>
         </div>
       </section>
 
-      {/* Call to Action */}
-      <section className="py-14 bg-gradient-to-r from-[#1a1410] via-[#2a1f18] to-[#3a2a1e] text-white">
-        <div className="max-w-4xl mx-auto px-4 text-center space-y-5">
-          <h2 className="text-2xl sm:text-3xl font-bold">
-            {t(
-              'about.cta_title',
-              'Ready to Source Quality Plastic Products?'
-            )}
-          </h2>
-          <p className="text-yellow-100 text-sm sm:text-base max-w-2xl mx-auto leading-relaxed">
-            {t(
-              'about.cta_subtitle',
-              'Explore our catalog of plastic containers, household items, industrial parts and custom-manufactured products.'
-            )}
-          </p>
-          <div className="flex flex-wrap justify-center gap-3 pt-1">
-            <Link
-              href="/shop"
-              className="inline-flex items-center gap-2 bg-yellow-500 text-[#1a1410] font-bold px-6 py-3 rounded-xl hover:bg-yellow-400 transition-all shadow-lg hover:scale-105 text-sm"
-            >
-              {t('about.cta_explore', 'Explore Products')}
-              <ArrowRight size={16} />
-            </Link>
+      <section className="border-y border-slate-100 bg-slate-50 px-5 py-12">
+        <div className="mx-auto grid max-w-6xl grid-cols-2 gap-7 md:grid-cols-4">
+          {impactStats.map((stat) => (
+            <div className="text-center" key={stat.label}>
+              <p className="text-3xl font-bold text-[#e86b25] sm:text-4xl">
+                {stat.value}
+              </p>
+              <p className="mt-2 text-sm font-medium text-slate-600">
+                {t(stat.label, stat.fallback)}
+              </p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="px-5 py-16 sm:py-20">
+        <div className="mx-auto max-w-6xl">
+          <div className="mx-auto mb-10 max-w-2xl text-center">
+            <p className="mb-3 text-sm font-bold uppercase tracking-[0.16em] text-[#e86b25]">
+              {t("about.drivers_eyebrow", "Our purpose")}
+            </p>
+            <h2 className="text-3xl font-bold sm:text-4xl">
+              {t("about.drivers_title", "What Drives Us")}
+            </h2>
+          </div>
+          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-4">
+            {drivers.map(({ title, titleFallback, description, descriptionFallback, Icon }) => (
+              <article
+                className="rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
+                key={title}
+              >
+                <div className="mb-5 flex h-11 w-11 items-center justify-center rounded-xl bg-orange-50 text-[#e86b25]">
+                  <Icon size={22} />
+                </div>
+                <h3 className="text-lg font-bold">
+                  {t(title, titleFallback)}
+                </h3>
+                <p className="mt-3 text-sm leading-6 text-slate-600">
+                  {t(description, descriptionFallback)}
+                </p>
+              </article>
+            ))}
+          </div>
+          <div className="mt-10 flex justify-center">
             <Link
               href="/contact"
-              className="inline-flex items-center gap-2 bg-white/10 backdrop-blur text-white font-bold px-6 py-3 rounded-xl hover:bg-white/20 border border-yellow-400/40 transition-all text-sm"
+              className="inline-flex items-center gap-2 font-semibold text-[#d75e18] transition hover:text-[#a8440d]"
             >
-              {t('about.cta_contact', 'Contact Us')}
+              {t("about.contact_us", "Get in touch")}
+              <ArrowUpRight size={17} />
             </Link>
           </div>
         </div>

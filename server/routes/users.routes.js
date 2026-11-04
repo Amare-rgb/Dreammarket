@@ -5,7 +5,7 @@ const prisma = require('../lib/prisma');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 // ═══════════════════════════════════════════════════════════
-// Users API — Alemayehu Plastic
+// Users API — Dream More Affiliate Market
 //  • Uses Neon via Prisma
 //  • No Order/OrderItem/Article/Cart/CartItem references
 // ═══════════════════════════════════════════════════════════

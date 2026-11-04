@@ -591,7 +591,7 @@ const UsersPage: React.FC = () => {
           </button>
           <button
             onClick={handleRefresh}
-            className="flex items-center space-x-2 px-3 py-1.5 text-xs text-white bg-yellow-500 rounded-lg hover:bg-yellow-600 transition-colors"
+            className="flex items-center space-x-2 px-3 py-1.5 text-xs text-white bg-[#EB6D3D] rounded-lg hover:bg-[#cf5427] transition-colors"
           >
             <RefreshCw className="w-3.5 h-3.5" />
             <span>Refresh</span>

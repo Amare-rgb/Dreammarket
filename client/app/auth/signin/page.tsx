@@ -214,8 +214,12 @@ export default function SignInPage() {
 
       console.log("🚀 Redirecting to:", redirectUrl);
 
-      // ✅ Use router.replace for internal navigation
-      router.replace(redirectUrl);
+      const requestedRedirect = new URLSearchParams(
+        window.location.search
+      ).get("redirectTo");
+      router.replace(
+        requestedRedirect === "/contact" ? requestedRedirect : redirectUrl
+      );
     } catch (err) {
       const errorMessage =
         err instanceof Error
@@ -306,7 +310,7 @@ export default function SignInPage() {
 
                   <Link
                     href="/forgot-password"
-                    className="text-xs font-semibold text-[#b98a3e] transition-colors hover:text-[#1a1410]"
+                    className="text-xs font-semibold text-[#F47822] transition-colors hover:text-[#cf5427]"
                   >
                     {t("auth.signin.forgot_password", "Forgot password?")}
                   </Link>
@@ -360,7 +364,7 @@ export default function SignInPage() {
               <button
                 type="submit"
                 disabled={isLoading}
-                className="flex h-12 w-full items-center justify-center rounded-2xl bg-[#1a1410] px-5 text-sm font-bold text-[#faf6ee] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#2a1f18] hover:shadow-lg disabled:opacity-70 disabled:hover:-translate-y-0 disabled:hover:shadow-none"
+                className="flex h-12 w-full items-center justify-center rounded-2xl bg-[#EB6D3D] px-5 text-sm font-bold text-[#20283a] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#cf5427] hover:text-white hover:shadow-lg disabled:opacity-70 disabled:hover:-translate-y-0 disabled:hover:shadow-none"
               >
                 {isLoading ? (
                   <>

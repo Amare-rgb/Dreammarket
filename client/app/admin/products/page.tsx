@@ -24,6 +24,7 @@ import {
   ChevronLeft,
   ChevronRight,
 } from "lucide-react";
+import ProductCreateModal from "./ProductCreateModal";
 
 // ============================================================
 // API base
@@ -292,6 +293,7 @@ const ProductsPage: React.FC = () => {
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
   const [showFilters, setShowFilters] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
@@ -502,6 +504,13 @@ const ProductsPage: React.FC = () => {
     void fetchProducts({ page: currentPage });
   };
 
+  const handleProductCreated = () => {
+    setShowCreateModal(false);
+    setCurrentPage(1);
+    showNotification("success", "Product created successfully.");
+    void fetchProducts({ page: 1 });
+  };
+
   const handleClearFilters = () => {
     setSelectedCategory("");
     setSearchQuery("");
@@ -600,6 +609,13 @@ const ProductsPage: React.FC = () => {
           onClose={clearNotification}
         />
       )}
+      {showCreateModal && (
+        <ProductCreateModal
+          categories={categories}
+          onClose={() => setShowCreateModal(false)}
+          onCreated={handleProductCreated}
+        />
+      )}
 
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
@@ -610,13 +626,14 @@ const ProductsPage: React.FC = () => {
           </p>
           <p className="text-xs text-gray-400 mt-1">Total: {total} products</p>
         </div>
-        <Link
-          href="/admin/products/new"
-          className="flex items-center space-x-2 px-3 py-1.5 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors text-xs"
+        <button
+          type="button"
+          onClick={() => setShowCreateModal(true)}
+          className="flex items-center space-x-2 px-3 py-1.5 bg-[#EB6D3D] text-white rounded-lg hover:bg-[#cf5427] transition-colors text-xs"
         >
           <Plus className="w-3.5 h-3.5" />
           <span>Add Product</span>
-        </Link>
+        </button>
       </div>
 
       {/* Search + filters row */}
@@ -647,7 +664,7 @@ const ProductsPage: React.FC = () => {
           <button
             onClick={handleRefresh}
             disabled={refreshing}
-            className="flex items-center space-x-2 px-3 py-1.5 text-xs text-white bg-yellow-500 rounded-lg hover:bg-yellow-600 transition-colors disabled:opacity-50"
+            className="flex items-center space-x-2 px-3 py-1.5 text-xs text-white bg-[#EB6D3D] rounded-lg hover:bg-[#cf5427] transition-colors disabled:opacity-50"
           >
             <RefreshCw
               className={`w-3.5 h-3.5 ${refreshing ? "animate-spin" : ""}`}

@@ -26,10 +26,15 @@ import {
   Search,
   Sparkles,
   Building2,
+  ShoppingBag,
+  ShoppingCart,
+  Moon,
+  Sun,
 } from "lucide-react";
 import { useAuth } from "@/app/providers";
 import { useLanguage } from "@/context/LanguageContext";
-import { useSettings } from "@/hooks/useSettings";
+import { useTheme } from "@/context/ThemeContext";
+import { readCart } from "@/app/lib/cart";
 
 interface Category {
   id: string;
@@ -54,28 +59,20 @@ interface User {
 // ============================================================
 // Brand
 // ============================================================
-const BRAND_TOP = "Plastic";
-const BRAND_BOTTOM = "Manufacturing";
-const BRAND_ALT = "Plastic Manufacturing";
+const BRAND_TOP = "Dream More";
+const BRAND_BOTTOM = "Affiliate Market";
+const BRAND_ALT = "Dream More Affiliate Market";
 
 const ETHIOPIC_FONT =
   "'Noto Sans Ethiopic','Nyala','Abyssinica SIL','Kefa','Ebrima',sans-serif";
 
-// ============================================================
-// Cloudinary-only resolver
-//   • Full https URL      → as-is
-//   • res.cloudinary.com  → prefixed with https://
-//   • Anything else       → null (caller shows fallback)
-// ============================================================
 function resolveCloudinaryUrl(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
   const s = raw.trim();
   if (!s) return null;
-
   if (s.startsWith("data:")) return s;
   if (s.startsWith("http://") || s.startsWith("https://")) return s;
   if (s.startsWith("res.cloudinary.com/")) return `https://${s}`;
-
   return null;
 }
 
@@ -265,8 +262,10 @@ export const Navbar = () => {
   const [dropdownOpen, setDropdownOpen] = useState(false);
   const [productsDropdownOpen, setProductsDropdownOpen] = useState(false);
   const [mobileProductsOpen, setMobileProductsOpen] = useState(false);
+  const [searchOpen, setSearchOpen] = useState(false);
   const [categories, setCategories] = useState<Category[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
+  const [cartCount, setCartCount] = useState(0);
   // ✅ Fallback toggle if the Cloudinary logo fails to load
   const [logoFailed, setLogoFailed] = useState(false);
 
@@ -276,12 +275,27 @@ export const Navbar = () => {
 
   const { user, status, logout } = useAuth();
   const { language, setLanguage, t } = useLanguage();
-  const { settings } = useSettings(); // ✅ Cloudinary logo comes from here
+  const { theme, toggleTheme } = useTheme();
   const router = useRouter();
   const pathname = usePathname();
 
   const scrolled = useScrolled(60);
   const localUser = useStoredUser();
+
+  useEffect(() => {
+    const updateCartCount = () => {
+      const count = readCart().reduce((total, item) => total + item.quantity, 0);
+      setCartCount(count);
+    };
+
+    updateCartCount();
+    window.addEventListener("cart-change", updateCartCount);
+    window.addEventListener("storage", updateCartCount);
+    return () => {
+      window.removeEventListener("cart-change", updateCartCount);
+      window.removeEventListener("storage", updateCartCount);
+    };
+  }, []);
 
   const activeUser = useMemo(() => {
     if (status === "authenticated" && user) return user;
@@ -300,9 +314,6 @@ export const Navbar = () => {
     pathname === "/about" ||
     pathname === "/shop" ||
     pathname === "/contact";
-
-  // ✅ Cloudinary-only logo — resolves to null if unset or invalid
-  const logoUrl = resolveCloudinaryUrl(settings?.logo);
 
   useEffect(() => {
     let isMounted = true;
@@ -369,6 +380,7 @@ export const Navbar = () => {
   const closeMenu = () => {
     setMenuOpen(false);
     setMobileProductsOpen(false);
+    setSearchOpen(false);
   };
 
   const closeAllMenus = () => {
@@ -376,6 +388,7 @@ export const Navbar = () => {
     setMobileProductsOpen(false);
     setDropdownOpen(false);
     setProductsDropdownOpen(false);
+    setSearchOpen(false);
   };
 
   const handleLogout = async () => {
@@ -406,6 +419,7 @@ export const Navbar = () => {
       : FALLBACK_CATEGORIES;
 
   const dynamicNavLinks = [
+    { label: t("nav.articles", "Articles"), href: "/articles" },
     { label: t("nav.about", "About Us"), href: "/about" },
     { label: t("nav.contact", "Contact"), href: "/contact" },
   ];
@@ -429,11 +443,11 @@ export const Navbar = () => {
   const innerHeight = isHome && !scrolled ? "h-[80px]" : "h-[68px]";
 
   const logoBoxClass = solid
-    ? "bg-white border-[#e0a83c]/50"
-    : "bg-white/90 border-[#e0a83c]/60";
+    ? "bg-white border-[#EB6D3D]/50"
+    : "bg-white/90 border-[#EB6D3D]/60";
 
-  const brandTopClass = solid ? "text-[#1a1410]" : "text-white";
-  const brandBottomClass = solid ? "text-[#8a6212]" : "text-[#f0c872]";
+  const brandTopClass = solid ? "text-[#20283a]" : "text-white";
+  const brandBottomClass = solid ? "text-[#d85d32]" : "text-[#ff9a68]";
 
   const navLinkClass = `group relative whitespace-nowrap py-1.5 text-[10px] font-semibold uppercase tracking-[0.08em] transition-colors ${
     solid
@@ -464,14 +478,14 @@ export const Navbar = () => {
   const dropdownItemClass =
     "flex items-center gap-2 rounded-lg px-2.5 py-2 text-[10px] font-medium text-[#1a1410]/80 hover:bg-[#faf6ef] hover:text-[#1a1410] group";
   const dropdownIconClass =
-    "flex h-6 w-6 items-center justify-center rounded-lg bg-[#faf6ef] border border-[#eadfce] text-[#1a1410]/70 group-hover:bg-[#e0a83c] group-hover:text-[#1a1410] transition-colors";
+    "flex h-6 w-6 items-center justify-center rounded-lg bg-[#f7f8fa] border border-[#dfe3eb] text-[#30384f]/70 group-hover:bg-[#EB6D3D] group-hover:text-white transition-colors";
 
   return (
     <header className={headerClass}>
       <div
         className={`mx-auto flex w-[min(1180px,calc(100%-48px))] items-center justify-between gap-4 transition-all duration-300 xl:gap-6 ${innerHeight}`}
       >
-        {/* LOGO — from Cloudinary (settings.logo) */}
+        {/* Dream More brand logo */}
         <Link
           href="/"
           className="group flex shrink-0 items-center gap-2.5"
@@ -479,21 +493,20 @@ export const Navbar = () => {
           aria-label={BRAND_ALT}
         >
           <div
-            className={`relative flex h-10 w-10 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border shadow-sm transition-colors duration-300 ${logoBoxClass}`}
+            className={`relative flex h-12 w-12 flex-shrink-0 items-center justify-center overflow-hidden rounded-full border shadow-sm transition-colors duration-300 ${logoBoxClass}`}
           >
-            {logoUrl && !logoFailed ? (
+            {!logoFailed ? (
               <Image
-                src={logoUrl}
+                src="/banners/photo.jpg"
                 alt={BRAND_ALT}
-                width={40}
-                height={40}
-                className="h-full w-full object-contain p-0.5"
+                width={48}
+                height={48}
+                className="h-full w-full object-contain"
                 onError={() => setLogoFailed(true)}
                 priority
-                unoptimized
               />
             ) : (
-              <Building2 className="h-5 w-5 text-[#8a6212]" />
+              <Building2 className="h-5 w-5 text-[#F47822]" />
             )}
           </div>
           <span className="flex flex-col whitespace-nowrap leading-none">
@@ -563,7 +576,7 @@ export const Navbar = () => {
                 <Link
                   href="/shop"
                   onClick={closeAllMenus}
-                  className="flex items-center gap-1.5 rounded-full border border-[#e0a83c]/40 bg-[#faf6ef] px-2.5 py-1 text-[10px] font-semibold text-[#8a6212] hover:bg-[#e0a83c] hover:text-[#1a1410] transition-colors"
+                  className="flex items-center gap-1.5 rounded-full border border-[#EB6D3D]/40 bg-[#faf6ef] px-2.5 py-1 text-[10px] font-semibold text-[#cf5427] hover:bg-[#EB6D3D] hover:text-[#20283a] transition-colors"
                 >
                   <span>{t("nav.shop", "Shop")}</span> <ArrowUpRight size={12} />
                 </Link>
@@ -647,19 +660,53 @@ export const Navbar = () => {
           ))}
         </nav>
 
-        {/* DESKTOP SEARCH BAR */}
-        <div className="hidden min-w-0 flex-1 justify-center lg:flex">
-          <SearchBar
-            value={searchQuery}
-            onChange={setSearchQuery}
-            onSubmit={handleSearch}
-            placeholder={searchPlaceholder}
-            className="w-full max-w-[400px]"
-          />
-        </div>
-
         {/* Right Controls */}
         <div className="hidden shrink-0 items-center gap-2.5 lg:flex xl:gap-3">
+          <Link
+            href="/checkout"
+            onClick={closeAllMenus}
+            aria-label={`${t("nav.cart", "Cart")}, ${cartCount} ${t(
+              "nav.cart_items",
+              "items"
+            )}`}
+            title={t("nav.cart", "Cart")}
+            className={`relative flex h-9 items-center gap-2 rounded-full border px-3 text-[11px] font-semibold shadow-sm transition-colors duration-300 ${accountBtnClass}`}
+          >
+            <ShoppingCart size={15} />
+            <span>{t("nav.cart", "Cart")}</span>
+            <span className="flex min-w-5 items-center justify-center rounded-full bg-[#F47822] px-1.5 py-0.5 text-[10px] font-bold text-white">
+              {cartCount > 99 ? "99+" : cartCount}
+            </span>
+          </Link>
+
+          <button
+            type="button"
+            onClick={() => setSearchOpen((open) => !open)}
+            className={`flex h-9 w-9 items-center justify-center rounded-full border shadow-sm transition-colors duration-300 ${mobileCircleClass}`}
+            aria-label={searchOpen ? "Close search" : "Open search"}
+            aria-expanded={searchOpen}
+            aria-controls="navbar-search-panel"
+            title={searchOpen ? "Close search" : "Search"}
+          >
+            {searchOpen ? <X size={15} /> : <Search size={15} />}
+          </button>
+
+          <button
+            type="button"
+            onClick={toggleTheme}
+            className={`flex h-9 w-9 items-center justify-center rounded-full border shadow-sm transition-colors duration-300 ${mobileCircleClass}`}
+            aria-label={t(
+              theme === "dark" ? "nav.switch_to_light" : "nav.switch_to_dark",
+              theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
+            )}
+            title={t(
+              theme === "dark" ? "nav.switch_to_light" : "nav.switch_to_dark",
+              theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
+            )}
+          >
+            {theme === "dark" ? <Sun size={15} /> : <Moon size={15} />}
+          </button>
+
           {/* Language Switcher */}
           <div
             className={`flex h-9 items-center rounded-full border p-0.5 shadow-sm transition-colors duration-300 ${langWrapClass}`}
@@ -673,7 +720,7 @@ export const Navbar = () => {
               onClick={() => setLanguage("en")}
               className={`flex h-7 min-w-[34px] items-center justify-center rounded-full px-2 text-[10px] font-bold transition-all duration-200 ${
                 language === "en"
-                  ? "bg-[#e0a83c] text-[#1a1410] shadow-sm"
+                  ? "bg-[#EB6D3D] text-[#20283a] shadow-sm"
                   : langIdleClass
               }`}
               aria-label="Switch to English"
@@ -687,7 +734,7 @@ export const Navbar = () => {
               style={{ fontFamily: ETHIOPIC_FONT }}
               className={`flex h-7 min-w-[34px] items-center justify-center rounded-full px-2 text-[11px] font-bold transition-all duration-200 ${
                 language === "am"
-                  ? "bg-[#e0a83c] text-[#1a1410] shadow-sm"
+                  ? "bg-[#EB6D3D] text-[#20283a] shadow-sm"
                   : langIdleClass
               }`}
               aria-label="Switch to Amharic"
@@ -767,6 +814,21 @@ export const Navbar = () => {
                   </div>
                 </Link>
 
+                <Link
+                  href="/orders"
+                  onClick={closeAllMenus}
+                  className={dropdownItemClass}
+                >
+                  <span className={dropdownIconClass}>
+                    <ShoppingBag className="h-3.5 w-3.5" />
+                  </span>
+                  <div>
+                    <span className="font-semibold text-[#1a1410] text-[10px]">
+                      {t("nav.orders", "My Orders")}
+                    </span>
+                  </div>
+                </Link>
+
                 {isAdmin && (
                   <Link
                     href="/admin/dashboard"
@@ -807,7 +869,7 @@ export const Navbar = () => {
                 onClick={() => setDropdownOpen((prev) => !prev)}
                 aria-haspopup="menu"
                 aria-expanded={dropdownOpen}
-                className="flex h-9 items-center gap-2 whitespace-nowrap rounded-full border border-[#d9d3c8] bg-white px-4 text-[12px] font-semibold text-[#1a1410] shadow-sm transition-colors hover:bg-[#faf6ef] hover:border-[#e0a83c]/60"
+                className="flex h-9 items-center gap-2 whitespace-nowrap rounded-full border border-[#d9d3c8] bg-white px-4 text-[12px] font-semibold text-[#1a1410] shadow-sm transition-colors hover:bg-[#faf6ef] hover:border-[#EB6D3D]/60"
               >
                 <User size={14} />
                 <span>{t("nav.sign_in", "Sign In")}</span>
@@ -846,6 +908,35 @@ export const Navbar = () => {
 
         {/* Mobile Menu Controls */}
         <div className="flex items-center gap-2 lg:hidden">
+          <Link
+            href="/checkout"
+            onClick={closeAllMenus}
+            aria-label={`${t("nav.cart", "Cart")}, ${cartCount} ${t(
+              "nav.cart_items",
+              "items"
+            )}`}
+            className={`relative flex h-8 w-8 items-center justify-center rounded-full border transition-colors duration-300 ${mobileCircleClass}`}
+          >
+            <ShoppingCart size={14} />
+            {cartCount > 0 && (
+              <span className="absolute -right-1 -top-1 flex h-4 min-w-4 items-center justify-center rounded-full bg-[#F47822] px-1 text-[9px] font-bold text-white">
+                {cartCount > 99 ? "99+" : cartCount}
+              </span>
+            )}
+          </Link>
+          <button
+            type="button"
+            onClick={() => {
+              setSearchOpen((open) => !open);
+              setMenuOpen(false);
+            }}
+            className={`flex h-8 w-8 items-center justify-center rounded-full border transition-colors duration-300 ${mobileCircleClass}`}
+            aria-label={searchOpen ? "Close search" : "Open search"}
+            aria-expanded={searchOpen}
+            aria-controls="navbar-search-panel"
+          >
+            {searchOpen ? <X size={14} /> : <Search size={14} />}
+          </button>
           <button
             type="button"
             onClick={() => setLanguage(language === "en" ? "am" : "en")}
@@ -858,6 +949,22 @@ export const Navbar = () => {
           </button>
 
           <button
+            type="button"
+            onClick={toggleTheme}
+            className={`flex h-8 w-8 items-center justify-center rounded-full border transition-colors duration-300 ${mobileCircleClass}`}
+            aria-label={t(
+              theme === "dark" ? "nav.switch_to_light" : "nav.switch_to_dark",
+              theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
+            )}
+            title={t(
+              theme === "dark" ? "nav.switch_to_light" : "nav.switch_to_dark",
+              theme === "dark" ? "Switch to light mode" : "Switch to dark mode"
+            )}
+          >
+            {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+          </button>
+
+          <button
             onClick={() => setMenuOpen(!menuOpen)}
             className={`flex h-8 w-8 items-center justify-center rounded-full border transition-colors duration-300 ${mobileCircleClass}`}
             aria-label="Toggle navigation menu"
@@ -866,6 +973,21 @@ export const Navbar = () => {
           </button>
         </div>
       </div>
+
+      {searchOpen && (
+        <div
+          id="navbar-search-panel"
+          className="absolute inset-x-0 top-full z-50 bg-transparent px-5 py-3"
+        >
+          <SearchBar
+            value={searchQuery}
+            onChange={setSearchQuery}
+            onSubmit={handleSearch}
+            placeholder={searchPlaceholder}
+            className="mx-auto w-full max-w-2xl lg:max-w-[480px]"
+          />
+        </div>
+      )}
 
       {/* Mobile Drawer */}
       <div
@@ -876,17 +998,6 @@ export const Navbar = () => {
         }`}
       >
         <nav className="p-2">
-          {/* Mobile Search */}
-          <div className="mb-3 px-1 pt-1">
-            <SearchBar
-              value={searchQuery}
-              onChange={setSearchQuery}
-              onSubmit={handleSearch}
-              placeholder={searchPlaceholder}
-              className="w-full"
-            />
-          </div>
-
           {/* Mobile Language Selector */}
           <div className="flex items-center justify-between px-3 py-2 mb-1.5 rounded-lg bg-white/70 border border-[#d9d3c8]">
             <span className="flex items-center gap-2 text-xs font-semibold text-[#1a1410]/80">
@@ -898,7 +1009,7 @@ export const Navbar = () => {
                 onClick={() => setLanguage("en")}
                 className={`px-2.5 py-1 rounded-md text-[10px] font-bold transition-all ${
                   language === "en"
-                    ? "bg-[#e0a83c] text-[#1a1410]"
+                    ? "bg-[#EB6D3D] text-[#20283a]"
                     : "text-[#1a1410]/60 hover:text-[#1a1410] bg-white border border-[#eadfce]"
                 }`}
               >
@@ -909,7 +1020,7 @@ export const Navbar = () => {
                 style={{ fontFamily: ETHIOPIC_FONT }}
                 className={`px-2.5 py-1 rounded-md text-[10px] font-bold transition-all ${
                   language === "am"
-                    ? "bg-[#e0a83c] text-[#1a1410]"
+                    ? "bg-[#EB6D3D] text-[#20283a]"
                     : "text-[#1a1410]/60 hover:text-[#1a1410] bg-white border border-[#eadfce]"
                 }`}
               >
@@ -1006,6 +1117,20 @@ export const Navbar = () => {
             </Link>
           ))}
 
+          <Link
+            href="/checkout"
+            onClick={closeMenu}
+            className="flex items-center justify-between rounded-lg px-3 py-2 text-xs font-semibold text-[#1a1410]/90 hover:bg-white/70"
+          >
+            <span className="flex items-center gap-2">
+              <ShoppingCart size={14} className="text-[#b8841f]" />
+              {t("nav.cart", "Cart")}
+            </span>
+            <span className="rounded-full bg-[#F47822] px-2 py-0.5 text-[10px] font-bold text-white">
+              {cartCount > 99 ? "99+" : cartCount}
+            </span>
+          </Link>
+
           {isAuthenticated ? (
             <div className="mt-2 border-t border-black/10 pt-2 space-y-1">
               <div className="flex items-center gap-2 rounded-lg bg-white/70 p-2 border border-[#d9d3c8] mb-1.5">
@@ -1036,6 +1161,17 @@ export const Navbar = () => {
               >
                 <span className="flex items-center gap-2">
                   <User size={14} /> {t("nav.profile", "Profile")}
+                </span>
+                <ArrowUpRight size={14} className="text-[#1a1410]/40" />
+              </Link>
+
+              <Link
+                href="/orders"
+                onClick={closeMenu}
+                className="flex items-center justify-between rounded-lg px-3 py-1.5 text-xs text-[#1a1410]/90 hover:bg-white/70 hover:text-[#1a1410]"
+              >
+                <span className="flex items-center gap-2">
+                  <ShoppingBag size={14} /> {t("nav.orders", "My Orders")}
                 </span>
                 <ArrowUpRight size={14} className="text-[#1a1410]/40" />
               </Link>

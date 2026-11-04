@@ -207,8 +207,14 @@ export const uploadApi = {
   uploadCategoryImage: (file: File) =>
     postFile('/api/upload/category', file, 'image'),
 
+  uploadArticleImage: (file: File) =>
+    postFile('/api/upload/blog', file, 'image'),
+
   uploadAvatar: (file: File) =>
     postFile('/api/upload/avatar', file, 'avatar'),
+
+  uploadPaymentProof: (file: File) =>
+    postFile('/api/upload/payment', file, 'image'),
 
   uploadPdf: (file: File) => postFile('/api/upload/pdf', file, 'file'),
 

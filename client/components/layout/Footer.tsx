@@ -16,46 +16,24 @@ function useMounted() {
   return useSyncExternalStore(subscribe, getClientSnapshot, getServerSnapshot);
 }
 
-// ============================================================
-// Logo resolver — Cloudinary ONLY
-//   • Full https URL      → as-is
-//   • res.cloudinary.com  → prefixed with https://
-//   • Anything else       → null (caller shows building icon)
-// ============================================================
-function resolveLogo(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  const s = raw.trim();
-  if (!s) return null;
-
-  if (s.startsWith("data:")) return s;
-  if (s.startsWith("http://") || s.startsWith("https://")) return s;
-  if (s.startsWith("res.cloudinary.com/")) return `https://${s}`;
-
-  return null;
-}
-
 export const Footer = () => {
   const pathname = usePathname();
   const isAdminRoute = pathname?.startsWith("/admin") || false;
   const { settings } = useSettings();
   const { t } = useLanguage();
 
-  // ✅ Rebranded defaults — Alemayehu Plastic Manufacturing
-  const DEFAULT_EMAIL = "info@alemayehplastic.com";
-  const DEFAULT_PHONE = "+251 900 000 000";
+  // Brand defaults
+  const CONTACT_EMAIL = "suport@dreammoredigitals.com";
+  const CONTACT_PHONE = "+251 993 132 122";
   const DEFAULT_ADDRESS = "Bahir Dar, Ethiopia";
-  const DEFAULT_SITE_NAME = "Alemayehu Plastic Manufacturing";
-  const DEFAULT_SITE_DESCRIPTION = "PLASTIC MANUFACTURING";
+  const DEFAULT_SITE_NAME = "Dream More Affiliate Market";
+  const DEFAULT_SITE_DESCRIPTION = "RIGHT WORK AT RIGHT TIME";
 
   const mounted = useMounted();
 
   // Only use settings values after client-side mount
-  const contactEmail = mounted
-    ? settings?.contactEmail || DEFAULT_EMAIL
-    : DEFAULT_EMAIL;
-  const contactPhone = mounted
-    ? settings?.contactPhone || DEFAULT_PHONE
-    : DEFAULT_PHONE;
+  const contactEmail = CONTACT_EMAIL;
+  const contactPhone = CONTACT_PHONE;
   const contactAddress = mounted
     ? settings?.contactAddress || DEFAULT_ADDRESS
     : DEFAULT_ADDRESS;
@@ -68,9 +46,6 @@ export const Footer = () => {
   const enableWhatsApp = mounted ? settings?.enableWhatsApp || false : false;
   const whatsAppNumber = mounted ? settings?.whatsAppNumber || "" : "";
 
-  // ✅ Cloudinary-only logo — resolves to null if unset or invalid
-  const logoUrl = mounted ? resolveLogo(settings?.logo) : null;
-
   if (isAdminRoute) {
     return null;
   }
@@ -81,25 +56,18 @@ export const Footer = () => {
     const showDescription = mounted && siteDescription;
 
     return (
-      <footer className="bg-[#1a1410] text-white">
+      <footer className="bg-[#20283a] text-white">
         <div className="mx-auto grid w-[min(1180px,calc(100%-48px))] grid-cols-[2fr_1fr_1.4fr_1fr] gap-11 py-16 max-lg:grid-cols-3 max-sm:grid-cols-2">
           <div className="max-sm:col-span-2">
             <Link href="/" className="mb-5 flex items-center gap-3">
-              <div className="relative h-10 w-10 rounded-full overflow-hidden flex items-center justify-center bg-[#2a1f18] border border-[#e0a83c]/25 shadow-sm flex-shrink-0">
-                {logoUrl ? (
-                  <Image
-                    src={logoUrl}
-                    alt={siteName}
-                    width={40}
-                    height={40}
-                    className="h-full w-full object-cover"
-                    unoptimized
-                  />
-                ) : (
-                  <span className="text-[#e0a83c] font-serif text-lg">
-                    {siteName.charAt(0).toUpperCase()}
-                  </span>
-                )}
+              <div className="relative h-12 w-12 overflow-hidden rounded-full bg-white shadow-sm flex-shrink-0">
+                <Image
+                  src="/banners/photo.jpg"
+                  alt={siteName}
+                  width={48}
+                  height={48}
+                  className="h-full w-full object-contain"
+                />
               </div>
 
               <span className="grid gap-[3px] leading-none">
@@ -114,19 +82,19 @@ export const Footer = () => {
               </span>
             </Link>
 
-            <p className="text-[11px] leading-[1.8] text-white/40">
-              {t("footer.tagline_1", "Quality plastic. Built to last.")}
+            <p className="text-[11px] leading-[1.8] text-white/60">
+              {t("footer.tagline_1", "Discover more. Shop with confidence.")}
               <br />
               {t(
                 "footer.tagline_2",
-                "A shorter journey from our factory to your hands."
+                "A simpler way to find products from across the marketplace."
               )}
             </p>
           </div>
 
           {/* Explore column */}
           <div className="grid content-start gap-2">
-            <h4 className="mb-2 text-[9px] font-bold uppercase tracking-[0.15em] text-[#e0a83c]">
+            <h4 className="mb-2 text-[9px] font-bold uppercase tracking-[0.15em] text-[#F47822]">
               {t("footer.explore", "Explore")}
             </h4>
 
@@ -157,11 +125,18 @@ export const Footer = () => {
             >
               {t("footer.shop", "Shop")}
             </Link>
+
+            <Link
+              href="/articles"
+              className="text-[11px] text-white/60 transition hover:text-white"
+            >
+              {t("nav.articles", "Articles")}
+            </Link>
           </div>
 
           {/* Contact column */}
           <div className="grid content-start gap-2">
-            <h4 className="mb-2 text-[9px] font-bold uppercase tracking-[0.15em] text-[#e0a83c]">
+            <h4 className="mb-2 text-[9px] font-bold uppercase tracking-[0.15em] text-[#F47822]">
               {t("footer.contact", "Contact")}
             </h4>
 
@@ -232,7 +207,7 @@ export const Footer = () => {
           </span>
 
           <span>
-            {t("footer.built_around", "Built around quality manufacturing.")}
+            {t("footer.built_around", "A digital marketplace for discovering products.")}
           </span>
         </div>
       </footer>

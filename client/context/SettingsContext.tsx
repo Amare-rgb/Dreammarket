@@ -44,15 +44,15 @@ export interface SettingsData {
 }
 
 // ============================================================
-// Defaults — Alemayehu Plastic Manufacturing
+// Dream More brand defaults
 // ============================================================
 export const defaultSettings: SettingsData = {
-  siteName: "Alemayehu Plastic Manufacturing",
-  siteDescription: "Quality plastic products manufactured in Ethiopia",
-  storeName: "Alemayehu Plastic Manufacturing",
+  siteName: "Dream More Affiliate Market",
+  siteDescription: "Discover trusted products and great deals.",
+  storeName: "Dream More Affiliate Market",
   currency: "ETB",
   logo: "",
-  themeColor: "#e0a83c",
+  themeColor: "#F47822",
   contactEmail: "info@alemayehplastic.com",
   contactPhone: "+251 900 000 000",
   contactAddress: "Bahir Dar, Ethiopia",
@@ -66,6 +66,33 @@ export const defaultSettings: SettingsData = {
   supportEmail: "support@alemayehplastic.com",
   infoEmail: "info@alemayehplastic.com",
 };
+
+function normalizeBrandSettings(raw: Partial<SettingsData>): SettingsData {
+  const settings = { ...defaultSettings, ...raw };
+  return {
+    ...settings,
+    siteName:
+      settings.siteName === "Alemayehu Plastic Manufacturing"
+        ? defaultSettings.siteName
+        : settings.siteName,
+    siteDescription:
+      settings.siteDescription ===
+      "Quality plastic products manufactured in Ethiopia"
+        ? defaultSettings.siteDescription
+        : settings.siteDescription,
+    storeName:
+      settings.storeName === "Alemayehu Plastic Manufacturing"
+        ? defaultSettings.storeName
+        : settings.storeName,
+    themeColor:
+      ["#e0a83c", "#f3733c", "#d85d32", "#eb6d3d"].includes(
+        settings.themeColor?.toLowerCase()
+      )
+        ? defaultSettings.themeColor
+        : settings.themeColor,
+    logo: getFullLogoUrl(settings.logo),
+  };
+}
 
 // ============================================================
 // Context
@@ -120,11 +147,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       if (!cached) return defaultSettings;
 
       const parsed = JSON.parse(cached);
-      return {
-        ...defaultSettings,
-        ...parsed,
-        logo: getFullLogoUrl(parsed?.logo),
-      };
+      return normalizeBrandSettings(parsed);
     } catch (e) {
       console.error("Error reading cached settings:", e);
       return defaultSettings;
@@ -188,16 +211,15 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       const data = await response.json();
       const settingsData = data.data || data;
 
-      const updatedSettings: SettingsData = {
-        ...defaultSettings,
+      const updatedSettings: SettingsData = normalizeBrandSettings({
         ...settingsData,
-        logo: getFullLogoUrl(settingsData.logo),
-        emergencyPhone:
-          settingsData.emergencyPhone || defaultSettings.emergencyPhone,
-        supportEmail:
-          settingsData.supportEmail || defaultSettings.supportEmail,
-        infoEmail: settingsData.infoEmail || defaultSettings.infoEmail,
-      };
+      });
+      updatedSettings.emergencyPhone =
+        settingsData.emergencyPhone || defaultSettings.emergencyPhone;
+      updatedSettings.supportEmail =
+        settingsData.supportEmail || defaultSettings.supportEmail;
+      updatedSettings.infoEmail =
+        settingsData.infoEmail || defaultSettings.infoEmail;
 
       setSettings(updatedSettings);
       setError(null);
@@ -236,11 +258,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       const cached = localStorage.getItem("site_settings");
       if (cached) {
         const parsed = JSON.parse(cached);
-        setSettings({
-          ...defaultSettings,
-          ...parsed,
-          logo: getFullLogoUrl(parsed?.logo),
-        });
+        setSettings(normalizeBrandSettings(parsed));
       } else {
         setSettings({ ...defaultSettings });
       }
@@ -310,11 +328,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       if (e.key === "site_settings" && e.newValue && isMountedRef.current) {
         try {
           const parsed = JSON.parse(e.newValue);
-          setSettings({
-            ...defaultSettings,
-            ...parsed,
-            logo: getFullLogoUrl(parsed?.logo),
-          });
+          setSettings(normalizeBrandSettings(parsed));
           setLoading(false);
         } catch {
           // ignore parse errors

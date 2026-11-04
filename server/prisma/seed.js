@@ -5,7 +5,7 @@ const bcrypt = require('bcryptjs');
 const prisma = new PrismaClient();
 
 async function main() {
-  console.log('🌱 Seeding Alemayehu Plastic Manufacturing...\n');
+  console.log('🌱 Seeding Dream More Affiliate Market...\n');
 
   // ========================================
   // 1. ADMIN USER
@@ -17,10 +17,10 @@ async function main() {
     update: {
       password: adminPassword,
       role: 'ADMIN',
-      name: 'Alemayehu Admin',
+      name: 'Dream More Admin',
     },
     create: {
-      name: 'Alemayehu Admin',
+      name: 'Dream More Admin',
       email: 'admin@alemayehplastic.com',
       password: adminPassword,
       role: 'ADMIN',
@@ -126,29 +126,29 @@ async function main() {
   await prisma.settings.upsert({
     where: { id: 'default-settings' },
     update: {
-      siteName: 'Alemayehu Plastic Manufacturing',
-      siteDescription: 'Quality plastic products manufactured in Ethiopia',
+      siteName: 'Dream More Affiliate Market',
+      siteDescription: 'Discover trusted products and great deals.',
       adminEmail: 'admin@alemayehplastic.com',
-      storeName: 'Alemayehu Plastic Manufacturing',
+      storeName: 'Dream More Affiliate Market',
       storeEmail: 'info@alemayehplastic.com',
       currency: 'ETB',
       taxRate: 15,
-      themeColor: '#e0a83c',
+      themeColor: '#F47822',
     },
     create: {
       id: 'default-settings',
-      siteName: 'Alemayehu Plastic Manufacturing',
-      siteDescription: 'Quality plastic products manufactured in Ethiopia',
+      siteName: 'Dream More Affiliate Market',
+      siteDescription: 'Discover trusted products and great deals.',
       adminEmail: 'admin@alemayehplastic.com',
       adminPhone: '+251 900 000 000',
       address: 'Bahir Dar, Ethiopia',
-      storeName: 'Alemayehu Plastic Manufacturing',
+      storeName: 'Dream More Affiliate Market',
       storeEmail: 'info@alemayehplastic.com',
       storePhone: '+251 900 000 000',
       storeAddress: 'Bahir Dar, Ethiopia',
       currency: 'ETB',
       taxRate: 15,
-      themeColor: '#e0a83c',
+      themeColor: '#F47822',
       contactEmail: 'support@alemayehplastic.com',
       contactPhone: '+251 900 000 000',
       contactAddress: 'Bahir Dar, Ethiopia',

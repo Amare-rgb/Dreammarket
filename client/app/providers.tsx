@@ -11,6 +11,7 @@ import { useRouter } from "next/navigation";
 import axios, { AxiosError, InternalAxiosRequestConfig } from "axios";
 import { SettingsProvider, useSettings } from "@/context/SettingsContext";
 import { LanguageProvider, useLanguage } from "@/context/LanguageContext";
+import { ThemeProvider } from "@/context/ThemeContext";
 
 // ============================================================
 // API base — strip trailing slash
@@ -408,7 +409,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
       // ✅ Do NOT set Content-Type manually — axios sets
       //    multipart/form-data with the correct boundary.
-      // ✅ Endpoint: /api/upload/avatar → Cloudinary alemayehu-plastic/avatars/
+      // ✅ Endpoint: /api/upload/avatar → Cloudinary avatars folder
       const uploadRes = await api.post("/api/upload/avatar", formData, {
         timeout: 120000,
       });
@@ -474,10 +475,12 @@ export {
 // ============================================================
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
-    <LanguageProvider>
-      <SettingsProvider>
-        <AuthProvider>{children}</AuthProvider>
-      </SettingsProvider>
-    </LanguageProvider>
+    <ThemeProvider>
+      <LanguageProvider>
+        <SettingsProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </SettingsProvider>
+      </LanguageProvider>
+    </ThemeProvider>
   );
 }

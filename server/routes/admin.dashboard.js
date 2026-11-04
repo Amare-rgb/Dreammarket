@@ -5,10 +5,7 @@ const prisma = require('../lib/prisma');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 // ═══════════════════════════════════════════════════════════
-// Order / OrderItem / Article / Cart / CartItem models were
-// REMOVED from the Prisma schema. This file no longer queries
-// them. The dashboard shows: total products, total customers,
-// and recent products.
+// Dashboard overview for marketplace products, customers, orders, and articles.
 // ═══════════════════════════════════════════════════════════
 
 // ============================================================
@@ -19,12 +16,45 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
     console.log('🔍 Fetching dashboard data...');
 
     // ---------------------------------------------------------
-    // 1. BASIC COUNTS (no orders — model removed)
+    // 1. BASIC COUNTS
     // ---------------------------------------------------------
-    const [totalProducts, totalCustomers] = await Promise.all([
+    const [totalProducts, totalCustomers, availableTables] = await Promise.all([
       prisma.product.count(),
       prisma.user.count({ where: { role: 'USER' } }),
+      prisma.$queryRaw`
+        SELECT
+          to_regclass('public.orders') IS NOT NULL AS "orders",
+          to_regclass('public.articles') IS NOT NULL AS "articles"
+      `,
     ]);
+
+    const tables = availableTables[0];
+    const [orderCounts, totalArticles] = await Promise.all([
+      tables.orders
+        ? prisma.$queryRaw`
+            SELECT
+              COUNT(*)::int AS total,
+              COUNT(*) FILTER (WHERE status = 'PENDING')::int AS pending,
+              COALESCE(
+                SUM(total) FILTER (WHERE status <> 'CANCELLED'),
+                0
+              )::float8 AS revenue
+            FROM public.orders
+          `
+        : Promise.resolve(null),
+      tables.articles
+        ? prisma.$queryRaw`SELECT COUNT(*)::int AS total FROM public.articles`
+        : Promise.resolve(null),
+    ]);
+    const totalOrders = orderCounts?.[0]?.total ?? null;
+    const pendingOrders = orderCounts?.[0]?.pending ?? null;
+    const salesRevenue =
+      orderCounts === null ? null : Number(orderCounts[0]?.revenue ?? 0);
+    const articleCount = totalArticles?.[0]?.total ?? null;
+    const unavailableStats = [
+      ...(!tables.orders ? ['orders', 'pendingOrders'] : []),
+      ...(!tables.articles ? ['articles'] : []),
+    ];
 
     // ---------------------------------------------------------
     // 2. RECENT PRODUCTS (last 5, newest first)
@@ -39,7 +69,7 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
         discountPrice: true,
         stock: true,
         sku: true,
-        images: true, // String[] — Cloudinary URLs
+        images: true, // String[] — image URLs
         createdAt: true,
         category: {
           select: { id: true, name: true, slug: true },
@@ -76,7 +106,12 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
       stats: {
         products: totalProducts,
         customers: totalCustomers,
+        orders: totalOrders,
+        pendingOrders,
+        salesRevenue,
+        articles: articleCount,
       },
+      unavailableStats,
       recentProducts: formattedRecentProducts,
     });
   } catch (error) {

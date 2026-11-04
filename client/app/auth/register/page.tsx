@@ -185,7 +185,7 @@ export default function RegisterPage() {
             <p className="mt-1.5 text-xs leading-5 text-[#7a6a58]">
               {t(
                 "auth.register.form_subtitle",
-                "Create your account in a few simple steps and start sourcing quality plastic products."
+                "Create your account in a few simple steps and start exploring the digital marketplace."
               )}
             </p>
           </div>
@@ -438,7 +438,7 @@ export default function RegisterPage() {
             <button
               type="submit"
               disabled={!passwordsMatch || isLoading}
-              className="flex h-10 w-full items-center justify-center rounded-xl bg-[#1a1410] px-4 text-xs font-bold text-[#faf6ee] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#2a1f18] hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
+              className="flex h-10 w-full items-center justify-center rounded-xl bg-[#EB6D3D] px-4 text-xs font-bold text-[#20283a] transition-all duration-300 hover:-translate-y-0.5 hover:bg-[#cf5427] hover:text-white hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50"
             >
               {isLoading ? (
                 <>

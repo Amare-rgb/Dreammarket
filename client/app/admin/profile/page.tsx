@@ -517,7 +517,7 @@ export default function AdminProfilePage() {
           <Shield className="w-5 h-5 text-yellow-600 mt-0.5" />
           <div>
             <h4 className="text-sm font-semibold text-yellow-800">
-              Admin Account — Alemayehu Plastic Manufacturing
+              Admin Account — Dream More Affiliate Market
             </h4>
             <p className="text-xs text-yellow-700 mt-1">
               You have full administrative access to manage products,

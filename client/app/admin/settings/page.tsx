@@ -263,14 +263,14 @@ interface ApiErrorResponse {
 // Defaults
 // ═══════════════════════════════════════════════════════════
 const defaultSettings: SettingsData = {
-  siteName: "Alemayehu Plastic Manufacturing",
-  siteDescription: "Quality plastic products manufactured in Ethiopia",
+  siteName: "Dream More Affiliate Market",
+  siteDescription: "Discover trusted products and great deals.",
   adminEmail: "admin@alemayehplastic.com",
   adminPhone: "+251 900 000 000",
   address: "Bahir Dar, Ethiopia",
   timezone: "Africa/Addis_Ababa",
   dateFormat: "DD/MM/YYYY",
-  storeName: "Alemayehu Plastic Manufacturing",
+  storeName: "Dream More Affiliate Market",
   storeEmail: "info@alemayehplastic.com",
   storePhone: "+251 900 000 000",
   storeAddress: "Bahir Dar, Ethiopia",
@@ -284,7 +284,7 @@ const defaultSettings: SettingsData = {
   contactAddress: "Bahir Dar, Ethiopia",
   contactHours: "Mon-Sat: 8:00 AM - 6:00 PM",
   enableContactForm: true,
-  themeColor: "#e0a83c",
+  themeColor: "#F47822",
   darkMode: false,
   emailNotifications: true,
   orderNotifications: true,
@@ -807,7 +807,7 @@ const SettingsPage: React.FC = () => {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center space-x-2 px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+          className="flex items-center space-x-2 px-4 py-2 bg-[#EB6D3D] text-white rounded-lg hover:bg-[#cf5427] disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
         >
           {saving ? (
             <>
@@ -915,7 +915,7 @@ const SettingsPage: React.FC = () => {
                           disabled={
                             savingLogo || (!logoFile && !logoToDelete)
                           }
-                          className="flex items-center space-x-2 px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+                          className="flex items-center space-x-2 px-4 py-2 bg-[#EB6D3D] text-white rounded-lg hover:bg-[#cf5427] disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
                         >
                           {savingLogo ? (
                             <>
@@ -1319,7 +1319,7 @@ const SettingsPage: React.FC = () => {
                   <button
                     type="button"
                     onClick={handleChangePassword}
-                    className="px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 transition-colors text-sm"
+                    className="px-4 py-2 bg-[#EB6D3D] text-white rounded-lg hover:bg-[#cf5427] transition-colors text-sm"
                   >
                     Change Password
                   </button>
@@ -1367,7 +1367,7 @@ const SettingsPage: React.FC = () => {
         <button
           onClick={handleSave}
           disabled={saving}
-          className="flex items-center space-x-2 px-4 py-2 bg-yellow-500 text-white rounded-lg hover:bg-yellow-600 disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
+          className="flex items-center space-x-2 px-4 py-2 bg-[#EB6D3D] text-white rounded-lg hover:bg-[#cf5427] disabled:opacity-50 disabled:cursor-not-allowed transition-colors text-sm"
         >
           {saving ? (
             <>

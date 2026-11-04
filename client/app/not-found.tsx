@@ -38,7 +38,7 @@ export default function NotFound() {
         <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
           <Link
             href="/"
-            className="inline-flex h-12 w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-[#1a1410] px-6 text-sm font-bold text-white transition hover:bg-[#2a1f18] hover:text-[#e0a83c]"
+            className="inline-flex h-12 w-full sm:w-auto items-center justify-center gap-2 rounded-xl bg-[#EB6D3D] px-6 text-sm font-bold text-[#20283a] transition hover:bg-[#cf5427] hover:text-white"
           >
             <Home size={16} />
             Back to Home
@@ -46,7 +46,7 @@ export default function NotFound() {
 
           <Link
             href="/shop"
-            className="inline-flex h-12 w-full sm:w-auto items-center justify-center gap-2 rounded-xl border border-[#3a2a1e]/15 bg-white px-6 text-sm font-bold text-[#1a1410] transition hover:border-[#b98a3e] hover:text-[#b98a3e]"
+            className="inline-flex h-12 w-full sm:w-auto items-center justify-center gap-2 rounded-xl border border-[#EB6D3D]/50 bg-white px-6 text-sm font-bold text-[#cf5427] transition hover:border-[#EB6D3D] hover:bg-[#EB6D3D] hover:text-[#20283a]"
           >
             <ShoppingBag size={16} />
             Browse Products

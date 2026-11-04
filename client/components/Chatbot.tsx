@@ -266,14 +266,14 @@ const Chatbot: FC<ChatbotProps> = ({
     const welcomeMessages: ChatMessage[] = [
       {
         id: `welcome-${Date.now()}-1`,
-        text: "👋 Hello! I'm your Alemayehu Plastic assistant. How can I help you today?",
+        text: "👋 Hello! I'm your Dream More Affiliate Market assistant. How can I help you today?",
         sender: "bot",
         timestamp: new Date().toISOString(),
         isWelcome: true,
       },
       {
         id: `welcome-${Date.now()}-2`,
-        text: "I can help you find plastic products, check prices, or assist with bulk orders. What would you like to know?",
+        text: "I can help you explore marketplace listings, compare product details, or get support. What would you like to know?",
         sender: "bot",
         timestamp: new Date().toISOString(),
         isWelcome: true,
@@ -545,7 +545,7 @@ const Chatbot: FC<ChatbotProps> = ({
             </div>
             <div className="min-w-0">
               <h3 className="font-semibold text-xs truncate">
-                Alemayehu Plastic Assistant
+                Dream More Assistant
               </h3>
               <div className="flex items-center gap-1 text-[10px] opacity-90">
                 <span className="w-1.5 h-1.5 bg-[#e0a83c] rounded-full animate-pulse flex-shrink-0"></span>
@@ -587,7 +587,7 @@ const Chatbot: FC<ChatbotProps> = ({
                 Start a conversation with our AI assistant
               </p>
               <p className="text-[10px] text-center mt-1">
-                Ask about plastic products, pricing, or bulk orders
+                Ask about products, listings, or shopping support
               </p>
             </div>
           ) : (
@@ -705,7 +705,7 @@ const Chatbot: FC<ChatbotProps> = ({
               ${
                 !input.trim() || isLoading
                   ? "bg-gray-300 dark:bg-gray-600 text-gray-500 dark:text-gray-400 cursor-not-allowed"
-                  : "bg-[#1a1410] text-[#e0a83c] hover:bg-[#2a1f18] active:scale-95 shadow-lg shadow-[#1a1410]/20"
+                  : "bg-[#EB6D3D] text-[#20283a] hover:bg-[#cf5427] hover:text-white active:scale-95 shadow-lg shadow-[#EB6D3D]/20"
               }
             `}
             aria-label="Send message"

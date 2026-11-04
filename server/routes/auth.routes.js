@@ -4,9 +4,14 @@ const express = require('express');
 const bcrypt = require('bcryptjs');
 const router = express.Router();
 const prisma = require('../lib/prisma');
-const { generateToken } = require('../lib/auth');
+const {
+  generateToken,
+  generateResetToken,
+  verifyResetToken,
+} = require('../lib/auth');
 const { requireAuth } = require('../middleware/auth');
 const { sendWelcomeEmail } = require('../lib/email');
+const { sendPasswordResetEmail } = require('../jobs/email.jobs');
 
 // ============================================================
 // HELPERS & CONSTANTS
@@ -375,24 +380,30 @@ router.post('/forgot-password', async (req, res) => {
         .status(400)
         .json({ success: false, error: 'Email is required' });
     }
+    if (!EMAIL_REGEX.test(email)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Please enter a valid email address',
+      });
+    }
 
     const user = await prisma.user.findUnique({ where: { email } });
 
-    // Always respond with success to prevent user enumeration
     if (!user) {
-      console.log(`📧 Reset requested for unknown email: ${email}`);
       return res.json({
         success: true,
         message: 'If that email exists, reset instructions have been sent.',
       });
     }
 
-    console.log(`📧 Password reset requested for: ${email}`);
-    // TODO: Generate reset token + send email here.
+    const resetToken = generateResetToken(email, user.password);
+    runInBackground('Password reset email', () =>
+      sendPasswordResetEmail(email, user.name, resetToken)
+    );
 
     res.json({
       success: true,
-      message: 'Password reset instructions sent to your email',
+      message: 'If that email exists, reset instructions have been sent.',
     });
   } catch (error) {
     console.error('❌ Forgot password error:', error);
@@ -405,27 +416,18 @@ router.post('/forgot-password', async (req, res) => {
 // ============================================================
 // RESET PASSWORD
 // POST /api/auth/reset-password
-// ⚠️ DISABLED BY DEFAULT — requires RESET_PASSWORD_ENABLED=true in .env
-// and a valid reset token in the future. Without token verification,
-// this route would let anyone reset any user's password.
+// Reset token is signed, short-lived, and bound to the current password hash.
+// Updating the password invalidates the token, including for repeated use.
 // ============================================================
 router.post('/reset-password', async (req, res) => {
   try {
-    if (process.env.RESET_PASSWORD_ENABLED !== 'true') {
-      return res.status(403).json({
-        success: false,
-        error:
-          'Password reset is disabled. Please use the forgot-password flow.',
-      });
-    }
-
-    const email = normalizeEmail(req.body && req.body.email);
+    const token = typeof req.body?.token === 'string' ? req.body.token : '';
     const newPassword = req.body && req.body.newPassword;
 
-    if (!email || !newPassword) {
+    if (!token || !newPassword) {
       return res.status(400).json({
         success: false,
-        error: 'Email and new password are required',
+        error: 'A reset token and new password are required',
       });
     }
 
@@ -434,26 +436,34 @@ router.post('/reset-password', async (req, res) => {
       return res.status(400).json({ success: false, error: pwErr });
     }
 
-    const user = await prisma.user.findUnique({ where: { email } });
-
-    if (!user) {
-      return res
-        .status(404)
-        .json({ success: false, error: 'User not found' });
+    const decoded = verifyResetToken(token);
+    if (!decoded) {
+      return res.status(400).json({
+        success: false,
+        error: 'This password reset link is invalid or has expired.',
+      });
     }
 
-    if (user.role === 'ADMIN') {
-      return res.status(403).json({
+    const email = normalizeEmail(decoded.email);
+    const user = await prisma.user.findUnique({ where: { email } });
+    if (!user || !verifyResetToken(token, user.password)) {
+      return res.status(400).json({
         success: false,
-        error: 'Admin passwords must be reset by a system administrator.',
+        error: 'This password reset link is invalid or has expired.',
       });
     }
 
     const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
-    await prisma.user.update({
-      where: { id: user.id },
+    const updated = await prisma.user.updateMany({
+      where: { id: user.id, password: user.password },
       data: { password: hashedPassword },
     });
+    if (!updated.count) {
+      return res.status(400).json({
+        success: false,
+        error: 'This password reset link is invalid or has expired.',
+      });
+    }
 
     res.json({ success: true, message: 'Password reset successfully' });
   } catch (error) {

@@ -7,14 +7,13 @@ import Image from "next/image";
 import { usePathname, useRouter } from "next/navigation";
 import {
   LogOut,
-  Menu,
-  X,
   Bell,
   Search,
   ChevronDown,
+  ChevronLeft,
+  ChevronRight,
   User,
   Settings,
-  Building2,
 } from "lucide-react";
 import { useSettings } from "@/hooks/useSettings";
 
@@ -141,6 +140,8 @@ export default function AdminLayout({
   const navItems: NavItem[] = [
     { name: "Dashboard", href: "/admin/dashboard", section: "Main" },
     { name: "Products", href: "/admin/products", section: "Main" },
+    { name: "Orders", href: "/admin/orders", section: "Main" },
+    { name: "Articles", href: "/admin/articles", section: "Main" },
     { name: "Users", href: "/admin/users", section: "Main" },
     { name: "Settings", href: "/admin/settings", section: "Settings" },
   ];
@@ -229,7 +230,7 @@ export default function AdminLayout({
     return (
       <div className="min-h-screen bg-gray-50 flex items-center justify-center">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-yellow-500 mx-auto"></div>
+          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-[#EB6D3D] mx-auto"></div>
           <p className="mt-4 text-gray-600">Loading...</p>
         </div>
       </div>
@@ -241,49 +242,52 @@ export default function AdminLayout({
   }
 
   // ── Logo resolution ──────────────────────────────────────
-  const logoUrl = resolveLogo(settings?.logo);
-  const siteName = settings?.siteName || "Alemayehu Plastic";
+  const logoUrl = resolveLogo(settings?.logo) || "/banners/photo.jpg";
+  const siteName = settings?.siteName || "Dream More Affiliate Market";
 
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Sidebar */}
       <aside
+        id="admin-sidebar"
         className={`fixed top-0 left-0 z-50 h-full bg-white border-r border-gray-200 transition-all duration-300 ${
           sidebarOpen ? "w-64" : "w-20"
         }`}
       >
         {/* Logo */}
-        <div className="flex items-center justify-between h-16 px-4 border-b border-gray-200">
-          <Link href="/admin/dashboard" className="flex items-center space-x-2">
-            <div className="w-8 h-8 rounded-lg overflow-hidden flex-shrink-0 relative bg-yellow-50 border border-yellow-200 flex items-center justify-center">
-              {logoUrl ? (
-                <Image
-                  src={logoUrl}
-                  alt={siteName}
-                  width={32}
-                  height={32}
-                  className="w-full h-full object-cover"
-                  unoptimized
-                />
-              ) : (
-                <Building2 className="w-4 h-4 text-yellow-600" />
-              )}
+        <div className="flex items-center justify-between h-16 px-3 border-b border-[#cf5427] bg-[#EB6D3D]">
+          <Link
+            href="/admin/dashboard"
+            className="flex min-w-0 items-center space-x-2"
+          >
+            <div className="w-9 h-9 rounded-full overflow-hidden flex-shrink-0 relative bg-white flex items-center justify-center">
+              <Image
+                src={logoUrl}
+                alt={siteName}
+                width={36}
+                height={36}
+                className="w-full h-full object-cover"
+                unoptimized
+              />
             </div>
             {sidebarOpen && (
-              <span className="text-sm font-semibold text-gray-800 whitespace-nowrap truncate">
+              <span className="text-sm font-semibold text-white whitespace-nowrap truncate">
                 {siteName}
               </span>
             )}
           </Link>
           <button
-            onClick={() => setSidebarOpen(!sidebarOpen)}
-            className="p-1 rounded-lg hover:bg-gray-100 transition-colors"
-            aria-label="Toggle sidebar"
+            type="button"
+            onClick={() => setSidebarOpen((open) => !open)}
+            className="ml-2 flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-white transition-colors hover:bg-white/20 focus:outline-none focus-visible:ring-2 focus-visible:ring-white"
+            aria-label={sidebarOpen ? "Collapse sidebar" : "Expand sidebar"}
+            aria-expanded={sidebarOpen}
+            aria-controls="admin-sidebar"
           >
             {sidebarOpen ? (
-              <X className="w-5 h-5 text-gray-500" />
+              <ChevronLeft aria-hidden="true" className="h-5 w-5" />
             ) : (
-              <Menu className="w-5 h-5 text-gray-500" />
+              <ChevronRight aria-hidden="true" className="h-5 w-5" />
             )}
           </button>
         </div>
@@ -293,7 +297,7 @@ export default function AdminLayout({
           {Object.keys(groupedNavItems).map((section) => (
             <div key={section}>
               {sidebarOpen && (
-                <p className="text-xs font-semibold text-gray-400 uppercase tracking-wider mb-2">
+                <p className="text-xs font-semibold text-gray-500 uppercase tracking-wider mb-2">
                   {sectionLabels[section] ?? section}
                 </p>
               )}
@@ -307,10 +311,11 @@ export default function AdminLayout({
                     <Link
                       key={item.name}
                       href={item.href}
+                      title={!sidebarOpen ? item.name : undefined}
                       className={`flex items-center px-3 py-2.5 rounded-lg transition-all duration-200 ${
                         isActive
-                          ? "bg-yellow-50 text-yellow-700"
-                          : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
+                          ? "bg-[#EB6D3D]/15 text-[#9c3d1a]"
+                          : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                       } ${!sidebarOpen ? "justify-center" : ""}`}
                     >
                       <span
@@ -334,7 +339,7 @@ export default function AdminLayout({
           {/* Return to Store */}
           <Link
             href="/"
-            className={`flex items-center px-3 py-2.5 rounded-lg text-gray-600 hover:bg-gray-50 hover:text-gray-900 transition-all duration-200 ${
+            className={`flex items-center px-3 py-2.5 rounded-lg text-gray-700 hover:bg-gray-100 hover:text-gray-900 transition-all duration-200 ${
               sidebarOpen ? "justify-start" : "justify-center"
             }`}
           >
@@ -346,7 +351,7 @@ export default function AdminLayout({
           {/* Logout */}
           <button
             onClick={handleLogout}
-            className={`flex items-center px-3 py-2.5 w-full rounded-lg text-red-600 hover:bg-red-50 transition-all duration-200 mt-2 ${
+            className={`flex items-center px-3 py-2.5 w-full rounded-lg text-red-700 hover:bg-red-50 transition-all duration-200 mt-2 ${
               sidebarOpen ? "justify-start" : "justify-center"
             }`}
           >
@@ -382,7 +387,7 @@ export default function AdminLayout({
                 <input
                   type="text"
                   placeholder="Search in admin..."
-                  className="w-64 pl-9 pr-4 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all"
+                  className="w-64 pl-9 pr-4 py-1.5 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#EB6D3D]/40 focus:border-[#EB6D3D] transition-all"
                 />
               </div>
 
@@ -429,7 +434,7 @@ export default function AdminLayout({
                       ))}
                     </div>
                     <div className="p-2 border-t border-gray-200">
-                      <button className="w-full text-center text-sm text-yellow-600 hover:text-yellow-700 font-medium py-1">
+                      <button className="w-full text-center text-sm text-[#cf5427] hover:text-[#9c3d1a] font-medium py-1">
                         View All Notifications
                       </button>
                     </div>
@@ -444,7 +449,7 @@ export default function AdminLayout({
                   className="flex items-center space-x-3 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"
                   aria-label="Profile"
                 >
-                  <div className="w-8 h-8 rounded-full bg-yellow-500 flex items-center justify-center">
+                  <div className="w-8 h-8 rounded-full bg-[#EB6D3D] flex items-center justify-center">
                     <span className="text-sm font-medium text-white">
                       {adminUser.name?.charAt(0) || "A"}
                     </span>
@@ -469,7 +474,7 @@ export default function AdminLayout({
                       <p className="text-xs text-gray-500">
                         {adminUser.email}
                       </p>
-                      <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium rounded-full bg-yellow-100 text-yellow-700 capitalize">
+                      <span className="inline-block mt-1 px-2 py-0.5 text-xs font-medium rounded-full bg-[#EB6D3D]/15 text-[#9c3d1a] capitalize">
                         {adminUser.role?.toLowerCase()}
                       </span>
                     </div>

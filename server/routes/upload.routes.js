@@ -2,8 +2,9 @@
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
-const cloudinary = require('cloudinary').v2;
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const fs = require('fs');
+const path = require('path');
+const { randomUUID } = require('crypto');
 
 /* ────────────────────────────────────────────────────────────────
    AUTH — uses your real middleware/auth.js
@@ -18,30 +19,7 @@ console.log(
   typeof requireAdmin === 'function' ? 'requireAdmin OK' : 'MISSING'
 );
 
-/* ────────────────────────────────────────────────────────────────
-   CLOUDINARY CONFIG
-   ──────────────────────────────────────────────────────────────── */
-const CLOUDINARY_FOLDER_ROOT =
-  process.env.CLOUDINARY_FOLDER_ROOT || 'alemayehu-plastic';
-
-if (
-  !process.env.CLOUDINARY_CLOUD_NAME ||
-  !process.env.CLOUDINARY_API_KEY ||
-  !process.env.CLOUDINARY_API_SECRET
-) {
-  console.warn(
-    '⚠️  Cloudinary env vars missing. Set CLOUDINARY_CLOUD_NAME, ' +
-      'CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET in .env'
-  );
-} else {
-  cloudinary.config({
-    cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-    api_key: process.env.CLOUDINARY_API_KEY,
-    api_secret: process.env.CLOUDINARY_API_SECRET,
-    secure: true,
-  });
-  console.log('☁️  Cloudinary configured:', process.env.CLOUDINARY_CLOUD_NAME);
-}
+const UPLOAD_ROOT = path.resolve(__dirname, '..', 'uploads');
 
 /* ────────────────────────────────────────────────────────────────
    FILE-TYPE GUARDS
@@ -76,37 +54,39 @@ function makeFileFilter(allowed, { allowPdf = false, allowVideo = false } = {}) 
 }
 
 /* ────────────────────────────────────────────────────────────────
-   CLOUDINARY STORAGE ENGINE FACTORY
+   LOCAL DISK STORAGE
    ──────────────────────────────────────────────────────────────── */
 function buildStorage(subfolder) {
-  return new CloudinaryStorage({
-    cloudinary,
-    params: async (req, file) => {
-      const mime = file.mimetype || '';
-      const isVideo = mime.startsWith('video/');
-      const isRaw =
-        mime === 'application/pdf' ||
-        mime.includes('msword') ||
-        mime.includes('officedocument') ||
-        mime.includes('octet-stream');
+  const destination = path.resolve(UPLOAD_ROOT, subfolder);
+  const relativeDestination = path.relative(UPLOAD_ROOT, destination);
+  if (
+    relativeDestination.startsWith('..') ||
+    path.isAbsolute(relativeDestination)
+  ) {
+    throw new Error('Invalid upload destination');
+  }
 
-      const baseName = (file.originalname || 'file')
-        .replace(/\.[^/.]+$/, '')
-        .replace(/[^a-zA-Z0-9-_]/g, '-')
-        .slice(0, 40);
-      const uniqueSuffix = `${Date.now()}-${Math.random()
-        .toString(36)
-        .slice(2, 10)}`;
-
-      return {
-        folder: `${CLOUDINARY_FOLDER_ROOT}/${subfolder}`,
-        public_id: `${baseName}-${uniqueSuffix}`,
-        resource_type: isVideo ? 'video' : isRaw ? 'raw' : 'image',
-        transformation:
-          isVideo || isRaw
-            ? undefined
-            : [{ quality: 'auto', fetch_format: 'auto' }],
+  return multer.diskStorage({
+    destination: (req, file, callback) => {
+      fs.mkdir(destination, { recursive: true }, (error) =>
+        callback(error, destination)
+      );
+    },
+    filename: (req, file, callback) => {
+      const extensionByMimeType = {
+        'image/jpeg': '.jpg',
+        'image/jpg': '.jpg',
+        'image/png': '.png',
+        'image/gif': '.gif',
+        'image/webp': '.webp',
+        'image/avif': '.avif',
+        'image/svg+xml': '.svg',
+        'application/pdf': '.pdf',
       };
+      callback(
+        null,
+        `${randomUUID()}${extensionByMimeType[file.mimetype] || ''}`
+      );
     },
   });
 }
@@ -166,14 +146,22 @@ function pickSingleFile(req) {
   return null;
 }
 
-function fileToUrl(file) {
+function fileToUrl(req, file) {
   if (!file) return null;
-  return file.path || file.secure_url || file.url || null;
+  const relativePath = path.relative(UPLOAD_ROOT, file.path);
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) return null;
+  const publicPath = `/uploads/${relativePath
+    .split(path.sep)
+    .map((segment) => encodeURIComponent(segment))
+    .join('/')}`;
+  return `${req.protocol}://${req.get('host')}${publicPath}`;
 }
 
 function fileToPublicId(file) {
   if (!file) return null;
-  return file.filename || file.public_id || null;
+  const relativePath = path.relative(UPLOAD_ROOT, file.path);
+  if (relativePath.startsWith('..') || path.isAbsolute(relativePath)) return null;
+  return relativePath.split(path.sep).join('/');
 }
 
 function handleMulterErrors(err, res) {
@@ -211,10 +199,15 @@ function handleMulterErrors(err, res) {
         code: 'INVALID_FILE_TYPE',
       });
     }
-    return res.status(400).json({
+    console.error('Local file upload failed:', {
+      name: err.name,
+      code: err.code,
+      message: err.message,
+    });
+    return res.status(500).json({
       success: false,
-      error: err.message || 'Upload failed',
-      code: 'UPLOAD_FAILED',
+      error: 'The image could not be saved to local storage.',
+      code: 'LOCAL_UPLOAD_FAILED',
     });
   }
   return null;
@@ -241,7 +234,7 @@ router.post('/', requireAuth, (req, res) => {
     }
 
     const isAvatar = file.fieldname === 'avatar';
-    const url = fileToUrl(file);
+    const url = fileToUrl(req, file);
     const publicId = fileToPublicId(file);
 
     return res.json({
@@ -261,40 +254,45 @@ router.post('/', requireAuth, (req, res) => {
 });
 
 /* Product images — single (ADMIN ONLY) */
-router.post('/product', requireAuth, requireAdmin, (req, res) => {
-  const uploader = buildUploader({ subfolder: 'products' });
-  const mw = uploader.fields([
-    { name: 'file', maxCount: 1 },
-    { name: 'image', maxCount: 1 },
-  ]);
+router.post(
+  '/product',
+  requireAuth,
+  requireAdmin,
+  (req, res) => {
+    const uploader = buildUploader({ subfolder: 'products' });
+    const mw = uploader.fields([
+      { name: 'file', maxCount: 1 },
+      { name: 'image', maxCount: 1 },
+    ]);
 
-  mw(req, res, (err) => {
-    const mErr = handleMulterErrors(err, res);
-    if (mErr) return;
+    mw(req, res, (err) => {
+      const mErr = handleMulterErrors(err, res);
+      if (mErr) return;
 
-    const file = pickSingleFile(req);
-    if (!file) {
-      return res.status(400).json({
-        success: false,
-        error: 'No file uploaded',
-        code: 'NO_FILE',
+      const file = pickSingleFile(req);
+      if (!file) {
+        return res.status(400).json({
+          success: false,
+          error: 'No file uploaded',
+          code: 'NO_FILE',
+        });
+      }
+
+      const url = fileToUrl(req, file);
+      const publicId = fileToPublicId(file);
+      return res.json({
+        success: true,
+        url,
+        secure_url: url,
+        publicId,
+        public_id: publicId,
+        fileName: file.originalname,
+        fileSize: file.size,
+        fileType: file.mimetype,
       });
-    }
-
-    const url = fileToUrl(file);
-    const publicId = fileToPublicId(file);
-    return res.json({
-      success: true,
-      url,
-      secure_url: url,
-      publicId,
-      public_id: publicId,
-      fileName: file.originalname,
-      fileSize: file.size,
-      fileType: file.mimetype,
     });
-  });
-});
+  }
+);
 
 /* Product images — multiple (ADMIN ONLY) */
 router.post('/products', requireAuth, requireAdmin, (req, res) => {
@@ -314,15 +312,19 @@ router.post('/products', requireAuth, requireAdmin, (req, res) => {
       });
     }
 
-    const results = files.map((f) => ({
-      url: fileToUrl(f),
-      secure_url: fileToUrl(f),
-      publicId: fileToPublicId(f),
-      public_id: fileToPublicId(f),
-      fileName: f.originalname,
-      fileSize: f.size,
-      fileType: f.mimetype,
-    }));
+    const results = files.map((f) => {
+      const url = fileToUrl(req, f);
+      const publicId = fileToPublicId(f);
+      return {
+        url,
+        secure_url: url,
+        publicId,
+        public_id: publicId,
+        fileName: f.originalname,
+        fileSize: f.size,
+        fileType: f.mimetype,
+      };
+    });
 
     return res.json({ success: true, files: results });
   });
@@ -350,7 +352,7 @@ router.post('/avatar', requireAuth, (req, res) => {
       });
     }
 
-    const url = fileToUrl(file);
+    const url = fileToUrl(req, file);
     const publicId = fileToPublicId(file);
     return res.json({
       success: true,
@@ -384,7 +386,7 @@ function makeFolderRoute(folder) {
         });
       }
 
-      const url = fileToUrl(file);
+      const url = fileToUrl(req, file);
       const publicId = fileToPublicId(file);
       return res.json({
         success: true,
@@ -404,7 +406,48 @@ router.post('/settings',  requireAuth, requireAdmin, makeFolderRoute('settings')
 router.post('/category',  requireAuth, requireAdmin, makeFolderRoute('categories'));
 router.post('/blog',      requireAuth, requireAdmin, makeFolderRoute('blog'));
 router.post('/profile',   requireAuth, makeFolderRoute('profiles'));
-router.post('/payment',   requireAuth, makeFolderRoute('payments'));
+router.post(
+  '/payment',
+  requireAuth,
+  (req, res) => {
+    const uploader = buildUploader({
+      subfolder: 'payments',
+      maxSizeMB: 10,
+      allowPdf: true,
+    });
+    const mw = uploader.fields([
+      { name: 'file', maxCount: 1 },
+      { name: 'image', maxCount: 1 },
+    ]);
+
+    mw(req, res, (err) => {
+      const mErr = handleMulterErrors(err, res);
+      if (mErr) return;
+
+      const file = pickSingleFile(req);
+      if (!file) {
+        return res.status(400).json({
+          success: false,
+          error: 'No payment information file uploaded',
+          code: 'NO_FILE',
+        });
+      }
+
+      const url = fileToUrl(req, file);
+      const publicId = fileToPublicId(file);
+      return res.json({
+        success: true,
+        url,
+        secure_url: url,
+        publicId,
+        public_id: publicId,
+        fileName: file.originalname,
+        fileSize: file.size,
+        fileType: file.mimetype,
+      });
+    });
+  }
+);
 
 /* PDF upload — ADMIN ONLY */
 router.post('/pdf', requireAuth, requireAdmin, (req, res) => {
@@ -420,7 +463,7 @@ router.post('/pdf', requireAuth, requireAdmin, (req, res) => {
       });
     }
 
-    const url = fileToUrl(req.file);
+    const url = fileToUrl(req, req.file);
     const publicId = fileToPublicId(req.file);
     return res.json({
       success: true,
@@ -435,54 +478,49 @@ router.post('/pdf', requireAuth, requireAdmin, (req, res) => {
   });
 });
 
-/* Delete from Cloudinary — ADMIN ONLY */
+/* Delete a locally stored upload — ADMIN ONLY */
 router.delete('/:publicId(*)', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const publicId = decodeURIComponent(req.params.publicId || '');
+    const publicId = (req.params.publicId || '').replace(/\\/g, '/');
+    const segments = publicId.split('/');
+    const filePath = path.resolve(UPLOAD_ROOT, ...segments);
+    const relativePath = path.relative(UPLOAD_ROOT, filePath);
 
-    if (!publicId || publicId.includes('..')) {
+    if (
+      !publicId ||
+      segments.some((segment) => !segment || segment === '.' || segment === '..') ||
+      relativePath.startsWith('..') ||
+      path.isAbsolute(relativePath)
+    ) {
       return res.status(400).json({
         success: false,
-        error: 'Invalid public_id',
-        code: 'INVALID_PUBLIC_ID',
+        error: 'Invalid file path',
+        code: 'INVALID_FILE_PATH',
       });
     }
 
-    let result = await cloudinary.uploader.destroy(publicId, {
-      resource_type: 'image',
-    });
-
-    if (result.result !== 'ok') {
-      result = await cloudinary.uploader.destroy(publicId, {
-        resource_type: 'raw',
-      });
-    }
-
-    if (result.result !== 'ok') {
-      result = await cloudinary.uploader.destroy(publicId, {
-        resource_type: 'video',
-      });
-    }
-
-    if (result.result !== 'ok') {
-      return res.status(404).json({
-        success: false,
-        error: 'File not found on Cloudinary',
-        code: 'FILE_NOT_FOUND',
-        result,
-      });
+    try {
+      await fs.promises.unlink(filePath);
+    } catch (error) {
+      if (error.code === 'ENOENT') {
+        return res.status(404).json({
+          success: false,
+          error: 'File not found',
+          code: 'FILE_NOT_FOUND',
+        });
+      }
+      throw error;
     }
 
     return res.json({
       success: true,
-      result: result.result,
       message: 'File deleted successfully',
     });
   } catch (err) {
-    console.error('❌ Delete error:', err.message || err);
+    console.error('❌ Local file delete error:', err.message || err);
     return res
       .status(500)
-      .json({ success: false, error: err.message || 'Delete failed' });
+      .json({ success: false, error: 'File deletion failed' });
   }
 });
 

@@ -1,5 +1,6 @@
 // lib/auth.js
 const jwt = require('jsonwebtoken');
+const crypto = require('crypto');
 const prisma = require('./prisma');
 
 // ═══════════════════════════════════════════════════════════
@@ -96,17 +97,43 @@ const verifyVerificationToken = (token) => {
 // ============================================================
 // Password reset token
 // ============================================================
-const generateResetToken = (email) =>
+const passwordVersion = (passwordHash) =>
+  crypto
+    .createHmac('sha256', JWT_SECRET)
+    .update(String(passwordHash || ''))
+    .digest('hex');
+
+const generateResetToken = (email, passwordHash) =>
   jwt.sign(
-    { email, purpose: 'password-reset' },
+    {
+      email,
+      purpose: 'password-reset',
+      passwordVersion: passwordVersion(passwordHash),
+    },
     JWT_SECRET,
     { expiresIn: RESET_EXPIRY }
   );
 
-const verifyResetToken = (token) => {
+const verifyResetToken = (token, passwordHash) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
-    if (decoded.purpose !== 'password-reset') return null;
+    if (
+      decoded.purpose !== 'password-reset' ||
+      typeof decoded.email !== 'string' ||
+      typeof decoded.passwordVersion !== 'string'
+    ) {
+      return null;
+    }
+    if (passwordHash !== undefined) {
+      const expectedVersion = Buffer.from(passwordVersion(passwordHash));
+      const tokenVersion = Buffer.from(decoded.passwordVersion);
+      if (
+        tokenVersion.length !== expectedVersion.length ||
+        !crypto.timingSafeEqual(tokenVersion, expectedVersion)
+      ) {
+        return null;
+      }
+    }
     return decoded;
   } catch {
     return null;

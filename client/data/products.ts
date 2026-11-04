@@ -1,5 +1,5 @@
 // data/products.ts
-// ✅ Local fallback product data — Alemayehu Plastic Manufacturing
+// Local fallback product data for Dream More Affiliate Market
 // Used only when the backend API is unreachable.
 
 export type ProductCategory =

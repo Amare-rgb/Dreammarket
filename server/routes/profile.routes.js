@@ -6,7 +6,7 @@ const prisma = require('../lib/prisma');
 const { requireAuth } = require('../middleware/auth');
 
 // ═══════════════════════════════════════════════════════════
-// Profile API — Alemayehu Plastic
+// Profile API — Dream More Affiliate Market
 //  • Uses the shared auth middleware (same as the rest of the app)
 //  • No Order/Article/Cart references
 // ═══════════════════════════════════════════════════════════

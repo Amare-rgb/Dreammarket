@@ -4,97 +4,15 @@ const router = express.Router();
 const prisma = require('../lib/prisma');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
-const multer = require('multer');
-const cloudinary = require('cloudinary').v2;
-const { CloudinaryStorage } = require('multer-storage-cloudinary');
+const { upload } = require('../middleware/upload');
 
 // ═══════════════════════════════════════════════════════════
-// Settings API — Alemayehu Plastic
-//  • Logo storage: Cloudinary (alemayehu-plastic/settings)
+// Settings API — Dream More Affiliate Market
+//  • Logo storage: local disk
 //  • Database: Neon (PostgreSQL) via Prisma
 // ═══════════════════════════════════════════════════════════
 
-const CLOUDINARY_FOLDER_ROOT =
-  process.env.CLOUDINARY_FOLDER_ROOT || 'alemayehu-plastic';
-
 const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS) || 10;
-
-// ── Cloudinary storage for logo ─────────────────────────────
-const storage = new CloudinaryStorage({
-  cloudinary,
-  params: async (req, file) => {
-    const mime = file.mimetype || '';
-    const isSvg = mime === 'image/svg+xml';
-
-    const baseName = (file.originalname || 'logo')
-      .replace(/\.[^/.]+$/, '')
-      .replace(/[^a-zA-Z0-9-_]/g, '-')
-      .slice(0, 40);
-    const uniqueSuffix = `${Date.now()}-${Math.random()
-      .toString(36)
-      .slice(2, 8)}`;
-
-    return {
-      folder: `${CLOUDINARY_FOLDER_ROOT}/settings`,
-      public_id: `${baseName}-${uniqueSuffix}`,
-      resource_type: 'image',
-      // SVGs shouldn't be re-encoded
-      transformation: isSvg
-        ? undefined
-        : [{ quality: 'auto', fetch_format: 'auto' }],
-    };
-  },
-});
-
-const fileFilter = (req, file, cb) => {
-  const allowedTypes = [
-    'image/jpeg',
-    'image/jpg',
-    'image/png',
-    'image/gif',
-    'image/webp',
-    'image/svg+xml',
-  ];
-  if (allowedTypes.includes(file.mimetype)) {
-    cb(null, true);
-  } else {
-    cb(new Error('Only image files are allowed'), false);
-  }
-};
-
-const upload = multer({
-  storage,
-  limits: { fileSize: 5 * 1024 * 1024 },
-  fileFilter,
-});
-
-// ── Cloudinary helpers ──────────────────────────────────────
-const isCloudinaryUrl = (url) =>
-  typeof url === 'string' && /res\.cloudinary\.com/i.test(url);
-
-function extractPublicId(url) {
-  if (!isCloudinaryUrl(url)) return null;
-  try {
-    const afterUpload = url.split('/upload/')[1];
-    if (!afterUpload) return null;
-    return afterUpload.replace(/^v\d+\//, '').replace(/\.[^/.]+$/, '');
-  } catch {
-    return null;
-  }
-}
-
-async function deleteCloudinaryImage(url) {
-  const publicId = extractPublicId(url);
-  if (!publicId) return;
-  try {
-    await cloudinary.uploader.destroy(publicId, {
-      resource_type: 'image',
-      invalidate: true,
-    });
-  } catch (err) {
-    console.warn(`⚠️ Cloudinary delete failed for ${publicId}:`, err.message);
-  }
-}
 
 // ── Parsers ─────────────────────────────────────────────────
 const parseBoolean = (value) => {
@@ -128,14 +46,14 @@ const passwordError = (pw) => {
 
 // ── Default settings — every field on the Settings model ────
 const DEFAULT_SETTINGS = {
-  siteName: 'Alemayehu Plastic Manufacturing',
-  siteDescription: 'Quality plastic products manufactured in Ethiopia',
+  siteName: 'Dream More Affiliate Market',
+  siteDescription: 'Discover trusted products and great deals.',
   adminEmail: 'admin@alemayehplastic.com',
   adminPhone: '+251 900 000 000',
   address: 'Bahir Dar, Ethiopia',
   timezone: 'Africa/Addis_Ababa',
   dateFormat: 'DD/MM/YYYY',
-  storeName: 'Alemayehu Plastic Manufacturing',
+  storeName: 'Dream More Affiliate Market',
   storeEmail: 'info@alemayehplastic.com',
   storePhone: '+251 900 000 000',
   storeAddress: 'Bahir Dar, Ethiopia',
@@ -150,7 +68,7 @@ const DEFAULT_SETTINGS = {
   productNotifications: true,
   userNotifications: true,
   marketingEmails: false,
-  themeColor: '#e0a83c',
+  themeColor: '#F47822',
   darkMode: false,
   contactEmail: 'support@alemayehplastic.com',
   contactPhone: '+251 900 000 000',
@@ -166,6 +84,30 @@ const DEFAULT_SETTINGS = {
   infoEmail: 'info@alemayehplastic.com',
 };
 
+function normalizeBrandSettings(settings) {
+  return {
+    ...settings,
+    siteName:
+      settings.siteName === 'Alemayehu Plastic Manufacturing'
+        ? DEFAULT_SETTINGS.siteName
+        : settings.siteName,
+    siteDescription:
+      settings.siteDescription ===
+      'Quality plastic products manufactured in Ethiopia'
+        ? DEFAULT_SETTINGS.siteDescription
+        : settings.siteDescription,
+    storeName:
+      settings.storeName === 'Alemayehu Plastic Manufacturing'
+        ? DEFAULT_SETTINGS.storeName
+        : settings.storeName,
+    themeColor: ['#e0a83c', '#f3733c', '#d85d32', '#eb6d3d'].includes(
+      settings.themeColor?.toLowerCase()
+    )
+      ? DEFAULT_SETTINGS.themeColor
+      : settings.themeColor,
+  };
+}
+
 // ============================================================
 // PUBLIC — GET /api/admin/settings/public
 // ============================================================
@@ -177,6 +119,7 @@ router.get('/public', async (req, res) => {
       settings = await prisma.settings.create({ data: DEFAULT_SETTINGS });
     }
 
+    settings = normalizeBrandSettings(settings);
     const publicSettings = {
       siteName: settings.siteName,
       siteDescription: settings.siteDescription,
@@ -217,6 +160,7 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
       settings = await prisma.settings.create({ data: DEFAULT_SETTINGS });
     }
 
+    settings = normalizeBrandSettings(settings);
     res.setHeader(
       'Cache-Control',
       'no-store, no-cache, must-revalidate, private'
@@ -233,7 +177,7 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
 
 // ============================================================
 // ADMIN — POST /api/admin/settings (save + optional logo upload)
-// Logo is uploaded to Cloudinary.
+// Logo is uploaded to local disk.
 // ============================================================
 router.post(
   '/',
@@ -248,21 +192,8 @@ router.post(
       let logoUrl = settings?.logo || '';
 
       if (req.file) {
-        // Delete old logo from Cloudinary (fire-and-forget)
-        if (settings?.logo && isCloudinaryUrl(settings.logo)) {
-          deleteCloudinaryImage(settings.logo).catch((err) =>
-            console.warn('⚠️ Old logo cleanup failed:', err.message)
-          );
-        }
-        // Cloudinary provides file.path as the secure URL
-        logoUrl = req.file.path || req.file.secure_url;
+        logoUrl = req.file.url;
       } else if (req.body.logo === '') {
-        // Explicitly cleared
-        if (settings?.logo && isCloudinaryUrl(settings.logo)) {
-          deleteCloudinaryImage(settings.logo).catch((err) =>
-            console.warn('⚠️ Old logo cleanup failed:', err.message)
-          );
-        }
         logoUrl = '';
       }
 

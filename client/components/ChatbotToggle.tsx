@@ -22,7 +22,7 @@ const ChatbotToggle: FC<ChatbotToggleProps> = ({
 
   return (
     <>
-      {/* Floating Button — Alemayehu Plastic brand gold */}
+      {/* Dream More brand accent */}
       <button
         onClick={toggleChat}
         aria-label={isOpen ? "Close chat" : "Open chat"}
@@ -34,7 +34,7 @@ const ChatbotToggle: FC<ChatbotToggleProps> = ({
           ${
             isOpen
               ? "bg-red-500 hover:bg-red-600 rotate-90"
-              : "bg-gradient-to-r from-[#e0a83c] to-[#b98a3e] hover:from-[#f0b84c] hover:to-[#c99a4e] hover:scale-110 hover:shadow-[#e0a83c]/40"
+              : "bg-[#EB6D3D] hover:bg-[#cf5427] hover:scale-110 hover:shadow-[#EB6D3D]/40"
           }
           text-white text-2xl
           group

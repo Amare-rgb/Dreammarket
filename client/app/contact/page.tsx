@@ -2,7 +2,17 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import { MapPin, Phone, Mail, Send, CheckCircle, Loader2, AlertCircle } from 'lucide-react';
+import {
+  MapPin,
+  Phone,
+  Mail,
+  Send,
+  MessageCircle,
+  CheckCircle,
+  Loader2,
+  AlertCircle,
+} from 'lucide-react';
+import Link from 'next/link';
 import { useSettings } from '@/hooks/useSettings';
 import { useLanguage } from '@/context/LanguageContext';
 import toast from 'react-hot-toast';
@@ -38,7 +48,7 @@ function resolveMapUrl(raw?: string): string {
 }
 
 export default function ContactPage() {
-  const { settings, loading, error, forceUpdate, refetch } = useSettings();
+  const { loading, error, forceUpdate, refetch } = useSettings();
   const { t } = useLanguage();
 
   const [submitted, setSubmitted] = useState(false);
@@ -58,6 +68,27 @@ export default function ContactPage() {
     if (isFirstRender.current) {
       isFirstRender.current = false;
       requestAnimationFrame(() => {
+        const savedUser =
+          localStorage.getItem('user') || sessionStorage.getItem('user');
+
+        if (savedUser) {
+          try {
+            const user = JSON.parse(savedUser) as {
+              name?: string;
+              email?: string;
+              phone?: string;
+            };
+            setFormData((current) => ({
+              ...current,
+              name: user.name || current.name,
+              email: user.email || current.email,
+              phone: user.phone || current.phone,
+            }));
+          } catch (parseError) {
+            console.error('Unable to load saved contact details:', parseError);
+          }
+        }
+
         setIsClient(true);
       });
     }
@@ -94,17 +125,12 @@ export default function ContactPage() {
     return () => clearTimeout(timeoutId);
   }, [loading, refetch]);
 
-  // ✅ Rebranded defaults — Alemayehu Plastic Manufacturing
-  const siteName = settings?.siteName || 'Alemayehu Plastic Manufacturing';
-  const contactAddress =
-    settings?.contactAddress || 'Bahir Dar, Ethiopia';
-  const contactPhone = settings?.contactPhone || '+251 900 000 000';
-  const contactHours =
-    settings?.contactHours || 'Mon-Sat: 8:00 AM - 6:00 PM';
-  const contactEmail =
-    settings?.contactEmail || 'support@alemayehplastic.com';
-
-  const mapEmbedUrl = resolveMapUrl(settings?.contactMapEmbed);
+  const contactEmail = 'suport@dreammoredigitals.com';
+  const contactPhone = '+251 993 132 122';
+  const contactAddress = 'signal mall 8th floor ,Bahirdar, Ethiopia';
+  const mapEmbedUrl = resolveMapUrl(
+    'https://maps.google.com/maps?q=Bahirdar%2C%20Ethiopia&output=embed'
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -210,23 +236,23 @@ export default function ContactPage() {
         {/* Header */}
         <div className="text-center max-w-3xl mx-auto mb-12">
           <span className="text-xs font-bold text-yellow-700 uppercase tracking-wider bg-yellow-100 px-3 py-1 rounded-full">
-            {t('contact.badge', 'Customer & Business Support')}
+            {t('contact.badge', 'Get In Touch')}
           </span>
           <h1 className="text-4xl font-bold text-gray-900 mt-3 mb-2">
-            {t('contact.title_prefix', 'Get in Touch with')} {siteName}
+            {t('contact.title', "Let's Start a Conversation")}
           </h1>
           <p className="text-gray-600">
             {t(
               'contact.subtitle',
-              'Have questions about bulk plastic orders, custom manufacturing, wholesale pricing or becoming a distributor? We are here to help.'
+              "Have a project in mind? Want to join the academy? Or just want to say hi? We'd love to hear from you."
             )}
           </p>
         </div>
 
         {/* Top Section: Contact Details + Form */}
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-          {/* Contact Details Card — Gold/Brown theme */}
-          <div className="bg-gradient-to-br from-[#1a1410] to-[#3a2a1e] text-white rounded-2xl p-8 space-y-8 shadow-md">
+          {/* Contact Details Card */}
+          <div className="bg-gradient-to-br from-[#20283a] to-[#35415b] text-white rounded-2xl p-8 space-y-8 shadow-md">
             <div>
               <h2 className="text-2xl font-bold mb-2">
                 {t('contact.info_title', 'Contact Information')}
@@ -234,7 +260,7 @@ export default function ContactPage() {
               <p className="text-yellow-200 text-sm">
                 {t(
                   'contact.info_subtitle',
-                  'Reach out to our main office or regional distribution hubs.'
+                  'Reach out to us through any of the channels below.'
                 )}
               </p>
             </div>
@@ -242,13 +268,16 @@ export default function ContactPage() {
             <div className="space-y-6 text-sm">
               <div className="flex items-start gap-4">
                 <div className="p-2.5 bg-white/10 rounded-xl">
-                  <MapPin size={20} className="text-yellow-300" />
+                  <Mail size={20} className="text-yellow-300" />
                 </div>
                 <div>
-                  <div className="font-semibold text-white">
-                    {t('contact.contact_address', 'Contact Address')}
-                  </div>
-                  <div className="text-yellow-100 mt-0.5">{contactAddress}</div>
+                  <div className="font-semibold text-white">{t('contact.email', 'Email')}</div>
+                  <a
+                    href={`mailto:${contactEmail}`}
+                    className="mt-0.5 inline-block text-yellow-100 transition hover:text-yellow-300"
+                  >
+                    {contactEmail}
+                  </a>
                 </div>
               </div>
 
@@ -258,36 +287,65 @@ export default function ContactPage() {
                 </div>
                 <div>
                   <div className="font-semibold text-white">
-                    {t('contact.phone_support', 'Phone Support')}
+                    {t('contact.phone_support', 'Phone')}
                   </div>
-                  <div className="text-yellow-100 mt-0.5">
-                    <a
-                      href={`tel:${contactPhone}`}
-                      className="hover:text-yellow-300 transition"
-                    >
-                      {contactPhone}
-                    </a>
-                  </div>
-                  <div className="text-xs text-yellow-300">{contactHours}</div>
+                  <a
+                    href="tel:+251993132122"
+                    className="mt-0.5 inline-block text-yellow-100 transition hover:text-yellow-300"
+                  >
+                    {contactPhone}
+                  </a>
                 </div>
               </div>
 
               <div className="flex items-start gap-4">
                 <div className="p-2.5 bg-white/10 rounded-xl">
-                  <Mail size={20} className="text-yellow-300" />
+                  <MessageCircle size={20} className="text-yellow-300" />
                 </div>
                 <div>
-                  <div className="font-semibold text-white">
-                    {t('contact.email', 'Email')}
-                  </div>
-                  <div className="text-yellow-100 mt-0.5">
-                    <a
-                      href={`mailto:${contactEmail}`}
-                      className="hover:text-yellow-300 transition"
-                    >
-                      {contactEmail}
-                    </a>
-                  </div>
+                  <div className="font-semibold text-white">{t('contact.whatsapp', 'WhatsApp')}</div>
+                  <a
+                    href="https://wa.me/251993132122"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-0.5 inline-block text-yellow-100 transition hover:text-yellow-300"
+                  >
+                    {contactPhone}
+                  </a>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-4">
+                <div className="p-2.5 bg-white/10 rounded-xl">
+                  <Send size={20} className="text-yellow-300" />
+                </div>
+                <div>
+                  <div className="font-semibold text-white">{t('contact.telegram', 'Telegram')}</div>
+                  <a
+                    href="https://t.me/Dreammore21"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-0.5 inline-block text-yellow-100 transition hover:text-yellow-300"
+                  >
+                    @Dreammore21
+                  </a>
+                </div>
+              </div>
+
+              <div className="flex items-start gap-4">
+                <div className="p-2.5 bg-white/10 rounded-xl">
+                  <MapPin size={20} className="text-yellow-300" />
+                </div>
+                <div>
+                  <div className="font-semibold text-white">{t('contact.location', 'Location')}</div>
+                  <a
+                    href="https://maps.google.com/?q=Bahirdar,Ethiopia"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="mt-0.5 inline-block text-yellow-100 transition hover:text-yellow-300"
+                  >
+                    {contactAddress}
+                  </a>
                 </div>
               </div>
             </div>
@@ -306,7 +364,7 @@ export default function ContactPage() {
                 <p className="text-gray-500 max-w-md mx-auto text-sm">
                   {t(
                     'contact.success_desc',
-                    'Thank you for reaching out. One of our manufacturing specialists will contact you shortly.'
+                    'Thank you for reaching out. Our support team will get back to you shortly.'
                   )}
                 </p>
                 <button
@@ -322,6 +380,18 @@ export default function ContactPage() {
                 <h2 className="text-2xl font-bold text-gray-800">
                   {t('contact.form_title', 'Send Us a Message')}
                 </h2>
+                <p className="text-sm text-gray-600">
+                  {t(
+                    'contact.signin_prompt',
+                    'Sign in to prefill your details and send a message faster.'
+                  )}{' '}
+                  <Link
+                    href="/auth/signin?redirectTo=%2Fcontact"
+                    className="font-semibold text-[#d75e18] hover:underline"
+                  >
+                    {t('contact.signin_link', 'Sign in')}
+                  </Link>
+                </p>
 
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                   <div>
@@ -387,26 +457,26 @@ export default function ContactPage() {
                       <option value="General Inquiry">
                         {t('contact.topic_general', 'General Inquiry')}
                       </option>
-                      <option value="Bulk Plastic Orders">
-                        {t('contact.topic_bulk', 'Bulk Plastic Orders')}
+                      <option value="Product or Listing Question">
+                        {t(                        'contact.topic_bulk', 'Product or Listing Question')}
                       </option>
-                      <option value="Custom Manufacturing">
-                        {t('contact.topic_custom', 'Custom Manufacturing')}
+                      <option value="Shopping Support">
+                        {t('contact.topic_custom', 'Shopping Support')}
                       </option>
-                      <option value="Wholesale & Distribution">
+                      <option value="Seller & Partner Enquiry">
                         {t(
                           'contact.topic_wholesale',
-                          'Wholesale & Distribution'
+                          'Seller & Partner Enquiry'
                         )}
                       </option>
-                      <option value="Export & Partnerships">
+                      <option value="Partnerships">
                         {t(
                           'contact.topic_partnerships',
-                          'Export & Partnerships'
+                          'Partnerships'
                         )}
                       </option>
-                      <option value="Technical Support">
-                        {t('contact.topic_technical', 'Technical Support')}
+                      <option value="Website Support">
+                        {t('contact.topic_technical', 'Website Support')}
                       </option>
                       <option value="Other">
                         {t('contact.topic_other', 'Other')}
@@ -424,7 +494,7 @@ export default function ContactPage() {
                     required
                     placeholder={t(
                       'contact.message_placeholder',
-                      'Tell us about your plastic product requirements or question...'
+                      'Tell us how we can help with your marketplace or shopping experience...'
                     )}
                     value={formData.message}
                     onChange={(e) =>
@@ -437,7 +507,7 @@ export default function ContactPage() {
                 <button
                   type="submit"
                   disabled={sending}
-                  className="inline-flex items-center gap-2 px-8 py-3 bg-yellow-500 hover:bg-yellow-600 text-white font-bold text-sm rounded-xl shadow-md transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="inline-flex items-center gap-2 px-8 py-3 bg-[#EB6D3D] hover:bg-[#cf5427] text-[#20283a] hover:text-white font-bold text-sm rounded-xl shadow-md transition-all active:scale-[0.98] disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {sending ? (
                     <>
@@ -465,7 +535,7 @@ export default function ContactPage() {
                 {t('contact.map_title', 'Find Us on Map')}
               </h3>
               <a
-                href="https://www.google.com/maps/search/?api=1&query=Alemayehu+Plastic+Manufacturing+Bahir+Dar"
+                href="https://www.google.com/maps/search/?api=1&query=Bahir+Dar+Ethiopia"
                 target="_blank"
                 rel="noopener noreferrer"
                 className="text-sm text-yellow-600 hover:text-yellow-700 hover:underline flex items-center gap-1"
