@@ -31,7 +31,7 @@ type ProductDetailsProps = {
 // ────────────────────────────────────────────────────────────────────────────
 // CONFIG
 // ────────────────────────────────────────────────────────────────────────────
-const BUSINESS_PHONE = "+251 900 000 000";
+const BUSINESS_PHONE = "+251 993 132 122";
 const BUSINESS_PHONE_TEL = BUSINESS_PHONE.replace(/\s/g, "");
 
 // ────────────────────────────────────────────────────────────────────────────
@@ -55,20 +55,6 @@ function resolveImage(raw: unknown): string | null {
 // ────────────────────────────────────────────────────────────────────────────
 // Icons
 // ────────────────────────────────────────────────────────────────────────────
-function ArrowLeft() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden="true">
-      <path
-        d="m15 18-6-6 6-6"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
 function CheckIcon() {
   return (
     <svg viewBox="0 0 24 24" fill="none" className="h-4 w-4" aria-hidden="true">
@@ -79,21 +65,6 @@ function CheckIcon() {
         strokeLinecap="round"
         strokeLinejoin="round"
       />
-    </svg>
-  );
-}
-
-function TruckIcon() {
-  return (
-    <svg viewBox="0 0 24 24" fill="none" className="h-5 w-5" aria-hidden="true">
-      <path
-        d="M3 6h11v10H3zM14 10h3l4 4v2h-7z"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinejoin="round"
-      />
-      <circle cx="7" cy="18" r="1.5" stroke="currentColor" strokeWidth="1.7" />
-      <circle cx="18" cy="18" r="1.5" stroke="currentColor" strokeWidth="1.7" />
     </svg>
   );
 }
@@ -347,34 +318,19 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
   };
 
   return (
-    <main className="shop-theme min-h-screen bg-[var(--cream)]">
-      {/* Top navigation */}
-      <div className="border-b border-[#3a2a1e]/10 bg-white">
-        <div className="mx-auto max-w-7xl px-5 py-3 sm:px-8 lg:px-12">
-          <Link
-            href="/shop"
-            className="inline-flex items-center gap-2 text-xs font-semibold text-[#b98a3e] transition hover:text-[#1a1410]"
-          >
-            <ArrowLeft />
-            {t("product.back_to_products", "Back to products")}
-          </Link>
-        </div>
-      </div>
-
-      <section className="px-5 py-8 sm:px-8 sm:py-10 lg:px-12 lg:py-12">
-        <div className="mx-auto max-w-7xl">
-          <div className="grid gap-8 lg:grid-cols-[1.05fr_0.95fr] lg:gap-14">
-            {/* Image Gallery */}
-            <div>
-              {/* Main image */}
+    <main className="shop-theme min-h-screen bg-[#efe9e2] text-[#1a1410]">
+      <section className="px-4 py-8 sm:px-8 lg:px-12 lg:py-14">
+        <div className="mx-auto max-w-5xl rounded-[28px] bg-[#f5f1ea]/95 p-4 shadow-[0_20px_60px_rgba(58,42,30,0.08)] ring-1 ring-[#3a2a1e]/5 sm:p-6 lg:p-8">
+          <div className="grid gap-7 lg:grid-cols-[1.02fr_0.98fr] lg:gap-10">
+            <div className="space-y-3">
               <button
                 type="button"
                 onClick={() => hasImages && setLightboxOpen(true)}
                 aria-label={t("product.view_fullscreen", "View full image")}
                 disabled={!hasImages}
-                className="group relative block w-full overflow-hidden rounded-2xl bg-[#f5f0e6] shadow-[0_20px_65px_rgba(58,42,30,.09)] disabled:cursor-default"
+                className="group relative mx-auto block w-full max-w-[440px] overflow-hidden rounded-[26px] bg-[#f5f0e6] shadow-[0_12px_30px_rgba(58,42,30,0.08)] disabled:cursor-default"
               >
-                <div className="relative aspect-square overflow-hidden">
+                <div className="relative aspect-square overflow-hidden rounded-[26px]">
                   <ProductImage
                     key={currentImage ?? "empty"}
                     src={currentImage}
@@ -402,9 +358,8 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
                 </div>
               </button>
 
-              {/* Thumbnails */}
               {images.length > 1 && (
-                <div className="mt-3 grid grid-cols-4 gap-2.5">
+                <div className="grid grid-cols-4 gap-2.5">
                   {images.map((image, index) => {
                     const active = safeIndex === index;
 
@@ -416,10 +371,10 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
                           setSelectedImage(index);
                           setLightboxOpen(true);
                         }}
-                        className={`relative aspect-square overflow-hidden rounded-xl border-2 bg-[#f5f0e6] transition-all ${
+                        className={`group relative aspect-square overflow-hidden rounded-xl border-2 bg-[#f5f0e6] transition-all ${
                           active
                             ? "border-[#b98a3e] shadow-md"
-                            : "border-transparent opacity-70 hover:opacity-100"
+                            : "border-transparent opacity-80 hover:opacity-100"
                         }`}
                         aria-label={`View image ${index + 1}`}
                       >
@@ -437,10 +392,9 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
               )}
             </div>
 
-            {/* Product Information */}
             <div className="flex flex-col justify-center">
-              <div className="mb-3 flex items-center gap-2.5">
-                <span className="rounded-full bg-[#1a1410] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.15em] text-[#e0a83c]">
+              <div className="mb-4 flex items-center gap-2.5">
+                <span className="rounded-full bg-[#1a1410] px-2.5 py-1 text-[9px] font-bold uppercase tracking-[0.17em] text-[#e0a83c]">
                   {product.category}
                 </span>
 
@@ -449,73 +403,86 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
                 </span>
               </div>
 
-              <h1 className="font-serif-heading text-center text-3xl font-medium leading-[1.02] tracking-[-0.04em] text-[#1a1410] sm:text-4xl">
+              <h1 className="font-serif-heading text-left text-3xl font-medium leading-[1.02] tracking-[-0.04em] text-[#1a1410] sm:text-4xl lg:text-[3.2rem]">
                 {product.name}
               </h1>
 
-              <p className="mt-4 text-center text-sm leading-6 text-[#7a6a58]">
-                {product.description}
-              </p>
-
               <div className="my-5 h-px bg-[#3a2a1e]/10" />
 
-              {/* Price */}
-              <div className="flex flex-wrap items-baseline justify-center gap-2.5 text-center">
-                <span className="font-serif-heading text-3xl font-semibold tracking-[-0.035em] text-[#1a1410]">
+              <div className="flex flex-wrap items-end gap-2.5 text-left">
+                <span className="font-serif-heading text-3xl font-semibold tracking-[-0.035em] text-[#1a1410] sm:text-[2.75rem]">
                   ETB {effectivePrice.toLocaleString()}
                 </span>
 
-                <span className="text-xs text-[#7a6a58]">
+                <span className="pb-1 text-sm text-[#7a6a58]">
                   {t("product.per", "per")} {product.unit}
                 </span>
 
                 {product.discountPrice &&
                   product.discountPrice < product.price && (
-                    <span className="text-xs text-gray-400 line-through">
+                    <span className="pb-1 text-sm text-gray-400 line-through">
                       ETB {product.price.toLocaleString()}
                     </span>
                   )}
               </div>
 
-              {/* Stock */}
-              <div className="mt-2.5 flex items-center gap-2 text-xs">
+              <div className="mt-3 flex items-center gap-2 text-sm">
                 <span
-                  className={`h-2 w-2 rounded-full ${
+                  className={`h-2.5 w-2.5 rounded-full ${
                     product.stock > 0 ? "bg-[#e0a83c]" : "bg-red-500"
                   }`}
                 />
 
-                <span className="text-[#7a6a58] font-medium">
+                <span className="text-[#7a6a58]">
                   {product.stock > 0
                     ? `${product.stock} ${product.unit} ${t(
                         "product.in_production_stock",
-                        "currently in production stock"
+                        "available in this listing"
                       )}`
                     : t("product.out_of_stock", "Currently out of stock")}
                 </span>
               </div>
 
-              {/* Contact CTA */}
-              <div className="mt-6 flex flex-col sm:flex-row items-center gap-3">
+              <section
+                aria-labelledby="product-description-heading"
+                className="mt-5 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-[#3a2a1e]/5 sm:p-5"
+              >
+                <h2
+                  id="product-description-heading"
+                  className="text-xs font-bold uppercase tracking-[0.16em] text-[#b98a3e]"
+                >
+                  {t("product.description_title", "Product Description")}
+                </h2>
+                <p className="mt-2 whitespace-pre-line break-words text-sm leading-6 text-[#625448]">
+                  {product.description?.trim() ||
+                    t(
+                      "product.description_unavailable",
+                      "No description has been added for this product yet."
+                    )}
+                </p>
+              </section>
+
+              <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
                 <button
                   type="button"
                   onClick={addToCart}
                   disabled={product.stock < 1}
-                  className="flex h-12 w-full items-center justify-center gap-2 rounded-xl border border-[#20283a] bg-[#20283a] px-6 text-sm font-bold text-white shadow-lg transition hover:bg-[#30384f] disabled:cursor-not-allowed disabled:opacity-50"
+                  className="flex h-14 items-center justify-center gap-2 rounded-2xl border border-[#20283a] bg-[#20283a] px-5 text-base font-bold text-white shadow-lg transition hover:bg-[#30384f] disabled:cursor-not-allowed disabled:opacity-50"
                 >
-                  <ShoppingCart size={17} />
+                  <ShoppingCart size={18} />
                   {t("checkout.add_to_order", "Add to order")}
                 </button>
                 <Link
                   href="/contact"
-                  className="flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#EB6D3D] px-6 text-sm font-bold text-[#20283a] shadow-lg transition-all duration-200 hover:bg-[#cf5427] hover:text-white hover:shadow-xl"
+                  className="flex h-14 items-center justify-center gap-2 rounded-2xl bg-[#EB6D3D] px-5 text-base font-bold text-[#20283a] shadow-lg transition-all duration-200 hover:bg-[#cf5427] hover:text-white hover:shadow-xl"
                 >
                   <span>{t("product.request_quote", "Request a Quote")}</span>
-                  <span className="text-base font-bold">→</span>
+                  <span className="text-xl font-bold">→</span>
                 </Link>
               </div>
+
               {cartMessage && (
-                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-xl border border-[#EB6D3D]/30 bg-white px-4 py-3 text-sm text-[#20283a]">
+                <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[#EB6D3D]/30 bg-white px-4 py-3 text-sm text-[#20283a]">
                   <span role="status">{cartMessage}</span>
                   <Link
                     href="/checkout"
@@ -526,43 +493,37 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
                 </div>
               )}
 
-              {/* Benefits */}
-              <div className="mt-6 grid gap-2.5 sm:grid-cols-3">
-                <div className="rounded-xl bg-white p-3.5">
-                  <TruckIcon />
-                  <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-[#1a1410]">
-                    {t("product.benefit_delivery_title", "Fast Delivery")}
-                  </p>
-                  <p className="mt-0.5 text-[11px] leading-4 text-[#7a6a58]">
-                    {t(
-                      "product.benefit_delivery_desc",
-                      "Explore the product details and contact us if you need help."
-                    )}
-                  </p>
-                </div>
-
-                <div className="rounded-xl bg-white p-3.5">
-                  <CheckIcon />
-                  <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-[#1a1410]">
-                    {t("product.benefit_price_title", "Fair Price")}
-                  </p>
-                  <p className="mt-0.5 text-[11px] leading-4 text-[#7a6a58]">
-                    {t("product.benefit_price_desc", "No reseller markup.")}
-                  </p>
+              <div className="mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div className="flex items-start gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-[#3a2a1e]/5">
+                  <span className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-full bg-[#f3ecdf] text-[#1a1410]">
+                    <CheckIcon />
+                  </span>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#1a1410]">
+                      {t("product.benefit_price_title", "Easy Discovery")}
+                    </p>
+                    <p className="mt-1 text-sm leading-5 text-[#7a6a58]">
+                      {t("product.benefit_price_desc", "Browse products in one place.")}
+                    </p>
+                  </div>
                 </div>
 
                 <a
                   href={`tel:${BUSINESS_PHONE_TEL}`}
-                  className="rounded-xl bg-white p-3.5 transition hover:bg-[#faf6ee]"
+                  className="flex items-start gap-3 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-[#3a2a1e]/5 transition hover:bg-[#faf6ee]"
                   aria-label={`Call ${BUSINESS_PHONE}`}
                 >
-                  <PhoneIcon />
-                  <p className="mt-2 text-[10px] font-bold uppercase tracking-wider text-[#1a1410]">
-                    {t("product.benefit_phone_title", "Call Us")}
-                  </p>
-                  <p className="mt-0.5 text-[11px] leading-4 font-semibold text-[#b98a3e]">
-                    {BUSINESS_PHONE}
-                  </p>
+                  <span className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-full bg-[#f3ecdf] text-[#1a1410]">
+                    <PhoneIcon />
+                  </span>
+                  <div>
+                    <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-[#1a1410]">
+                      {t("product.benefit_phone_title", "Call Us")}
+                    </p>
+                    <p className="mt-1 text-sm font-semibold leading-5 text-[#b98a3e]">
+                      {BUSINESS_PHONE}
+                    </p>
+                  </div>
                 </a>
               </div>
             </div>
@@ -570,7 +531,6 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
         </div>
       </section>
 
-      {/* Fullscreen lightbox */}
       {lightboxOpen && currentImage && (
         <ImageLightbox
           src={currentImage}

@@ -77,10 +77,7 @@ const API_BASE_URL = RAW_API_BASE.replace(/\/+$/, "");
 // ============================================================
 // Site assets — files in /public are served from the root
 // ============================================================
-const HERO_VIDEOS = [
-  "/banners/7504621-uhd_3840_2160_25fps.mp4",
-  "/banners/7659850-uhd_3840_2160_25fps.mp4",
-];
+const HERO_VIDEOS = ["/banners/dreahero.mp4"];
 const HERO_POSTER = "/banners/photo.jpg";
 
 // ============================================================
@@ -830,7 +827,7 @@ export default function HomePage() {
   const { settings } = useSettings();
   const { t } = useLanguage();
 
-  const DEFAULT_PHONE = "+251 900 000 000";
+  const DEFAULT_PHONE = "+251 993 132 122";
   const DEFAULT_EMAIL = "info@alemayehplastic.com";
 
   const contactPhone = mounted
@@ -918,7 +915,7 @@ export default function HomePage() {
           className="absolute inset-0 z-[1]"
           style={{
             background:
-              "linear-gradient(90deg, rgba(26,20,16,.94) 0%, rgba(26,20,16,.72) 45%, rgba(26,20,16,.30) 100%)",
+              "linear-gradient(90deg, rgba(26,20,16,.72) 0%, rgba(26,20,16,.48) 45%, rgba(26,20,16,.18) 100%)",
           }}
         />
         <div className="absolute inset-0 z-[2] bg-[radial-gradient(circle_at_72%_48%,rgba(224,168,60,.18),transparent_28%)]" />

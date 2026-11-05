@@ -29,7 +29,16 @@ const emptyDraft: ArticleDraft = {
 interface ArticleFormProps {
   articleId?: string;
   onClose?: () => void;
-  onSaved?: () => void;
+  onSaved?: (result: ArticleSaveResult) => void;
+}
+
+interface ArticleSaveResult {
+  articleId: string;
+  telegram?: {
+    sent: boolean;
+    error?: string;
+    warning?: string;
+  };
 }
 
 export default function ArticleForm({
@@ -40,9 +49,15 @@ export default function ArticleForm({
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
   const [draft, setDraft] = useState<ArticleDraft>(emptyDraft);
+  const [savedArticleId, setSavedArticleId] = useState(articleId);
   const [loading, setLoading] = useState(Boolean(articleId));
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [telegramSending, setTelegramSending] = useState(false);
+  const [telegramStatus, setTelegramStatus] = useState<{
+    sent: boolean;
+    message: string;
+  } | null>(null);
   const [error, setError] = useState("");
 
   useEffect(() => {
@@ -135,17 +150,38 @@ export default function ArticleForm({
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
     setError("");
+    setTelegramStatus(null);
     setSaving(true);
     try {
-      const endpoint = articleId
-        ? `/api/articles/admin/${articleId}`
+      const endpoint = savedArticleId
+        ? `/api/articles/admin/${savedArticleId}`
         : "/api/articles/admin";
-      if (articleId) {
-        await api.put(endpoint, draft);
-      } else {
-        await api.post(endpoint, draft);
+      const response = savedArticleId
+        ? await api.put(endpoint, draft)
+        : await api.post(endpoint, draft);
+      const nextArticleId =
+        response.data?.article?.id || savedArticleId;
+      if (!nextArticleId) {
+        throw new Error("The article was saved, but its ID was not returned.");
       }
-      if (onSaved) onSaved();
+      setSavedArticleId(nextArticleId);
+
+      const telegram = response.data?.telegram as
+        | ArticleSaveResult["telegram"]
+        | undefined;
+      if (telegram && !telegram.sent) {
+        const message =
+          telegram.error ||
+          "The article was saved, but its Telegram announcement failed.";
+        if (onSaved) {
+          onSaved({ articleId: nextArticleId, telegram });
+        } else {
+          setTelegramStatus({ sent: false, message });
+        }
+        return;
+      }
+
+      if (onSaved) onSaved({ articleId: nextArticleId, telegram });
       else {
         router.push("/admin/articles");
         router.refresh();
@@ -162,6 +198,40 @@ export default function ArticleForm({
       );
     } finally {
       setSaving(false);
+    }
+  };
+
+  const retryTelegramAnnouncement = async () => {
+    if (!savedArticleId) return;
+    setTelegramSending(true);
+    setTelegramStatus(null);
+    try {
+      const response = await api.post(
+        `/api/articles/admin/${savedArticleId}/telegram`
+      );
+      const telegram = response.data?.telegram;
+      setTelegramStatus({
+        sent: Boolean(telegram?.sent),
+        message: telegram?.sent
+          ? telegram.warning
+            ? `Article text was sent, but its image could not be sent: ${telegram.warning}`
+            : "Article image and content sent to Telegram."
+          : telegram?.error || "The Telegram announcement could not be sent.",
+      });
+    } catch (requestError) {
+      const responseError = (
+        requestError as { response?: { data?: { error?: string } } }
+      ).response?.data?.error;
+      setTelegramStatus({
+        sent: false,
+        message:
+          responseError ||
+          (requestError instanceof Error
+            ? requestError.message
+            : "The Telegram announcement could not be sent."),
+      });
+    } finally {
+      setTelegramSending(false);
     }
   };
 
@@ -194,7 +264,7 @@ export default function ArticleForm({
               id="article-form-title"
               className="text-xl font-bold text-slate-900"
             >
-              {articleId ? "Edit article" : "Add an article"}
+              {savedArticleId ? "Edit article" : "Add an article"}
             </h1>
             <p className="mt-1 text-sm text-slate-500">
               Add article details and publish when ready.
@@ -228,6 +298,30 @@ export default function ArticleForm({
                 >
                   {error}
                 </p>
+              )}
+              {telegramStatus && (
+                <div
+                  role={telegramStatus.sent ? "status" : "alert"}
+                  className={`rounded-xl border p-3 text-sm ${
+                    telegramStatus.sent
+                      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+                      : "border-amber-200 bg-amber-50 text-amber-900"
+                  }`}
+                >
+                  <p>{telegramStatus.message}</p>
+                  {!telegramStatus.sent &&
+                    savedArticleId &&
+                    draft.published && (
+                      <button
+                        type="button"
+                        onClick={() => void retryTelegramAnnouncement()}
+                        disabled={telegramSending}
+                        className="mt-2 font-semibold underline underline-offset-2 disabled:opacity-60"
+                      >
+                        {telegramSending ? "Sending..." : "Retry Telegram send"}
+                      </button>
+                    )}
+                </div>
               )}
 
               <div className="grid gap-4 sm:grid-cols-2">
@@ -377,7 +471,7 @@ export default function ArticleForm({
                 <Save size={16} />
                 {saving
                   ? "Saving..."
-                  : articleId
+                  : savedArticleId
                     ? "Save changes"
                     : "Create article"}
               </button>

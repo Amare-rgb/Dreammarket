@@ -147,7 +147,7 @@ ${this.products
 
 **Contact Information:**
 - Email: support@alemayehplastic.com
-- Phone: +251 900 000 000
+- Phone: +251 993 132 122
 - Hours: Mon-Sat 8AM - 6PM EAT (East Africa Time)
 
 Generate helpful, friendly, and accurate responses to user queries.`;
@@ -766,7 +766,7 @@ Generate helpful, friendly, and accurate responses to user queries.`;
     return (
       `📞 **Contact Dream More Affiliate Market**\n\n` +
       `📧 Email: support@alemayehplastic.com\n` +
-      `📱 Phone: +251 900 000 000\n` +
+      `📱 Phone: +251 993 132 122\n` +
       `🕐 Hours: Mon-Sat 8AM - 6PM EAT (East Africa Time)\n` +
       `📍 Location: Bahir Dar, Ethiopia\n\n` +
       `How can we assist you today? 🤝`

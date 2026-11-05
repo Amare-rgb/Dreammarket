@@ -266,13 +266,13 @@ const defaultSettings: SettingsData = {
   siteName: "Dream More Affiliate Market",
   siteDescription: "Discover trusted products and great deals.",
   adminEmail: "admin@alemayehplastic.com",
-  adminPhone: "+251 900 000 000",
+  adminPhone: "+251 993 132 122",
   address: "Bahir Dar, Ethiopia",
   timezone: "Africa/Addis_Ababa",
   dateFormat: "DD/MM/YYYY",
   storeName: "Dream More Affiliate Market",
   storeEmail: "info@alemayehplastic.com",
-  storePhone: "+251 900 000 000",
+  storePhone: "+251 993 132 122",
   storeAddress: "Bahir Dar, Ethiopia",
   currency: "ETB",
   taxRate: 15,
@@ -280,7 +280,7 @@ const defaultSettings: SettingsData = {
   sessionTimeout: 60,
   logo: "",
   contactEmail: "support@alemayehplastic.com",
-  contactPhone: "+251 900 000 000",
+  contactPhone: "+251 993 132 122",
   contactAddress: "Bahir Dar, Ethiopia",
   contactHours: "Mon-Sat: 8:00 AM - 6:00 PM",
   enableContactForm: true,
@@ -1008,7 +1008,7 @@ const SettingsPage: React.FC = () => {
                   name="adminPhone"
                   value={formData.adminPhone}
                   onChange={handleChange}
-                  placeholder="+251 900 000 000"
+                  placeholder="+251 993 132 122"
                   className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all text-sm"
                 />
               </div>
@@ -1107,7 +1107,7 @@ const SettingsPage: React.FC = () => {
                   name="storePhone"
                   value={formData.storePhone}
                   onChange={handleChange}
-                  placeholder="+251 900 000 000"
+                  placeholder="+251 993 132 122"
                   className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all text-sm"
                 />
               </div>
@@ -1198,7 +1198,7 @@ const SettingsPage: React.FC = () => {
                     name="contactPhone"
                     value={formData.contactPhone}
                     onChange={handleChange}
-                    placeholder="+251 900 000 000"
+                    placeholder="+251 993 132 122"
                     className="w-full pl-10 pr-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all text-sm"
                   />
                 </div>

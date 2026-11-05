@@ -476,7 +476,7 @@ export default function AdminProfilePage() {
                   value={formData.phone}
                   onChange={handleInputChange}
                   className="mt-1 block w-full rounded-lg border-gray-300 shadow-sm focus:border-yellow-500 focus:ring-yellow-500 text-sm px-3 py-2 border"
-                  placeholder="+251 900 000 000"
+                  placeholder="+251 993 132 122"
                 />
                 <p className="text-xs text-gray-400 mt-1">Optional</p>
               </div>

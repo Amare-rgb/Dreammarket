@@ -112,10 +112,12 @@ export default function ProductCreateModal({
       return;
     }
 
+    const normalizedName = trimmedName.replace(/\s+/g, " ").trim();
+
     if (
       availableCategories.some(
         (category) =>
-          category.name.trim().toLowerCase() === trimmedName.toLowerCase()
+          category.name.trim().toLowerCase() === normalizedName.toLowerCase()
       )
     ) {
       setError("A category with this name already exists.");
@@ -126,22 +128,27 @@ export default function ProductCreateModal({
     setCreatingCategory(true);
     try {
       const baseSlug =
-        trimmedName
+        normalizedName
           .normalize("NFKD")
           .replace(/[\u0300-\u036f]/g, "")
           .toLowerCase()
           .replace(/[^a-z0-9]+/g, "-")
           .replace(/^-|-$/g, "") || "category";
+
       const usedSlugs = new Set(
-        availableCategories.map(
-          (category) =>
+        availableCategories.map((category) => {
+          const generated =
             category.slug ||
-            category.name
+            (category.name || "")
               .toLowerCase()
+              .normalize("NFKD")
+              .replace(/[\u0300-\u036f]/g, "")
               .replace(/[^a-z0-9]+/g, "-")
-              .replace(/^-|-$/g, "")
-        )
+              .replace(/^-|-$/g, "");
+          return generated || "category";
+        })
       );
+
       let slug = baseSlug;
       let suffix = 2;
       while (usedSlugs.has(slug)) {
@@ -150,10 +157,14 @@ export default function ProductCreateModal({
       }
 
       const response = await api.post("/api/categories", {
-        name: trimmedName,
+        name: normalizedName,
         slug,
       });
-      const createdCategory = response.data as ProductCategory;
+
+      const createdCategory =
+        (response.data?.category as ProductCategory) ||
+        (response.data as ProductCategory);
+
       if (!createdCategory?.id || !createdCategory.name) {
         throw new Error(
           "The category was created but the server response was invalid."
@@ -164,6 +175,7 @@ export default function ProductCreateModal({
       setCategoryId(createdCategory.id);
       setNewCategoryName("");
       setShowNewCategory(false);
+      setError("");
     } catch (categoryError) {
       const message = axios.isAxiosError(categoryError)
         ? categoryError.response?.data?.error ||

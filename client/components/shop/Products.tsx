@@ -531,7 +531,7 @@ export default function Products() {
             <h1 className="font-serif-heading text-5xl font-medium leading-[0.98] tracking-[-0.045em] text-[#faf6ee] sm:text-6xl lg:text-7xl">
               {t("shop.hero_title_1", "Discover more,")}
               <br />
-              <span className="text-[#e0a83c]">
+              <span className="text-[#F47822]">
                 {t("shop.hero_title_2", "all in one marketplace.")}
               </span>
             </h1>
@@ -548,339 +548,369 @@ export default function Products() {
 
       {/* Catalogue */}
       <section className="px-5 py-12 sm:px-8 lg:px-12 lg:py-16">
-        <div className="mx-auto max-w-7xl">
-          {/* Controls Bar */}
-          <div className="mb-8 rounded-3xl border border-[#3a2a1e]/10 bg-white p-4 shadow-[0_15px_45px_rgba(58,42,30,.06)] sm:p-5">
-            <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-              <div className="relative w-full lg:max-w-md">
-                <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#7a6a58]">
-                  <Search size={18} />
-                </div>
-                <input
-                  type="search"
-                  value={search}
-                  onChange={(e) => setSearch(e.target.value)}
-                  placeholder={t(
-                    "shop.search_placeholder",
-                    "Search products, categories, and listings..."
-                  )}
-                  className="h-11 w-full rounded-xl border border-[#3a2a1e]/10 bg-[#faf6ee]/60 pl-11 pr-4 text-sm text-[#1a1410] outline-none transition placeholder:text-[#7a6a58]/60 focus:border-[#b98a3e] focus:bg-white focus:ring-4 focus:ring-[#e0a83c]/20"
-                />
-              </div>
-
-              <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-                <div className="flex flex-wrap gap-2">
-                  {categoryTabs.map((category) => {
-                    const active =
-                      selectedCategory.toLowerCase() ===
-                      category.toLowerCase();
-                    return (
-                      <button
-                        key={category}
-                        type="button"
-                        onClick={() => setSelectedCategory(category)}
-                        className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition-all duration-200 ${
-                          active
-                            ? "bg-[#EB6D3D] text-[#20283a] shadow-md"
-                            : "bg-[#faf6ee] text-[#7a6a58] hover:bg-[#f0e8d8] hover:text-[#1a1410]"
-                        }`}
-                      >
-                        {getCategoryLabel(category)}
-                      </button>
-                    );
-                  })}
-                </div>
-
-                <select
-                  value={sort}
-                  onChange={(e) => setSort(e.target.value as SortOption)}
-                  className="h-10 rounded-full border border-[#3a2a1e]/10 bg-[#faf6ee] px-4 text-xs font-semibold text-[#1a1410] outline-none focus:border-[#b98a3e]"
-                >
-                  <option value="size-low">
-                    {t("shop.sort_size_low", "Size: Small → Large")}
-                  </option>
-                  <option value="size-high">
-                    {t("shop.sort_size_high", "Size: Large → Small")}
-                  </option>
-                  <option value="price-low">
-                    {t("shop.sort_price_low", "Price: Low to High")}
-                  </option>
-                  <option value="price-high">
-                    {t("shop.sort_price_high", "Price: High to Low")}
-                  </option>
-                  <option value="name">
-                    {t("shop.sort_name", "Name A–Z")}
-                  </option>
-                </select>
-              </div>
-            </div>
-
-            {literTabs.length > 0 && (
-              <div className="mt-4 flex flex-col gap-2 border-t border-[#3a2a1e]/10 pt-4 sm:flex-row sm:items-center sm:gap-4">
-                <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-[#b98a3e]">
-                  <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#e0a83c]" />
-                  {t("shop.filter_by_size", "Filter by Size")}
-                </span>
-
-                <div className="flex flex-wrap gap-2">
-                  {literTabs.map((liter) => {
-                    const active = selectedLiter === liter;
-                    return (
-                      <button
-                        key={liter}
-                        type="button"
-                        onClick={() => setSelectedLiter(liter)}
-                        className={`rounded-full px-3 py-1 text-[11px] font-bold transition-all duration-200 ${
-                          active
-                            ? "bg-[#EB6D3D] text-[#20283a] shadow-md"
-                            : "bg-[#faf6ee] text-[#7a6a58] hover:bg-[#f0e8d8] hover:text-[#1a1410]"
-                        }`}
-                      >
-                        {liter === "All"
-                          ? t("shop.size_all", "All Sizes")
-                          : liter}
-                      </button>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Results Summary */}
-          <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
-            <p className="text-sm text-[#7a6a58]">
-              {t("shop.showing", "Showing")}{" "}
-              <span className="font-bold text-[#1a1410]">
-                {filteredProducts.length}
-              </span>{" "}
-              {filteredProducts.length === 1
-                ? t("shop.product_singular", "product")
-                : t("shop.product_plural", "products")}
+        <div className="mx-auto max-w-7xl lg:grid lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-5">
+          <aside className="mb-6 rounded-2xl border border-[#3a2a1e]/10 bg-white p-3 shadow-[0_12px_30px_rgba(58,42,30,.05)] lg:mb-0 lg:h-fit lg:sticky lg:top-24 lg:p-4">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="text-sm font-bold uppercase tracking-[0.2em] text-[#b98a3e]">
+                {t("shop.categories", "Categories")}
+              </h2>
               {selectedCategory.toLowerCase() !== "all" && (
-                <span>
-                  {" "}
-                  {t("shop.in", "in")}{" "}
-                  <strong className="text-[#1a1410] capitalize">
-                    {getCategoryLabel(selectedCategory)}
-                  </strong>
-                </span>
-              )}
-              {selectedLiter !== "All" && (
-                <span>
-                  {" "}
-                  · <strong className="text-[#1a1410]">{selectedLiter}</strong>
-                </span>
-              )}
-            </p>
-
-            {hasActiveFilters && (
-              <button
-                type="button"
-                onClick={() => {
-                  setSelectedCategory("All");
-                  setSelectedLiter("All");
-                  setSearch("");
-                }}
-                className="inline-flex items-center gap-1 text-xs font-semibold text-[#b98a3e] hover:underline"
-              >
-                <X size={12} />
-                {t("shop.reset_filter", "Reset all filters")}
-              </button>
-            )}
-          </div>
-
-          {/* Grid */}
-          {loading ? (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-              {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-                <div
-                  key={i}
-                  className="overflow-hidden rounded-2xl border border-[#3a2a1e]/10 bg-white p-2.5 animate-pulse"
+                <button
+                  type="button"
+                  onClick={() => setSelectedCategory("All")}
+                  className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#7a6a58] hover:text-[#1a1410]"
                 >
-                  <div className="aspect-square w-full rounded-xl bg-gray-200" />
-                  <div className="mt-3 space-y-1.5">
-                    <div className="h-4 w-3/4 rounded bg-gray-200" />
-                    <div className="h-3 w-1/2 rounded bg-gray-100" />
-                    <div className="mt-2 h-5 w-1/2 rounded bg-gray-200" />
-                  </div>
-                </div>
-              ))}
+                  {t("shop.clear", "Clear")}
+                </button>
+              )}
             </div>
-          ) : filteredProducts.length > 0 ? (
-            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-              {filteredProducts.map((product, index) => {
-                const isAboveTheFold = index < 2;
 
-                const hasDiscount =
-                  product.discountPrice != null &&
-                  product.discountPrice < product.price;
-                const displayPrice = hasDiscount
-                  ? product.discountPrice!
-                  : product.price;
-                const discountPercent = hasDiscount
-                  ? Math.round(
-                      ((product.price - product.discountPrice!) /
-                        product.price) *
-                        100
-                    )
-                  : 0;
-                const isAvailable = product.stock > 0;
-
-                // ✅ Cloudinary-only — null if no valid image
-                const imageUrl = product.images?.[0] ?? null;
-
+            <div className="space-y-1.5">
+              {categoryTabs.map((category) => {
+                const active =
+                  selectedCategory.toLowerCase() === category.toLowerCase();
                 return (
-                  <div
-                    key={product.id}
-                    className="group flex flex-col overflow-hidden rounded-2xl border border-[#3a2a1e]/10 bg-white shadow-[0_8px_24px_rgba(58,42,30,.06)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_40px_rgba(58,42,30,.12)]"
+                  <button
+                    key={category}
+                    type="button"
+                    onClick={() => setSelectedCategory(category)}
+                    className={`flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left text-sm font-medium transition-all duration-200 ${
+                      active
+                        ? "bg-[#EB6D3D] text-[#20283a] shadow-md"
+                        : "bg-[#faf6ee] text-[#7a6a58] hover:bg-[#f0e8d8] hover:text-[#1a1410]"
+                    }`}
                   >
-                    <Link
-                      href={`/shop/${encodeURIComponent(product.slug)}`}
-                      className="relative block aspect-square w-full overflow-hidden bg-[#2a1f18]"
+                    <span>{getCategoryLabel(category)}</span>
+                    <span
+                      className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full text-[10px] font-bold ${
+                        active ? "bg-[#20283a] text-white" : "bg-white text-[#7a6a58]"
+                      }`}
                     >
-                      <ProductImage
-                        src={imageUrl}
-                        alt={product.name}
-                        priority={isAboveTheFold}
-                      />
-
-                      <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#1a1410]/55 via-transparent to-transparent" />
-
-                      <div className="absolute left-2 top-2 flex flex-wrap gap-1">
-                        <span className="rounded-full bg-white/95 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#1a1410] shadow-sm backdrop-blur">
-                          {getCategoryLabel(product.category)}
-                        </span>
-                        {product.liters != null && product.liters > 0 && (
-                          <span className="rounded-full bg-[#1a1410]/85 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#e0a83c] shadow-sm backdrop-blur">
-                            {literBucket(product.liters)}
-                          </span>
-                        )}
-                        {hasDiscount && (
-                          <span className="rounded-full bg-red-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm">
-                            -{discountPercent}%
-                          </span>
-                        )}
-                      </div>
-
-                      <span className="absolute bottom-2 left-2 rounded-full bg-[#1a1410]/85 px-2 py-0.5 text-[9px] font-medium text-white backdrop-blur">
-                        {isAvailable
-                          ? `${t("shop.in_stock", "In Stock")} (${
-                              product.stock
-                            })`
-                          : t("shop.out_of_stock", "Out of stock")}
-                      </span>
-
-                      <span className="absolute bottom-2 right-2 flex h-7 w-7 translate-y-2 items-center justify-center rounded-full bg-[#e0a83c] text-[#1a1410] opacity-0 shadow-md transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
-                        <ArrowUpRight size={14} strokeWidth={2.4} />
-                      </span>
-                    </Link>
-
-                    <div className="flex flex-1 flex-col p-3 sm:p-3.5">
-                      <div>
-                        <Link
-                          href={`/shop/${encodeURIComponent(product.slug)}`}
-                          className="block"
-                        >
-                          <h2 className="line-clamp-1 text-sm font-bold leading-tight text-[#1a1410] transition-colors group-hover:text-[#b98a3e]">
-                            {product.name}
-                          </h2>
-                        </Link>
-
-                        <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-[#7a6a58]">
-                          {product.description ||
-                            t(
-                              "shop.default_card_desc",
-                              "Explore product details and discover useful finds for everyday life."
-                            )}
-                        </p>
-                      </div>
-
-                      <div className="mt-2.5 flex items-baseline justify-between gap-2">
-                        <div className="flex items-baseline gap-1">
-                          <span className="text-base font-bold text-[#1a1410]">
-                            ETB {displayPrice.toLocaleString()}
-                          </span>
-                          <span className="text-[10px] text-[#7a6a58]">
-                            /{product.unit}
-                          </span>
-                        </div>
-                        {hasDiscount && (
-                          <span className="text-[10px] text-gray-400 line-through">
-                            ETB {product.price.toLocaleString()}
-                          </span>
-                        )}
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => addToCart(product, imageUrl)}
-                        disabled={!isAvailable}
-                        className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#20283a] px-3 text-xs font-bold text-white transition hover:bg-[#30384f] disabled:cursor-not-allowed disabled:opacity-50"
-                      >
-                        <ShoppingCart size={15} />
-                        {t("checkout.add_to_order", "Add to cart")}
-                      </button>
-                      {cartFeedback?.productId === product.id && (
-                        <p
-                          role="status"
-                          className={`mt-2 text-center text-xs ${
-                            cartFeedback.isError
-                              ? "text-red-600"
-                              : "text-green-700"
-                          }`}
-                        >
-                          {cartFeedback.message}
-                          {!cartFeedback.isError && (
-                            <>
-                              {" "}
-                              <Link
-                                href="/checkout"
-                                className="font-semibold underline underline-offset-2"
-                              >
-                                {t("checkout.go_to_checkout", "Checkout")}
-                              </Link>
-                            </>
-                          )}
-                        </p>
-                      )}
-                    </div>
-                  </div>
+                      {products.filter((product) => {
+                        const productCat = (product.category || "").toLowerCase().trim();
+                        const normalized = category.toLowerCase();
+                        return (
+                          normalized === "all" ||
+                          productCat === normalized ||
+                          productCat.includes(normalized) ||
+                          normalized.includes(productCat)
+                        );
+                      }).length}
+                    </span>
+                  </button>
                 );
               })}
             </div>
-          ) : (
-            <div className="rounded-3xl border border-dashed border-[#3a2a1e]/20 bg-white px-6 py-16 text-center shadow-sm">
-              <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#faf6ee] text-[#b98a3e]">
-                <Search size={22} />
+          </aside>
+
+          <div className="min-w-0">
+            {/* Controls Bar */}
+            <div className="mb-8 rounded-3xl border border-[#3a2a1e]/10 bg-white p-4 shadow-[0_15px_45px_rgba(58,42,30,.06)] sm:p-5">
+              <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
+                <div className="relative w-full lg:max-w-md">
+                  <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#7a6a58]">
+                    <Search size={18} />
+                  </div>
+                  <input
+                    type="search"
+                    value={search}
+                    onChange={(e) => setSearch(e.target.value)}
+                    placeholder={t(
+                      "shop.search_placeholder",
+                      "Search products, categories, and listings..."
+                    )}
+                    className="h-11 w-full rounded-xl border border-[#3a2a1e]/10 bg-[#faf6ee]/60 pl-11 pr-4 text-sm text-[#1a1410] outline-none transition placeholder:text-[#7a6a58]/60 focus:border-[#b98a3e] focus:bg-white focus:ring-4 focus:ring-[#e0a83c]/20"
+                  />
+                </div>
+
+                <div className="flex items-center justify-end">
+                  <select
+                    value={sort}
+                    onChange={(e) => setSort(e.target.value as SortOption)}
+                    className="h-10 rounded-full border border-[#3a2a1e]/10 bg-[#faf6ee] px-4 text-xs font-semibold text-[#1a1410] outline-none focus:border-[#b98a3e]"
+                  >
+                    <option value="size-low">
+                      {t("shop.sort_size_low", "Size: Small → Large")}
+                    </option>
+                    <option value="size-high">
+                      {t("shop.sort_size_high", "Size: Large → Small")}
+                    </option>
+                    <option value="price-low">
+                      {t("shop.sort_price_low", "Price: Low to High")}
+                    </option>
+                    <option value="price-high">
+                      {t("shop.sort_price_high", "Price: High to Low")}
+                    </option>
+                    <option value="name">
+                      {t("shop.sort_name", "Name A–Z")}
+                    </option>
+                  </select>
+                </div>
               </div>
-              <h3 className="font-serif-heading text-xl font-bold text-[#1a1410]">
-                {t("shop.no_products_title", "No products found")}
-              </h3>
-              <p className="mx-auto mt-2 max-w-md text-xs leading-6 text-[#7a6a58]">
-                {t(
-                  "shop.no_products_desc",
-                  "We couldn't find any items matching your current filters. Try adjusting your search query or choosing another category."
+
+              {literTabs.length > 0 && (
+                <div className="mt-4 flex flex-col gap-2 border-t border-[#3a2a1e]/10 pt-4 sm:flex-row sm:items-center sm:gap-4">
+                  <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-[#b98a3e]">
+                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#e0a83c]" />
+                    {t("shop.filter_by_size", "Filter by Size")}
+                  </span>
+
+                  <div className="flex flex-wrap gap-2">
+                    {literTabs.map((liter) => {
+                      const active = selectedLiter === liter;
+                      return (
+                        <button
+                          key={liter}
+                          type="button"
+                          onClick={() => setSelectedLiter(liter)}
+                          className={`rounded-full px-3 py-1 text-[11px] font-bold transition-all duration-200 ${
+                            active
+                              ? "bg-[#EB6D3D] text-[#20283a] shadow-md"
+                              : "bg-[#faf6ee] text-[#7a6a58] hover:bg-[#f0e8d8] hover:text-[#1a1410]"
+                          }`}
+                        >
+                          {liter === "All"
+                            ? t("shop.size_all", "All Sizes")
+                            : liter}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Results Summary */}
+            <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
+              <p className="text-sm text-[#7a6a58]">
+                {t("shop.showing", "Showing")} {" "}
+                <span className="font-bold text-[#1a1410]">
+                  {filteredProducts.length}
+                </span>{" "}
+                {filteredProducts.length === 1
+                  ? t("shop.product_singular", "product")
+                  : t("shop.product_plural", "products")}
+                {selectedCategory.toLowerCase() !== "all" && (
+                  <span>
+                    {" "}
+                    {t("shop.in", "in")} {" "}
+                    <strong className="text-[#1a1410] capitalize">
+                      {getCategoryLabel(selectedCategory)}
+                    </strong>
+                  </span>
+                )}
+                {selectedLiter !== "All" && (
+                  <span>
+                    {" "}
+                    · <strong className="text-[#1a1410]">{selectedLiter}</strong>
+                  </span>
                 )}
               </p>
-              <button
-                type="button"
-                onClick={() => {
-                  setSearch("");
-                  setSelectedCategory("All");
-                  setSelectedLiter("All");
-                }}
-                className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#EB6D3D] px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-[#20283a] transition hover:bg-[#cf5427] hover:text-white"
-              >
-                {t("shop.clear_filters", "Clear all filters")}
-              </button>
-            </div>
-          )}
 
-          {error && !loading && filteredProducts.length === 0 && (
-            <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-center text-sm text-red-600">
-              {error}
+              {hasActiveFilters && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSelectedCategory("All");
+                    setSelectedLiter("All");
+                    setSearch("");
+                  }}
+                  className="inline-flex items-center gap-1 text-xs font-semibold text-[#b98a3e] hover:underline"
+                >
+                  <X size={12} />
+                  {t("shop.reset_filter", "Reset all filters")}
+                </button>
+              )}
             </div>
-          )}
+
+            {loading ? (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+                {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
+                  <div
+                    key={i}
+                    className="overflow-hidden rounded-2xl border border-[#3a2a1e]/10 bg-white p-2.5 animate-pulse"
+                  >
+                    <div className="aspect-square w-full rounded-xl bg-gray-200" />
+                    <div className="mt-3 space-y-1.5">
+                      <div className="h-4 w-3/4 rounded bg-gray-200" />
+                      <div className="h-3 w-1/2 rounded bg-gray-100" />
+                      <div className="mt-2 h-5 w-1/2 rounded bg-gray-200" />
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : filteredProducts.length > 0 ? (
+              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
+                {filteredProducts.map((product, index) => {
+                  const isAboveTheFold = index < 2;
+
+                  const hasDiscount =
+                    product.discountPrice != null &&
+                    product.discountPrice < product.price;
+                  const displayPrice = hasDiscount
+                    ? product.discountPrice!
+                    : product.price;
+                  const discountPercent = hasDiscount
+                    ? Math.round(
+                        ((product.price - product.discountPrice!) /
+                          product.price) *
+                          100
+                      )
+                    : 0;
+                  const isAvailable = product.stock > 0;
+
+                  const imageUrl = product.images?.[0] ?? null;
+
+                  return (
+                    <div
+                      key={product.id}
+                      className="group flex flex-col overflow-hidden rounded-2xl border border-[#3a2a1e]/10 bg-white shadow-[0_8px_24px_rgba(58,42,30,.06)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_40px_rgba(58,42,30,.12)]"
+                    >
+                      <Link
+                        href={`/shop/${encodeURIComponent(product.slug)}`}
+                        className="relative block aspect-square w-full overflow-hidden bg-[#2a1f18]"
+                      >
+                        <ProductImage
+                          src={imageUrl}
+                          alt={product.name}
+                          priority={isAboveTheFold}
+                        />
+
+                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#1a1410]/55 via-transparent to-transparent" />
+
+                        <div className="absolute left-2 top-2 flex flex-wrap gap-1">
+                          <span className="rounded-full bg-white/95 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#1a1410] shadow-sm backdrop-blur">
+                            {getCategoryLabel(product.category)}
+                          </span>
+                          {product.liters != null && product.liters > 0 && (
+                            <span className="rounded-full bg-[#1a1410]/85 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#e0a83c] shadow-sm backdrop-blur">
+                              {literBucket(product.liters)}
+                            </span>
+                          )}
+                          {hasDiscount && (
+                            <span className="rounded-full bg-red-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm">
+                              -{discountPercent}%
+                            </span>
+                          )}
+                        </div>
+
+                        <span className="absolute bottom-2 left-2 rounded-full bg-[#1a1410]/85 px-2 py-0.5 text-[9px] font-medium text-white backdrop-blur">
+                          {isAvailable
+                            ? `${t("shop.in_stock", "In Stock")} (${product.stock})`
+                            : t("shop.out_of_stock", "Out of stock")}
+                        </span>
+
+                        <span className="absolute bottom-2 right-2 flex h-7 w-7 translate-y-2 items-center justify-center rounded-full bg-[#e0a83c] text-[#1a1410] opacity-0 shadow-md transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
+                          <ArrowUpRight size={14} strokeWidth={2.4} />
+                        </span>
+                      </Link>
+
+                      <div className="flex flex-1 flex-col p-3 sm:p-3.5">
+                        <div>
+                          <Link
+                            href={`/shop/${encodeURIComponent(product.slug)}`}
+                            className="block"
+                          >
+                            <h2 className="line-clamp-1 text-sm font-bold leading-tight text-[#1a1410] transition-colors group-hover:text-[#b98a3e]">
+                              {product.name}
+                            </h2>
+                          </Link>
+
+                          <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-[#7a6a58]">
+                            {product.description ||
+                              t(
+                                "shop.default_card_desc",
+                                "Explore product details and discover useful finds for everyday life."
+                              )}
+                          </p>
+                        </div>
+
+                        <div className="mt-2.5 flex items-baseline justify-between gap-2">
+                          <div className="flex items-baseline gap-1">
+                            <span className="text-base font-bold text-[#1a1410]">
+                              ETB {displayPrice.toLocaleString()}
+                            </span>
+                            <span className="text-[10px] text-[#7a6a58]">
+                              /{product.unit}
+                            </span>
+                          </div>
+                          {hasDiscount && (
+                            <span className="text-[10px] text-gray-400 line-through">
+                              ETB {product.price.toLocaleString()}
+                            </span>
+                          )}
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => addToCart(product, imageUrl)}
+                          disabled={!isAvailable}
+                          className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#20283a] px-3 text-xs font-bold text-white transition hover:bg-[#30384f] disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          <ShoppingCart size={15} />
+                          {t("checkout.add_to_order", "Add to cart")}
+                        </button>
+                        {cartFeedback?.productId === product.id && (
+                          <p
+                            role="status"
+                            className={`mt-2 text-center text-xs ${
+                              cartFeedback.isError
+                                ? "text-red-600"
+                                : "text-green-700"
+                            }`}
+                          >
+                            {cartFeedback.message}
+                            {!cartFeedback.isError && (
+                              <>
+                                {" "}
+                                <Link
+                                  href="/checkout"
+                                  className="font-semibold underline underline-offset-2"
+                                >
+                                  {t("checkout.go_to_checkout", "Checkout")}
+                                </Link>
+                              </>
+                            )}
+                          </p>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="rounded-3xl border border-dashed border-[#3a2a1e]/20 bg-white px-6 py-16 text-center shadow-sm">
+                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#faf6ee] text-[#b98a3e]">
+                  <Search size={22} />
+                </div>
+                <h3 className="font-serif-heading text-xl font-bold text-[#1a1410]">
+                  {t("shop.no_products_title", "No products found")}
+                </h3>
+                <p className="mx-auto mt-2 max-w-md text-xs leading-6 text-[#7a6a58]">
+                  {t(
+                    "shop.no_products_desc",
+                    "We couldn't find any items matching your current filters. Try adjusting your search query or choosing another category."
+                  )}
+                </p>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSearch("");
+                    setSelectedCategory("All");
+                    setSelectedLiter("All");
+                  }}
+                  className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#EB6D3D] px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-[#20283a] transition hover:bg-[#cf5427] hover:text-white"
+                >
+                  {t("shop.clear_filters", "Clear all filters")}
+                </button>
+              </div>
+            )}
+
+            {error && !loading && filteredProducts.length === 0 && (
+              <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-center text-sm text-red-600">
+                {error}
+              </div>
+            )}
+          </div>
         </div>
       </section>
     </main>

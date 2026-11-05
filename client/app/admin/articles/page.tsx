@@ -3,7 +3,14 @@
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { FileText, LoaderCircle, Pencil, Plus, Trash2 } from "lucide-react";
+import {
+  FileText,
+  LoaderCircle,
+  Pencil,
+  Plus,
+  Send,
+  Trash2,
+} from "lucide-react";
 import { api } from "@/lib/api";
 import ArticleForm from "./ArticleForm";
 
@@ -22,6 +29,11 @@ export default function AdminArticlesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [createOpen, setCreateOpen] = useState(false);
+  const [telegramMessage, setTelegramMessage] = useState<{
+    sent: boolean;
+    text: string;
+  } | null>(null);
+  const [sendingArticleId, setSendingArticleId] = useState<string | null>(null);
 
   const loadArticles = useCallback(async () => {
     setLoading(true);
@@ -63,6 +75,39 @@ export default function AdminArticlesPage() {
     }
   };
 
+  const sendArticleToTelegram = async (article: Article) => {
+    setSendingArticleId(article.id);
+    setTelegramMessage(null);
+    try {
+      const response = await api.post(
+        `/api/articles/admin/${article.id}/telegram`
+      );
+      const telegram = response.data?.telegram;
+      setTelegramMessage({
+        sent: Boolean(telegram?.sent),
+        text: telegram?.sent
+          ? telegram.warning
+            ? `"${article.title}" text was sent, but the image could not be sent: ${telegram.warning}`
+            : `"${article.title}" image and content were sent to Telegram.`
+          : telegram?.error || "The Telegram announcement could not be sent.",
+      });
+    } catch (requestError) {
+      const responseError = (
+        requestError as { response?: { data?: { error?: string } } }
+      ).response?.data?.error;
+      setTelegramMessage({
+        sent: false,
+        text:
+          responseError ||
+          (requestError instanceof Error
+            ? requestError.message
+            : "The Telegram announcement could not be sent."),
+      });
+    } finally {
+      setSendingArticleId(null);
+    }
+  };
+
   return (
     <section className="space-y-6">
       <header className="flex flex-wrap items-center justify-between gap-4">
@@ -88,11 +133,36 @@ export default function AdminArticlesPage() {
         </p>
       )}
 
+      {telegramMessage && (
+        <p
+          role={telegramMessage.sent ? "status" : "alert"}
+          className={`rounded-xl border p-3 text-sm ${
+            telegramMessage.sent
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : "border-amber-200 bg-amber-50 text-amber-900"
+          }`}
+        >
+          {telegramMessage.text}
+        </p>
+      )}
+
       {createOpen && (
         <ArticleForm
           onClose={() => setCreateOpen(false)}
-          onSaved={() => {
+          onSaved={(result) => {
             setCreateOpen(false);
+            if (result.telegram) {
+              setTelegramMessage({
+                sent: result.telegram.sent,
+                text: result.telegram.sent
+                  ? result.telegram.warning
+                    ? `Article published and text sent to Telegram, but its image could not be sent: ${result.telegram.warning}`
+                    : "Article published and its image and content sent to Telegram."
+                  : `Article published on the site, but Telegram could not be notified: ${
+                      result.telegram.error || "Unknown Telegram error."
+                    } Retry the send from the article row.`,
+              });
+            }
             void loadArticles();
           }}
         />
@@ -152,6 +222,19 @@ export default function AdminArticlesPage() {
                   {article.published ? "Published" : "Draft"}
                 </span>
                 <div className="flex items-center gap-2">
+                  {article.published && (
+                    <button
+                      type="button"
+                      onClick={() => void sendArticleToTelegram(article)}
+                      disabled={sendingArticleId !== null}
+                      className="inline-flex items-center gap-2 rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-800 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      <Send size={15} />
+                      {sendingArticleId === article.id
+                        ? "Sending..."
+                        : "Send to Telegram"}
+                    </button>
+                  )}
                   <Link
                     href={`/admin/articles/${article.id}/edit`}
                     aria-label={`Edit ${article.title}`}

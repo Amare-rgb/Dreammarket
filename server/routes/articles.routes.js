@@ -1,6 +1,7 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { sendArticleAnnouncement } = require('../lib/telegram');
 
 const router = express.Router();
 
@@ -69,6 +70,19 @@ async function uniqueSlug(baseSlug, currentId) {
   return slug;
 }
 
+async function announceArticle(article) {
+  try {
+    return await sendArticleAnnouncement(article);
+  } catch (error) {
+    const message =
+      error instanceof Error
+        ? error.message
+        : 'An unexpected error prevented the Telegram announcement.';
+    console.error(`Telegram announcement failed for article ${article.id}: ${message}`);
+    return { sent: false, error: message };
+  }
+}
+
 router.get('/admin', requireAuth, requireAdmin, async (req, res) => {
   try {
     const articles = await prisma.article.findMany({
@@ -112,7 +126,12 @@ router.post('/admin', requireAuth, requireAdmin, async (req, res) => {
         authorId: req.user.id,
       },
     });
-    return res.status(201).json({ success: true, article });
+    const telegram = article.published ? await announceArticle(article) : null;
+    return res.status(201).json({
+      success: true,
+      article,
+      ...(telegram ? { telegram } : {}),
+    });
   } catch (error) {
     if (error.code === 'P2002') {
       return res.status(409).json({
@@ -134,7 +153,7 @@ router.put('/admin/:id', requireAuth, requireAdmin, async (req, res) => {
 
     const existing = await prisma.article.findUnique({
       where: { id: req.params.id },
-      select: { id: true },
+      select: { id: true, published: true },
     });
     if (!existing) {
       return res.status(404).json({ success: false, error: 'Article not found' });
@@ -145,7 +164,15 @@ router.put('/admin/:id', requireAuth, requireAdmin, async (req, res) => {
       where: { id: existing.id },
       data: { ...result.data, slug },
     });
-    return res.json({ success: true, article });
+    const telegram =
+      article.published && !existing.published
+        ? await announceArticle(article)
+        : null;
+    return res.json({
+      success: true,
+      article,
+      ...(telegram ? { telegram } : {}),
+    });
   } catch (error) {
     if (error.code === 'P2002') {
       return res.status(409).json({
@@ -155,6 +182,32 @@ router.put('/admin/:id', requireAuth, requireAdmin, async (req, res) => {
     }
     console.error('Failed to update article:', error);
     return res.status(500).json({ success: false, error: 'Failed to update article' });
+  }
+});
+
+router.post('/admin/:id/telegram', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const article = await prisma.article.findUnique({
+      where: { id: req.params.id },
+    });
+    if (!article) {
+      return res.status(404).json({ success: false, error: 'Article not found' });
+    }
+    if (!article.published) {
+      return res.status(400).json({
+        success: false,
+        error: 'Publish the article before sending it to Telegram.',
+      });
+    }
+
+    const telegram = await announceArticle(article);
+    return res.json({ success: true, telegram });
+  } catch (error) {
+    console.error('Failed to send article announcement:', error);
+    return res.status(500).json({
+      success: false,
+      error: 'Failed to send the article announcement.',
+    });
   }
 });
 

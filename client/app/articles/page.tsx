@@ -102,7 +102,7 @@ export default function ArticlesPage() {
         </div>
       </section>
 
-      <section className="mx-auto max-w-6xl px-5 pt-10 sm:px-8">
+      <section className="mx-auto max-w-7xl px-4 pt-8 sm:px-6">
         {loading ? (
           <div className="flex min-h-48 items-center justify-center">
             <LoaderCircle className="h-7 w-7 animate-spin text-[#F47822]" />
@@ -120,7 +120,7 @@ export default function ArticlesPage() {
             </p>
           </div>
         ) : (
-          <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3">
+          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
             {articles.map((article) => (
               <article
                 key={article.id}
@@ -145,17 +145,17 @@ export default function ArticlesPage() {
                     Marketplace
                   </span>
                 </div>
-                <div className="flex flex-1 flex-col p-5 sm:p-6">
+                <div className="flex flex-1 flex-col p-4 sm:p-5">
                     <p className="text-xs text-slate-400">
                       {new Date(article.createdAt).toLocaleDateString()}
                     </p>
-                    <h2 className="mt-2 text-xl font-bold leading-snug text-slate-900">
+                    <h2 className="mt-1.5 text-xl font-bold leading-snug text-slate-900">
                       {article.title}
                     </h2>
-                    <p className="mt-3 line-clamp-3 text-sm leading-6 text-slate-600">
+                    <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">
                       {article.description}
                     </p>
-                    <div className="mt-auto flex items-center justify-between gap-3 pt-6">
+                    <div className="mt-auto flex items-center justify-between gap-2 pt-4">
                       <button
                         type="button"
                         onClick={() => openArticlePreview(article)}
