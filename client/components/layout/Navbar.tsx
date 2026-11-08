@@ -266,7 +266,6 @@ export const Navbar = () => {
   const [categories, setCategories] = useState<Category[]>([]);
   const [searchQuery, setSearchQuery] = useState("");
   const [cartCount, setCartCount] = useState(0);
-  // ✅ Fallback toggle if the Cloudinary logo fails to load
   const [logoFailed, setLogoFailed] = useState(false);
 
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -281,6 +280,15 @@ export const Navbar = () => {
 
   const scrolled = useScrolled(60);
   const localUser = useStoredUser();
+
+  // ✅ Derived route flags (declared before any early return so hook order is stable)
+  const isAdminRoute = pathname?.startsWith("/admin") || false;
+  const isArticlesRoute = pathname?.startsWith("/articles") || false;
+  const isHome =
+    pathname === "/" ||
+    pathname === "/about" ||
+    pathname === "/shop" ||
+    pathname === "/contact";
 
   useEffect(() => {
     const updateCartCount = () => {
@@ -307,13 +315,6 @@ export const Navbar = () => {
   const isAdmin = userRole === "ADMIN";
   const isAuthenticated =
     status === "authenticated" || (status !== "unauthenticated" && !!activeUser);
-
-  const isAdminRoute = pathname?.startsWith("/admin") || false;
-  const isHome =
-    pathname === "/" ||
-    pathname === "/about" ||
-    pathname === "/shop" ||
-    pathname === "/contact";
 
   useEffect(() => {
     let isMounted = true;
@@ -408,7 +409,9 @@ export const Navbar = () => {
     router.push(q ? `/shop?search=${encodeURIComponent(q)}` : "/shop");
   };
 
-  if (isAdminRoute) return null;
+  // ✅ Hide the global navbar on admin AND articles routes.
+  // The articles section provides its own ArticlesNavbar via app/articles/layout.tsx.
+  if (isAdminRoute || isArticlesRoute) return null;
 
   const topCategories = categories.filter((c) => !c.parentId);
   const displayCategories =
@@ -711,10 +714,7 @@ export const Navbar = () => {
           <div
             className={`flex h-9 items-center rounded-full border p-0.5 shadow-sm transition-colors duration-300 ${langWrapClass}`}
           >
-            <Globe
-              size={12}
-              className="ml-1.5 mr-1 shrink-0 text-[#e0a83c]"
-            />
+            <Globe size={12} className="ml-1.5 mr-1 shrink-0 text-[#e0a83c]" />
             <button
               type="button"
               onClick={() => setLanguage("en")}

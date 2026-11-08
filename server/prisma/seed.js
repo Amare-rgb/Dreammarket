@@ -1,8 +1,27 @@
 // prisma/seed.js
+const path = require('path');
+require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 const { PrismaClient } = require('@prisma/client');
 const bcrypt = require('bcryptjs');
 
 const prisma = new PrismaClient();
+
+const ADMIN_EMAIL = (process.env.ADMIN_EMAIL || 'admin@dreammar.com').trim().toLowerCase();
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin@123';
+const ADMIN_NAME = process.env.ADMIN_NAME || 'Dream More Admin';
+const ADMIN_PHONE = process.env.ADMIN_PHONE || '+251 993 132 122';
+
+const USER_EMAIL = 'user@alemayehplastic.com';
+const USER_PASSWORD = 'user@123';
+
+const ARTICLE_CATEGORIES = [
+  { name: 'General', slug: 'general' },
+  { name: 'News', slug: 'news' },
+  { name: 'Announcements', slug: 'announcements' },
+  { name: 'Guides', slug: 'guides' },
+  { name: 'Tips', slug: 'tips' },
+  { name: 'Events', slug: 'events' },
+];
 
 async function main() {
   console.log('🌱 Seeding Dream More Affiliate Market...\n');
@@ -10,36 +29,36 @@ async function main() {
   // ========================================
   // 1. ADMIN USER
   // ========================================
-  const adminPassword = await bcrypt.hash('admin@123', 12);
+  const adminPassword = await bcrypt.hash(ADMIN_PASSWORD, 12);
 
   const admin = await prisma.user.upsert({
-    where: { email: 'admin@alemayehplastic.com' },
+    where: { email: ADMIN_EMAIL },
     update: {
       password: adminPassword,
       role: 'ADMIN',
-      name: 'Dream More Admin',
+      name: ADMIN_NAME,
+      phone: ADMIN_PHONE,
     },
     create: {
-      name: 'Dream More Admin',
-      email: 'admin@alemayehplastic.com',
+      name: ADMIN_NAME,
+      email: ADMIN_EMAIL,
       password: adminPassword,
       role: 'ADMIN',
-      phone: '+251 993 132 122',
+      phone: ADMIN_PHONE,
       address: 'Bahir Dar, Ethiopia',
     },
   });
 
-  console.log('✅ Admin user created');
-  console.log(`   Email:    ${admin.email}`);
-  console.log(`   Password: admin@123\n`);
+  console.log('✅ Admin user ready');
+  console.log(`   Email: ${admin.email}\n`);
 
   // ========================================
   // 2. REGULAR USER
   // ========================================
-  const userPassword = await bcrypt.hash('user@123', 12);
+  const userPassword = await bcrypt.hash(USER_PASSWORD, 12);
 
   const user = await prisma.user.upsert({
-    where: { email: 'user@alemayehplastic.com' },
+    where: { email: USER_EMAIL },
     update: {
       password: userPassword,
       role: 'USER',
@@ -47,7 +66,7 @@ async function main() {
     },
     create: {
       name: 'Test Customer',
-      email: 'user@alemayehplastic.com',
+      email: USER_EMAIL,
       password: userPassword,
       role: 'USER',
       phone: '+251 911 000 000',
@@ -55,17 +74,14 @@ async function main() {
     },
   });
 
-  console.log('✅ Regular user created');
-  console.log(`   Email:    ${user.email}`);
-  console.log(`   Password: user@123\n`);
+  console.log('✅ Regular user ready');
+  console.log(`   Email: ${user.email}\n`);
 
   // ========================================
-  // 3. CATEGORIES
+  // 3. PRODUCT CATEGORIES
   // ========================================
-  // ⚠️ MOCK CATEGORIES REMOVED
   // Add your real categories here later, or create them from the admin dashboard.
   const categories = [];
-
   const categoryMap = {};
 
   for (const cat of categories) {
@@ -77,15 +93,13 @@ async function main() {
     categoryMap[cat.slug] = created.id;
   }
 
-  console.log(`✅ Categories seeded: ${categories.length}\n`);
+  console.log(`✅ Product categories seeded: ${categories.length}\n`);
 
   // ========================================
   // 4. PRODUCTS
   // ========================================
-  // ⚠️ MOCK PRODUCTS REMOVED
   // Add your real products here later, or create them from the admin dashboard.
   const products = [];
-
   let productCount = 0;
 
   for (const p of products) {
@@ -118,17 +132,30 @@ async function main() {
     productCount++;
   }
 
-  console.log(`\n✅ Products seeded: ${productCount}\n`);
+  console.log(`✅ Products seeded: ${productCount}\n`);
 
   // ========================================
-  // 5. SETTINGS
+  // 5. ARTICLE CATEGORIES
+  // ========================================
+  for (const cat of ARTICLE_CATEGORIES) {
+    await prisma.articleCategory.upsert({
+      where: { slug: cat.slug },
+      update: {},
+      create: cat,
+    });
+  }
+
+  console.log(`✅ Article categories ready: ${ARTICLE_CATEGORIES.length}\n`);
+
+  // ========================================
+  // 6. SETTINGS
   // ========================================
   await prisma.settings.upsert({
     where: { id: 'default-settings' },
     update: {
       siteName: 'Dream More Affiliate Market',
       siteDescription: 'Discover trusted products and great deals.',
-      adminEmail: 'admin@alemayehplastic.com',
+      adminEmail: ADMIN_EMAIL,
       storeName: 'Dream More Affiliate Market',
       storeEmail: 'info@alemayehplastic.com',
       currency: 'ETB',
@@ -139,8 +166,8 @@ async function main() {
       id: 'default-settings',
       siteName: 'Dream More Affiliate Market',
       siteDescription: 'Discover trusted products and great deals.',
-      adminEmail: 'admin@alemayehplastic.com',
-      adminPhone: '+251 993 132 122',
+      adminEmail: ADMIN_EMAIL,
+      adminPhone: ADMIN_PHONE,
       address: 'Bahir Dar, Ethiopia',
       storeName: 'Dream More Affiliate Market',
       storeEmail: 'info@alemayehplastic.com',
@@ -158,25 +185,27 @@ async function main() {
     },
   });
 
-  console.log('✅ Settings created\n');
+  console.log('✅ Settings ready\n');
 
   // ========================================
-  // 6. SUMMARY
+  // 7. SUMMARY
   // ========================================
-  const userCount     = await prisma.user.count();
+  const userCount = await prisma.user.count();
   const categoryCount = await prisma.category.count();
-  const productCnt    = await prisma.product.count();
+  const productCnt = await prisma.product.count();
+  const articleCategoryCount = await prisma.articleCategory.count();
 
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('🎉 SEED COMPLETE!');
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
-  console.log(`   Users:      ${userCount}`);
-  console.log(`   Categories: ${categoryCount}`);
-  console.log(`   Products:   ${productCnt}`);
+  console.log(`   Users:               ${userCount}`);
+  console.log(`   Product categories:  ${categoryCount}`);
+  console.log(`   Products:            ${productCnt}`);
+  console.log(`   Article categories:  ${articleCategoryCount}`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
   console.log('🔐 LOGIN:');
-  console.log('   Admin → admin@alemayehplastic.com / admin@123');
-  console.log('   User  → user@alemayehplastic.com  / user@123');
+  console.log(`   Admin → ${ADMIN_EMAIL} / (ADMIN_PASSWORD from .env)`);
+  console.log(`   User  → ${USER_EMAIL} / ${USER_PASSWORD}`);
   console.log('━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━');
 }
 

@@ -136,12 +136,24 @@ export default function AdminLayout({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isMounted]);
 
-  // Navigation
+  // Close dropdowns when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement;
+      if (!target.closest(".notification-menu")) setNotificationsOpen(false);
+      if (!target.closest(".profile-menu")) setProfileOpen(false);
+    };
+    document.addEventListener("click", handleClickOutside);
+    return () => document.removeEventListener("click", handleClickOutside);
+  }, []);
+
+  // Navigation (Icons removed as requested)
   const navItems: NavItem[] = [
     { name: "Dashboard", href: "/admin/dashboard", section: "Main" },
     { name: "Products", href: "/admin/products", section: "Main" },
     { name: "Orders", href: "/admin/orders", section: "Main" },
     { name: "Articles", href: "/admin/articles", section: "Main" },
+    { name: "Comments", href: "/admin/comments", section: "Main" },
     { name: "Users", href: "/admin/users", section: "Main" },
     { name: "Settings", href: "/admin/settings", section: "Settings" },
   ];
@@ -250,12 +262,12 @@ export default function AdminLayout({
       {/* Sidebar */}
       <aside
         id="admin-sidebar"
-        className={`fixed top-0 left-0 z-50 h-full bg-white border-r border-gray-200 transition-all duration-300 ${
+        className={`fixed top-0 left-0 z-50 h-full bg-white border-r border-gray-200 transition-all duration-300 flex flex-col ${
           sidebarOpen ? "w-64" : "w-20"
         }`}
       >
         {/* Logo */}
-        <div className="flex items-center justify-between h-16 px-3 border-b border-[#cf5427] bg-[#EB6D3D]">
+        <div className="flex items-center justify-between h-16 px-3 border-b border-[#cf5427] bg-[#EB6D3D] shrink-0">
           <Link
             href="/admin/dashboard"
             className="flex min-w-0 items-center space-x-2"
@@ -293,7 +305,7 @@ export default function AdminLayout({
         </div>
 
         {/* Navigation */}
-        <nav className="p-4 space-y-4 overflow-y-auto h-[calc(100vh-4rem)]">
+        <nav className="p-4 space-y-4 overflow-y-auto flex-1">
           {Object.keys(groupedNavItems).map((section) => (
             <div key={section}>
               {sidebarOpen && (
@@ -314,13 +326,13 @@ export default function AdminLayout({
                       title={!sidebarOpen ? item.name : undefined}
                       className={`flex items-center px-3 py-2.5 rounded-lg transition-all duration-200 ${
                         isActive
-                          ? "bg-[#EB6D3D]/15 text-[#9c3d1a]"
+                          ? "bg-[#EB6D3D]/15 text-[#9c3d1a] font-semibold"
                           : "text-gray-700 hover:bg-gray-100 hover:text-gray-900"
                       } ${!sidebarOpen ? "justify-center" : ""}`}
                     >
                       <span
-                        className={`text-sm font-medium ${
-                          !sidebarOpen ? "text-xs" : ""
+                        className={`text-sm ${
+                          !sidebarOpen ? "text-xs font-bold" : ""
                         }`}
                       >
                         {sidebarOpen
@@ -392,7 +404,7 @@ export default function AdminLayout({
               </div>
 
               {/* Notifications */}
-              <div className="relative">
+              <div className="relative notification-menu">
                 <button
                   onClick={() => setNotificationsOpen(!notificationsOpen)}
                   className="relative p-2 rounded-lg hover:bg-gray-100 transition-colors"
@@ -443,7 +455,7 @@ export default function AdminLayout({
               </div>
 
               {/* Profile */}
-              <div className="relative">
+              <div className="relative profile-menu">
                 <button
                   onClick={() => setProfileOpen(!profileOpen)}
                   className="flex items-center space-x-3 p-1.5 rounded-lg hover:bg-gray-100 transition-colors"

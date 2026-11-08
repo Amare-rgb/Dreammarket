@@ -101,6 +101,10 @@ const CUSTOM_DOMAIN_REGEX = /^https?:\/\/([a-z0-9-]+\.)+[a-z]{2,}$/i;
 const NGROK_REGEX = /^https?:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.ngrok(-free)?\.(io|app|dev)$/i;
 const LAN_REGEX = /^https?:\/\/(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/;
 
+// Any domain is allowed by default (your current behavior).
+// Set CORS_ALLOW_ANY_DOMAIN=false in .env to allow only the listed origins.
+const ALLOW_ANY_DOMAIN = process.env.CORS_ALLOW_ANY_DOMAIN !== 'false';
+
 function isOriginAllowed(origin) {
   if (!origin) return true; // curl / Postman / server-to-server
 
@@ -108,7 +112,7 @@ function isOriginAllowed(origin) {
   if (allowedOrigins.has(cleaned)) return true;
 
   // Custom domain (DreamHost)
-  if (CUSTOM_DOMAIN_REGEX.test(cleaned)) return true;
+  if (ALLOW_ANY_DOMAIN && CUSTOM_DOMAIN_REGEX.test(cleaned)) return true;
 
   // Dev-only
   if (!isProd) {
@@ -144,10 +148,9 @@ const corsOptions = {
   preflightContinue: false,
 };
 
+// The cors middleware also answers OPTIONS preflight requests,
+// so no separate app.options(...) routes are needed.
 app.use(cors(corsOptions));
-app.options('*', cors(corsOptions));
-app.options('/', cors(corsOptions));
-app.options('/api', cors(corsOptions));
 
 // ═══════════════════════════════════════════════════════════
 // BODY PARSERS
@@ -174,6 +177,7 @@ const settingsRoutes = require('./routes/settings.routes');
 const profileRoutes = require('./routes/profile.routes');
 const adminOrdersRoutes = require('./routes/admin.orders.routes');
 const ordersRoutes = require('./routes/orders.routes');
+// Article categories live inside this router (/api/articles/admin/categories)
 const articlesRoutes = require('./routes/articles.routes');
 const chatbotRoutes = require('./routes/chatbot.routes');
 
@@ -254,6 +258,7 @@ const rootInfo = (req, res) => {
       products: '/api/products',
       orders: '/api/admin/orders',
       articles: '/api/articles',
+      articleCategories: '/api/articles/admin/categories',
       upload: '/api/upload',
       users: '/api/users',
       profile: '/api/profile',

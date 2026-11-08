@@ -1,109 +1,144 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useEffect, useRef, useState } from "react";
+import {
+  ChangeEvent,
+  FormEvent,
+  ReactNode,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 import Image from "next/image";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { ImagePlus, LoaderCircle, Save, X } from "lucide-react";
+import {
+  ArrowLeft,
+  ArrowRight,
+  Check,
+  ImagePlus,
+  LoaderCircle,
+  Plus,
+  Save,
+  Video,
+} from "lucide-react";
 import { api, uploadApi } from "@/lib/api";
+import { getVideoSource, isValidHttpUrl } from "@/lib/video";
+import {
+  apiErrorText as errorText,
+  categoryLabel,
+  useArticleCategories,
+} from "@/lib/articleCategories";
+import VideoPlayer from "@/components/VideoPlayer";
 
 interface ArticleDraft {
+  category: string;
   title: string;
   slug: string;
   description: string;
   content: string;
   image: string;
+  videoUrl: string;
   note: string;
   published: boolean;
 }
 
 const emptyDraft: ArticleDraft = {
+  category: "",
   title: "",
   slug: "",
   description: "",
   content: "",
   image: "",
+  videoUrl: "",
   note: "",
   published: false,
 };
 
-interface ArticleFormProps {
-  articleId?: string;
-  onClose?: () => void;
-  onSaved?: (result: ArticleSaveResult) => void;
+const STEPS = [
+  { key: "details", label: "Details" },
+  { key: "image", label: "Image" },
+  { key: "video", label: "Video" },
+  { key: "note", label: "Note" },
+  { key: "publish", label: "Publish" },
+] as const;
+
+const LAST_STEP = STEPS.length - 1;
+
+const inputClass =
+  "mt-1.5 w-full rounded-xl border border-slate-300 px-3 font-normal outline-none focus:border-[#EB6D3D] focus:ring-2 focus:ring-[#EB6D3D]/20";
+
+function StepCard({
+  title,
+  hint,
+  children,
+}: {
+  title: string;
+  hint?: string;
+  children: ReactNode;
+}) {
+  return (
+    <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm sm:p-6">
+      <h2 className="text-lg font-bold text-slate-900">{title}</h2>
+      {hint && <p className="mt-0.5 text-sm text-slate-500">{hint}</p>}
+      <div className="mt-5 space-y-4">{children}</div>
+    </section>
+  );
 }
 
-interface ArticleSaveResult {
-  articleId: string;
-  telegram?: {
-    sent: boolean;
-    error?: string;
-    warning?: string;
-  };
-}
-
-export default function ArticleForm({
-  articleId,
-  onClose,
-  onSaved,
-}: ArticleFormProps) {
+export default function ArticleForm({ articleId }: { articleId?: string }) {
   const router = useRouter();
   const fileRef = useRef<HTMLInputElement>(null);
+  const { categories, loading: categoriesLoading, create: createCategory } =
+    useArticleCategories();
+
+  const [step, setStep] = useState(0);
   const [draft, setDraft] = useState<ArticleDraft>(emptyDraft);
-  const [savedArticleId, setSavedArticleId] = useState(articleId);
+  const [savedId, setSavedId] = useState(articleId);
   const [loading, setLoading] = useState(Boolean(articleId));
   const [saving, setSaving] = useState(false);
   const [uploading, setUploading] = useState(false);
-  const [telegramSending, setTelegramSending] = useState(false);
-  const [telegramStatus, setTelegramStatus] = useState<{
+  const [retrying, setRetrying] = useState(false);
+  const [error, setError] = useState("");
+  const [telegram, setTelegram] = useState<{
     sent: boolean;
     message: string;
   } | null>(null);
-  const [error, setError] = useState("");
 
-  useEffect(() => {
-    const handleKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !saving && !uploading) {
-        if (onClose) onClose();
-        else router.push("/admin/articles");
-      }
-    };
-    const previousOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", handleKeyDown);
-    return () => {
-      document.body.style.overflow = previousOverflow;
-      window.removeEventListener("keydown", handleKeyDown);
-    };
-  }, [onClose, router, saving, uploading]);
+  // New category (inline)
+  const [newCategoryOpen, setNewCategoryOpen] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState("");
+  const [creatingCategory, setCreatingCategory] = useState(false);
+
+  // Falls back to the first category until the admin picks one.
+  const category = draft.category || categories[0]?.slug || "";
+
+  const update = <K extends keyof ArticleDraft>(key: K, value: ArticleDraft[K]) =>
+    setDraft((current) => ({ ...current, [key]: value }));
 
   useEffect(() => {
     if (!articleId) return;
     let active = true;
     api
       .get(`/api/articles/admin/${articleId}`)
-      .then((response) => {
-        const article = response.data?.article;
-        if (!article) throw new Error("Article not found.");
+      .then((res) => {
+        const a = res.data?.article;
+        if (!a) throw new Error("Article not found.");
         if (active) {
           setDraft({
-            title: article.title || "",
-            slug: article.slug || "",
-            description: article.description || "",
-            content: article.content || "",
-            image: article.image || "",
-            note: article.note || "",
-            published: Boolean(article.published),
+            category: a.category || "",
+            title: a.title || "",
+            slug: a.slug || "",
+            description: a.description || "",
+            content: a.content || "",
+            image: a.image || "",
+            videoUrl: a.videoUrl || "",
+            note: a.note || "",
+            published: Boolean(a.published),
           });
         }
       })
-      .catch((requestError: unknown) => {
-        if (active) {
-          setError(
-            requestError instanceof Error
-              ? requestError.message
-              : "Failed to load article."
-          );
-        }
+      .catch((e: unknown) => {
+        if (active) setError(errorText(e, "Failed to load article."));
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -113,372 +148,595 @@ export default function ArticleForm({
     };
   }, [articleId]);
 
-  const handleImageChange = async (event: ChangeEvent<HTMLInputElement>) => {
+  const handleCreateCategory = async () => {
+    const name = newCategoryName.trim();
+    if (!name) return;
+    setError("");
+    setCreatingCategory(true);
+    try {
+      const created = await createCategory(name);
+      update("category", created.slug);
+      setNewCategoryName("");
+      setNewCategoryOpen(false);
+    } catch (e) {
+      setError(errorText(e, "Could not create the category."));
+    } finally {
+      setCreatingCategory(false);
+    }
+  };
+
+  const validateDetails = () => {
+    if (!category) {
+      setError("Choose a category, or create a new one.");
+      return false;
+    }
+    if (!draft.title.trim()) {
+      setError("Enter the article title.");
+      return false;
+    }
+    if (!draft.description.trim()) {
+      setError("Enter a short description.");
+      return false;
+    }
+    if (!draft.content.trim()) {
+      setError("Enter the article content.");
+      return false;
+    }
+    return true;
+  };
+
+  const validateVideo = () => {
+    const value = draft.videoUrl.trim();
+    if (value && !isValidHttpUrl(value)) {
+      setError(
+        "Enter a valid video URL starting with http:// or https://, or leave it empty."
+      );
+      return false;
+    }
+    return true;
+  };
+
+  const validateStep = (index: number) => {
+    setError("");
+    if (index === 0) return validateDetails();
+    if (index === 2) return validateVideo();
+    return true;
+  };
+
+  const goNext = () => {
+    if (!validateStep(step)) return;
+    setStep((s) => Math.min(s + 1, LAST_STEP));
+  };
+
+  const goBack = () => {
+    setError("");
+    setStep((s) => Math.max(s - 1, 0));
+  };
+
+  const goTo = (index: number) => {
+    if (index === step) return;
+    if (index < step) {
+      setError("");
+      setStep(index);
+      return;
+    }
+    if (!validateDetails()) {
+      setStep(0);
+      return;
+    }
+    setError("");
+    setStep(index);
+  };
+
+  const handleImage = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
+    event.target.value = "";
     if (!file) return;
     if (!file.type.startsWith("image/")) {
       setError("Choose an image file.");
-      event.target.value = "";
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
       setError("Image size must be 10 MB or less.");
-      event.target.value = "";
       return;
     }
 
     setError("");
     setUploading(true);
     try {
-      const response = await uploadApi.uploadArticleImage(file);
-      if (!response.success || !response.url) {
+      const res = await uploadApi.uploadArticleImage(file);
+      if (!res.success || !res.url) {
         throw new Error("Image upload did not return an image URL.");
       }
-      setDraft((current) => ({ ...current, image: response.url }));
-    } catch (requestError) {
-      setError(
-        requestError instanceof Error
-          ? requestError.message
-          : "Failed to upload article image."
-      );
+      update("image", res.url);
+    } catch (e) {
+      setError(errorText(e, "Failed to upload article image."));
     } finally {
       setUploading(false);
-      event.target.value = "";
     }
   };
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+
+    if (step < LAST_STEP) {
+      goNext();
+      return;
+    }
+
     setError("");
-    setTelegramStatus(null);
+    setTelegram(null);
+
+    if (!validateDetails()) {
+      setStep(0);
+      return;
+    }
+    if (!validateVideo()) {
+      setStep(2);
+      return;
+    }
+
     setSaving(true);
     try {
-      const endpoint = savedArticleId
-        ? `/api/articles/admin/${savedArticleId}`
-        : "/api/articles/admin";
-      const response = savedArticleId
-        ? await api.put(endpoint, draft)
-        : await api.post(endpoint, draft);
-      const nextArticleId =
-        response.data?.article?.id || savedArticleId;
-      if (!nextArticleId) {
+      const payload = { ...draft, category, videoUrl: draft.videoUrl.trim() };
+      const res = savedId
+        ? await api.put(`/api/articles/admin/${savedId}`, payload)
+        : await api.post("/api/articles/admin", payload);
+
+      const id = res.data?.article?.id || savedId;
+      if (!id) {
         throw new Error("The article was saved, but its ID was not returned.");
       }
-      setSavedArticleId(nextArticleId);
+      setSavedId(id);
 
-      const telegram = response.data?.telegram as
-        | ArticleSaveResult["telegram"]
+      const t = res.data?.telegram as
+        | { sent: boolean; error?: string; warning?: string }
         | undefined;
-      if (telegram && !telegram.sent) {
-        const message =
-          telegram.error ||
-          "The article was saved, but its Telegram announcement failed.";
-        if (onSaved) {
-          onSaved({ articleId: nextArticleId, telegram });
-        } else {
-          setTelegramStatus({ sent: false, message });
-        }
+      if (t && !t.sent) {
+        setTelegram({
+          sent: false,
+          message:
+            t.error ||
+            "The article was saved, but its Telegram announcement failed.",
+        });
         return;
       }
 
-      if (onSaved) onSaved({ articleId: nextArticleId, telegram });
-      else {
-        router.push("/admin/articles");
-        router.refresh();
-      }
-    } catch (requestError) {
-      const responseError = (
-        requestError as { response?: { data?: { error?: string } } }
-      ).response?.data?.error;
-      setError(
-        responseError ||
-          (requestError instanceof Error
-            ? requestError.message
-            : "Failed to save article.")
-      );
+      router.push("/admin/articles");
+      router.refresh();
+    } catch (e) {
+      setError(errorText(e, "Failed to save article."));
     } finally {
       setSaving(false);
     }
   };
 
-  const retryTelegramAnnouncement = async () => {
-    if (!savedArticleId) return;
-    setTelegramSending(true);
-    setTelegramStatus(null);
+  const retryTelegram = async () => {
+    if (!savedId) return;
+    setRetrying(true);
     try {
-      const response = await api.post(
-        `/api/articles/admin/${savedArticleId}/telegram`
-      );
-      const telegram = response.data?.telegram;
-      setTelegramStatus({
-        sent: Boolean(telegram?.sent),
-        message: telegram?.sent
-          ? telegram.warning
-            ? `Article text was sent, but its image could not be sent: ${telegram.warning}`
+      const res = await api.post(`/api/articles/admin/${savedId}/telegram`);
+      const t = res.data?.telegram;
+      setTelegram({
+        sent: Boolean(t?.sent),
+        message: t?.sent
+          ? t.warning
+            ? `Article text was sent, but its image could not be sent: ${t.warning}`
             : "Article image and content sent to Telegram."
-          : telegram?.error || "The Telegram announcement could not be sent.",
+          : t?.error || "The Telegram announcement could not be sent.",
       });
-    } catch (requestError) {
-      const responseError = (
-        requestError as { response?: { data?: { error?: string } } }
-      ).response?.data?.error;
-      setTelegramStatus({
+    } catch (e) {
+      setTelegram({
         sent: false,
-        message:
-          responseError ||
-          (requestError instanceof Error
-            ? requestError.message
-            : "The Telegram announcement could not be sent."),
+        message: errorText(e, "The Telegram announcement could not be sent."),
       });
     } finally {
-      setTelegramSending(false);
+      setRetrying(false);
     }
   };
 
-  const update = (key: keyof ArticleDraft, value: string | boolean) =>
-    setDraft((current) => ({ ...current, [key]: value }));
+  if (loading) {
+    return (
+      <div className="flex min-h-64 items-center justify-center">
+        <LoaderCircle className="h-7 w-7 animate-spin text-[#F47822]" />
+      </div>
+    );
+  }
+
+  const videoSource = draft.videoUrl.trim() ? getVideoSource(draft.videoUrl) : null;
+  const busy = saving || uploading || creatingCategory;
 
   return (
-    <div
-      className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-3 backdrop-blur-sm sm:p-6"
-      onMouseDown={(event) => {
-        if (
-          event.target === event.currentTarget &&
-          !saving &&
-          !uploading
-        ) {
-          if (onClose) onClose();
-          else router.push("/admin/articles");
-        }
-      }}
-    >
-      <section
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby="article-form-title"
-        className="flex max-h-[92vh] w-full max-w-3xl flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl"
-      >
-        <header className="flex items-center justify-between border-b border-slate-100 px-5 py-4 sm:px-6">
-          <div>
-            <h1
-              id="article-form-title"
-              className="text-xl font-bold text-slate-900"
-            >
-              {savedArticleId ? "Edit article" : "Add an article"}
-            </h1>
-            <p className="mt-1 text-sm text-slate-500">
-              Add article details and publish when ready.
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={() => {
-              if (onClose) onClose();
-              else router.push("/admin/articles");
-            }}
-            disabled={saving || uploading}
-            aria-label="Close article form"
-            className="flex h-9 w-9 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-900 disabled:opacity-50"
-          >
-            <X size={19} />
-          </button>
-        </header>
+    <form onSubmit={handleSubmit} className="mx-auto max-w-3xl space-y-6">
+      <header>
+        <Link
+          href="/admin/articles"
+          className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 hover:text-slate-900"
+        >
+          <ArrowLeft size={16} /> Back to articles
+        </Link>
+        <h1 className="mt-2 text-2xl font-bold text-slate-900">
+          {savedId ? "Edit article" : "Add an article"}
+        </h1>
+      </header>
 
-        {loading ? (
-          <div className="flex min-h-64 items-center justify-center">
-            <LoaderCircle className="h-7 w-7 animate-spin text-[#F47822]" />
-          </div>
-        ) : (
-          <form onSubmit={handleSubmit} className="min-h-0 overflow-y-auto">
-            <div className="space-y-4 p-5 sm:p-6">
-              {error && (
-                <p
-                  role="alert"
-                  className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
-                >
-                  {error}
-                </p>
-              )}
-              {telegramStatus && (
-                <div
-                  role={telegramStatus.sent ? "status" : "alert"}
-                  className={`rounded-xl border p-3 text-sm ${
-                    telegramStatus.sent
-                      ? "border-emerald-200 bg-emerald-50 text-emerald-800"
-                      : "border-amber-200 bg-amber-50 text-amber-900"
+      {/* Step indicator */}
+      <nav aria-label="Article steps" className="overflow-x-auto">
+        <ol className="flex min-w-max items-center gap-2">
+          {STEPS.map((s, index) => {
+            const done = index < step;
+            const current = index === step;
+            return (
+              <li key={s.key} className="flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => goTo(index)}
+                  aria-current={current ? "step" : undefined}
+                  className={`flex items-center gap-2 rounded-full px-3 py-1.5 text-sm font-semibold transition ${
+                    current
+                      ? "bg-[#20283a] text-white"
+                      : done
+                        ? "bg-emerald-50 text-emerald-700"
+                        : "bg-white text-slate-500 ring-1 ring-slate-200 hover:bg-slate-50"
                   }`}
                 >
-                  <p>{telegramStatus.message}</p>
-                  {!telegramStatus.sent &&
-                    savedArticleId &&
-                    draft.published && (
-                      <button
-                        type="button"
-                        onClick={() => void retryTelegramAnnouncement()}
-                        disabled={telegramSending}
-                        className="mt-2 font-semibold underline underline-offset-2 disabled:opacity-60"
-                      >
-                        {telegramSending ? "Sending..." : "Retry Telegram send"}
-                      </button>
-                    )}
-                </div>
-              )}
-
-              <div className="grid gap-4 sm:grid-cols-2">
-                <label className="block text-sm font-semibold text-slate-700">
-                  Article title *
-                  <input
-                    value={draft.title}
-                    onChange={(event) => update("title", event.target.value)}
-                    required
-                    maxLength={180}
-                    className="mt-1.5 h-11 w-full rounded-xl border border-slate-300 px-3 font-normal outline-none focus:border-[#EB6D3D] focus:ring-2 focus:ring-[#EB6D3D]/20"
-                  />
-                </label>
-                <label className="block text-sm font-semibold text-slate-700">
-                  URL slug (optional)
-                  <input
-                    value={draft.slug}
-                    onChange={(event) => update("slug", event.target.value)}
-                    placeholder="generated-from-title"
-                    maxLength={100}
-                    className="mt-1.5 h-11 w-full rounded-xl border border-slate-300 px-3 font-normal outline-none focus:border-[#EB6D3D] focus:ring-2 focus:ring-[#EB6D3D]/20"
-                  />
-                </label>
-              </div>
-
-              <label className="block text-sm font-semibold text-slate-700">
-                Short description *
-                <textarea
-                  value={draft.description}
-                  onChange={(event) =>
-                    update("description", event.target.value)
-                  }
-                  required
-                  maxLength={1000}
-                  rows={2}
-                  className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2 font-normal outline-none focus:border-[#EB6D3D] focus:ring-2 focus:ring-[#EB6D3D]/20"
-                />
-              </label>
-
-              <label className="block text-sm font-semibold text-slate-700">
-                Article content *
-                <textarea
-                  value={draft.content}
-                  onChange={(event) => update("content", event.target.value)}
-                  required
-                  rows={6}
-                  className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2 font-normal leading-6 outline-none focus:border-[#EB6D3D] focus:ring-2 focus:ring-[#EB6D3D]/20"
-                />
-                <span className="mt-1 block text-xs font-normal text-slate-500">
-                  Paragraph breaks are preserved on the public article page.
-                </span>
-              </label>
-
-              <div>
-                <span className="block text-sm font-semibold text-slate-700">
-                  Article image
-                </span>
-                <input
-                  ref={fileRef}
-                  type="file"
-                  accept="image/*"
-                  onChange={handleImageChange}
-                  className="sr-only"
-                />
-                <div className="mt-2 flex flex-wrap items-center gap-4">
-                  {draft.image ? (
-                    <Image
-                      src={draft.image}
-                      alt="Article cover preview"
-                      width={160}
-                      height={100}
-                      unoptimized
-                      className="h-20 w-32 rounded-xl border border-slate-200 object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-20 w-32 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-slate-400">
-                      <ImagePlus size={22} />
-                    </div>
-                  )}
-                  <div className="flex flex-col gap-2">
-                    <button
-                      type="button"
-                      onClick={() => fileRef.current?.click()}
-                      disabled={uploading}
-                      className="rounded-xl border border-[#EB6D3D]/40 px-4 py-2 text-sm font-semibold text-[#9c3d1a] transition hover:bg-[#EB6D3D]/10 disabled:opacity-60"
-                    >
-                      {uploading ? "Uploading image..." : "Upload image"}
-                    </button>
-                    {draft.image && (
-                      <button
-                        type="button"
-                        onClick={() => update("image", "")}
-                        className="text-left text-xs font-medium text-red-600 hover:text-red-700"
-                      >
-                        Remove image
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <label className="block text-sm font-semibold text-slate-700">
-                Additional note (shown with the published article)
-                <textarea
-                  value={draft.note}
-                  onChange={(event) => update("note", event.target.value)}
-                  rows={2}
-                  className="mt-1.5 w-full rounded-xl border border-slate-300 px-3 py-2 font-normal outline-none focus:border-[#EB6D3D] focus:ring-2 focus:ring-[#EB6D3D]/20"
-                />
-              </label>
-
-              <label className="flex items-start gap-3 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
-                <input
-                  type="checkbox"
-                  checked={draft.published}
-                  onChange={(event) =>
-                    update("published", event.target.checked)
-                  }
-                  className="mt-0.5 h-4 w-4 accent-[#EB6D3D]"
-                />
-                <span>
-                  <span className="block font-semibold">Publish article</span>
-                  <span className="mt-0.5 block text-xs text-slate-500">
-                    Published articles are visible on the public Articles page.
+                  <span
+                    className={`flex h-5 w-5 items-center justify-center rounded-full text-xs ${
+                      current
+                        ? "bg-white/20"
+                        : done
+                          ? "bg-emerald-600 text-white"
+                          : "bg-slate-100"
+                    }`}
+                  >
+                    {done ? <Check size={12} /> : index + 1}
                   </span>
-                </span>
-              </label>
-            </div>
+                  {s.label}
+                </button>
+                {index < LAST_STEP && <span className="h-px w-4 bg-slate-200" />}
+              </li>
+            );
+          })}
+        </ol>
+      </nav>
 
-            <footer className="flex justify-end gap-3 border-t border-slate-100 bg-slate-50 px-5 py-4 sm:px-6">
+      {error && (
+        <p role="alert" className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+          {error}
+        </p>
+      )}
+
+      {telegram && (
+        <div
+          role={telegram.sent ? "status" : "alert"}
+          className={`rounded-xl border p-3 text-sm ${
+            telegram.sent
+              ? "border-emerald-200 bg-emerald-50 text-emerald-800"
+              : "border-amber-200 bg-amber-50 text-amber-900"
+          }`}
+        >
+          <p>{telegram.message}</p>
+          {!telegram.sent && savedId && draft.published && (
+            <button
+              type="button"
+              onClick={() => void retryTelegram()}
+              disabled={retrying}
+              className="mt-2 font-semibold underline underline-offset-2 disabled:opacity-60"
+            >
+              {retrying ? "Sending..." : "Retry Telegram send"}
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* Step 1: Category and details */}
+      {step === 0 && (
+        <StepCard title="Category and details" hint="Choose a category or create a new one, then write the article.">
+          <div>
+            <span className="block text-sm font-semibold text-slate-700">Category *</span>
+
+            {categoriesLoading ? (
+              <p className="mt-2 text-sm text-slate-500">Loading categories...</p>
+            ) : (
+              <div className="mt-2 flex flex-wrap gap-2">
+                {categories.map((c) => (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => update("category", c.slug)}
+                    aria-pressed={category === c.slug}
+                    className={`rounded-full px-4 py-1.5 text-sm font-semibold transition ${
+                      category === c.slug
+                        ? "bg-[#EB6D3D] text-[#20283a]"
+                        : "bg-white text-slate-600 ring-1 ring-slate-200 hover:bg-slate-50"
+                    }`}
+                  >
+                    {c.name}
+                  </button>
+                ))}
+                {!newCategoryOpen && (
+                  <button
+                    type="button"
+                    onClick={() => setNewCategoryOpen(true)}
+                    className="inline-flex items-center gap-1.5 rounded-full border border-dashed border-[#EB6D3D] px-4 py-1.5 text-sm font-semibold text-[#9c3d1a] transition hover:bg-[#EB6D3D]/10"
+                  >
+                    <Plus size={14} /> New category
+                  </button>
+                )}
+              </div>
+            )}
+
+            {newCategoryOpen && (
+              <div className="mt-3 flex flex-wrap items-center gap-2 rounded-xl bg-slate-50 p-3">
+                <input
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      e.preventDefault();
+                      void handleCreateCategory();
+                    }
+                  }}
+                  maxLength={40}
+                  placeholder="Category name"
+                  aria-label="New category name"
+                  autoFocus
+                  className="h-10 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 text-sm outline-none focus:border-[#EB6D3D] focus:ring-2 focus:ring-[#EB6D3D]/20"
+                />
+                <button
+                  type="button"
+                  onClick={() => void handleCreateCategory()}
+                  disabled={creatingCategory || !newCategoryName.trim()}
+                  className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#EB6D3D] px-4 text-sm font-bold text-[#20283a] transition hover:bg-[#cf5427] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {creatingCategory ? "Adding..." : "Add"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setNewCategoryOpen(false);
+                    setNewCategoryName("");
+                  }}
+                  className="h-10 rounded-lg px-3 text-sm font-semibold text-slate-600 hover:bg-slate-200"
+                >
+                  Cancel
+                </button>
+              </div>
+            )}
+          </div>
+
+          <div className="grid gap-4 sm:grid-cols-2">
+            <label className="block text-sm font-semibold text-slate-700">
+              Article title *
+              <input
+                value={draft.title}
+                onChange={(e) => update("title", e.target.value)}
+                maxLength={180}
+                className={`${inputClass} h-11`}
+              />
+            </label>
+            <label className="block text-sm font-semibold text-slate-700">
+              URL slug (optional)
+              <input
+                value={draft.slug}
+                onChange={(e) => update("slug", e.target.value)}
+                placeholder="generated-from-title"
+                maxLength={100}
+                className={`${inputClass} h-11`}
+              />
+            </label>
+          </div>
+
+          <label className="block text-sm font-semibold text-slate-700">
+            Short description *
+            <textarea
+              value={draft.description}
+              onChange={(e) => update("description", e.target.value)}
+              maxLength={1000}
+              rows={2}
+              className={`${inputClass} py-2`}
+            />
+          </label>
+
+          <label className="block text-sm font-semibold text-slate-700">
+            Article content *
+            <textarea
+              value={draft.content}
+              onChange={(e) => update("content", e.target.value)}
+              rows={10}
+              className={`${inputClass} py-2 leading-6`}
+            />
+            <span className="mt-1 block text-xs font-normal text-slate-500">
+              Paragraph breaks are preserved on the public article page.
+            </span>
+          </label>
+        </StepCard>
+      )}
+
+      {/* Step 2: Image */}
+      {step === 1 && (
+        <StepCard title="Cover image" hint="Optional. Shown on the article card and the article page.">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            onChange={handleImage}
+            className="sr-only"
+          />
+          <div className="flex flex-wrap items-center gap-4">
+            {draft.image ? (
+              <Image
+                src={draft.image}
+                alt="Article cover preview"
+                width={320}
+                height={200}
+                unoptimized
+                className="h-36 w-56 rounded-xl border border-slate-200 object-cover"
+              />
+            ) : (
+              <div className="flex h-36 w-56 items-center justify-center rounded-xl border border-dashed border-slate-300 bg-slate-50 text-slate-400">
+                <ImagePlus size={28} />
+              </div>
+            )}
+            <div className="flex flex-col gap-2">
               <button
                 type="button"
-                onClick={() => {
-                  if (onClose) onClose();
-                  else router.push("/admin/articles");
-                }}
-                disabled={saving || uploading}
-                className="h-10 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50"
+                onClick={() => fileRef.current?.click()}
+                disabled={uploading}
+                className="rounded-xl border border-[#EB6D3D]/40 px-4 py-2 text-sm font-semibold text-[#9c3d1a] transition hover:bg-[#EB6D3D]/10 disabled:opacity-60"
               >
-                Cancel
+                {uploading
+                  ? "Uploading image..."
+                  : draft.image
+                    ? "Change image"
+                    : "Upload image"}
               </button>
-              <button
-                type="submit"
-                disabled={saving || uploading}
-                className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg bg-[#EB6D3D] px-5 text-sm font-bold text-[#20283a] transition hover:bg-[#cf5427] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
-              >
-                <Save size={16} />
-                {saving
-                  ? "Saving..."
-                  : savedArticleId
-                    ? "Save changes"
-                    : "Create article"}
-              </button>
-            </footer>
-          </form>
+              {draft.image && (
+                <button
+                  type="button"
+                  onClick={() => update("image", "")}
+                  className="text-left text-xs font-medium text-red-600 hover:text-red-700"
+                >
+                  Remove image
+                </button>
+              )}
+              <p className="text-xs text-slate-500">Image files up to 10 MB.</p>
+            </div>
+          </div>
+        </StepCard>
+      )}
+
+      {/* Step 3: Video */}
+      {step === 2 && (
+        <StepCard title="Video" hint="Optional. YouTube, Vimeo or a direct video link.">
+          <div className="flex h-11 items-center rounded-xl border border-slate-300 focus-within:border-[#EB6D3D] focus-within:ring-2 focus-within:ring-[#EB6D3D]/20">
+            <span className="px-3 text-slate-500">
+              <Video size={16} />
+            </span>
+            <input
+              type="url"
+              maxLength={500}
+              value={draft.videoUrl}
+              onChange={(e) => update("videoUrl", e.target.value)}
+              placeholder="https://www.youtube.com/watch?v=..."
+              aria-label="Video URL"
+              className="h-full min-w-0 flex-1 rounded-r-xl border-0 bg-transparent pr-3 outline-none"
+            />
+          </div>
+          {draft.videoUrl.trim() &&
+            (videoSource ? (
+              <div className="max-w-2xl">
+                <VideoPlayer
+                  url={draft.videoUrl}
+                  title={draft.title || "Article video preview"}
+                />
+              </div>
+            ) : (
+              <p className="text-xs text-red-600">
+                This is not a valid video link yet. Use a full link starting with
+                http:// or https://.
+              </p>
+            ))}
+        </StepCard>
+      )}
+
+      {/* Step 4: Note */}
+      {step === 3 && (
+        <StepCard title="Additional note" hint="Optional. Shown together with the published article.">
+          <textarea
+            value={draft.note}
+            onChange={(e) => update("note", e.target.value)}
+            rows={5}
+            aria-label="Additional note"
+            className={`${inputClass} py-2`}
+          />
+        </StepCard>
+      )}
+
+      {/* Step 5: Review and publish */}
+      {step === 4 && (
+        <StepCard title="Review and publish" hint="Check the summary, then save the article.">
+          <dl className="divide-y divide-slate-100 rounded-xl border border-slate-200 text-sm">
+            {[
+              { label: "Category", value: categoryLabel(categories, category), step: 0 },
+              { label: "Title", value: draft.title, step: 0 },
+              { label: "Description", value: draft.description, step: 0 },
+              { label: "Image", value: draft.image ? "Added" : "None", step: 1 },
+              { label: "Video", value: draft.videoUrl.trim() ? "Added" : "None", step: 2 },
+              { label: "Note", value: draft.note.trim() ? "Added" : "None", step: 3 },
+            ].map((row) => (
+              <div key={row.label} className="flex items-start gap-3 px-4 py-2.5">
+                <dt className="w-24 shrink-0 font-semibold text-slate-500">{row.label}</dt>
+                <dd className="min-w-0 flex-1 break-words text-slate-900">{row.value}</dd>
+                <button
+                  type="button"
+                  onClick={() => goTo(row.step)}
+                  className="text-xs font-semibold text-[#9c3d1a] hover:underline"
+                >
+                  Edit
+                </button>
+              </div>
+            ))}
+          </dl>
+
+          <label className="flex items-start gap-3 rounded-xl bg-slate-50 p-4 text-sm text-slate-700">
+            <input
+              type="checkbox"
+              checked={draft.published}
+              onChange={(e) => update("published", e.target.checked)}
+              className="mt-0.5 h-4 w-4 accent-[#EB6D3D]"
+            />
+            <span>
+              <span className="block font-semibold">Publish article</span>
+              <span className="mt-0.5 block text-xs text-slate-500">
+                Published articles are visible on the public Articles page.
+                Leave unchecked to save as a draft.
+              </span>
+            </span>
+          </label>
+        </StepCard>
+      )}
+
+      {/* Navigation */}
+      <div className="flex items-center justify-between gap-3 pb-6">
+        {step === 0 ? (
+          <Link
+            href="/admin/articles"
+            className="inline-flex h-10 items-center rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-100"
+          >
+            Cancel
+          </Link>
+        ) : (
+          <button
+            type="button"
+            onClick={goBack}
+            disabled={busy}
+            className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-100 disabled:opacity-50"
+          >
+            <ArrowLeft size={16} /> Back
+          </button>
         )}
-      </section>
-    </div>
+
+        {step < LAST_STEP ? (
+          <button
+            type="button"
+            onClick={goNext}
+            disabled={busy}
+            className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#EB6D3D] px-5 text-sm font-bold text-[#20283a] transition hover:bg-[#cf5427] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            Next <ArrowRight size={16} />
+          </button>
+        ) : (
+          <button
+            type="submit"
+            disabled={busy}
+            className="inline-flex h-10 items-center gap-2 rounded-lg bg-[#EB6D3D] px-5 text-sm font-bold text-[#20283a] transition hover:bg-[#cf5427] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            <Save size={16} />
+            {saving ? "Saving..." : savedId ? "Save changes" : "Create article"}
+          </button>
+        )}
+      </div>
+    </form>
   );
 }
