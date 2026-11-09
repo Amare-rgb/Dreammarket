@@ -14,11 +14,11 @@ export default function ArticlesNavbar() {
   const pathname = usePathname();
   const router = useRouter();
   const searchParams = useSearchParams();
-  
+
   const [categories, setCategories] = useState<PublicCategory[]>([]);
   const [menuPath, setMenuPath] = useState<string | null>(null);
   const [dropdownPath, setDropdownPath] = useState<string | null>(null);
-  
+
   // Search state
   const [searchOpen, setSearchOpen] = useState(false);
   // Track user typed input. If null, we fall back to the URL search value.
@@ -26,6 +26,7 @@ export default function ArticlesNavbar() {
 
   const urlSearch = searchParams.get("search") || "";
   const searchQuery = searchInput !== null ? searchInput : urlSearch;
+  const activeCategory = searchParams.get("category") || "";
 
   const menuOpen = menuPath === pathname;
   const dropdownOpen = dropdownPath === pathname;
@@ -86,13 +87,13 @@ export default function ArticlesNavbar() {
     e.preventDefault();
     const q = searchQuery.trim();
     closeAll();
-    
+
     // Preserve the category if one is selected
     const currentCategory = searchParams.get("category");
     const params = new URLSearchParams();
     if (q) params.set("search", q);
     if (currentCategory) params.set("category", currentCategory);
-    
+
     const queryString = params.toString();
     router.push(`/articles${queryString ? `?${queryString}` : ""}`);
   };
@@ -189,7 +190,7 @@ export default function ArticlesNavbar() {
               </div>
             )}
           </div>
-          
+
           {/* Search Toggle Button */}
           <button
             type="button"
@@ -214,7 +215,7 @@ export default function ArticlesNavbar() {
           >
             {searchOpen ? <X size={20} /> : <Search size={20} />}
           </button>
-          
+
           <button
             type="button"
             onClick={() => {
@@ -229,6 +230,47 @@ export default function ArticlesNavbar() {
           </button>
         </div>
       </div>
+
+      {/* Horizontal categories strip (bottom of the navbar) */}
+      {categories.length > 0 && (
+        <nav
+          aria-label="Browse by category"
+          className="border-t border-slate-100 bg-white"
+        >
+          <div className="mx-auto flex h-11 max-w-7xl items-center gap-4 px-4 sm:px-6">
+            <span className="shrink-0 text-xs font-bold uppercase tracking-wide text-slate-400">
+              Categories
+            </span>
+            <ul className="flex min-w-0 flex-1 items-center overflow-x-auto whitespace-nowrap [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+              {categories.map((c, i) => {
+                const active = isAll && activeCategory === c.slug;
+                return (
+                  <li key={c.id} className="flex shrink-0 items-center">
+                    {i > 0 && (
+                      <span
+                        aria-hidden="true"
+                        className="mx-3 h-1.5 w-1.5 shrink-0 rounded-full bg-[#EB6D3D]/60"
+                      />
+                    )}
+                    <Link
+                      href={`/articles?category=${c.slug}`}
+                      onClick={closeAll}
+                      aria-current={active ? "page" : undefined}
+                      className={`text-sm transition ${
+                        active
+                          ? "font-bold text-[#cf5427]"
+                          : "font-medium text-slate-600 hover:text-[#cf5427]"
+                      }`}
+                    >
+                      {c.name}
+                    </Link>
+                  </li>
+                );
+              })}
+            </ul>
+          </div>
+        </nav>
+      )}
 
       {/* Expandable Search Bar */}
       {searchOpen && (

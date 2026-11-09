@@ -4,7 +4,7 @@ import { FormEvent, Suspense, useEffect, useMemo, useRef, useState } from "react
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, LoaderCircle, Search, Video, X } from "lucide-react";
+import { ArrowRight, LoaderCircle, Search, Video, X, MessageSquare } from "lucide-react";
 import { api } from "@/lib/api";
 import VideoPlayer from "@/components/VideoPlayer";
 import {
@@ -16,7 +16,7 @@ import {
 } from "@/lib/publicArticles";
 
 const LOGO_SRC = "/banners/photo.jpg";
-const HERO_VIDEO_SRC = "/banners/article.mp4";
+const HERO_VIDEO_SRC = "/banners/adpp_is.mp4";
 const MAX_COMMENT_LENGTH = 1000;
 
 interface ArticleComment {
@@ -53,7 +53,7 @@ function LogoPlaceholder({
 function ArticlesBrowser() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  
+
   const activeCategory = searchParams.get("category") || "all";
   const urlSearch = searchParams.get("search") || "";
 
@@ -61,7 +61,7 @@ function ArticlesBrowser() {
   const [articles, setArticles] = useState<ArticleSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  
+
   const [searchInput, setSearchInput] = useState<string | null>(null);
   const query = searchInput !== null ? searchInput : urlSearch;
 
@@ -141,7 +141,7 @@ function ArticlesBrowser() {
     };
   }, [selected]);
 
-  // Comments for the selected article
+  // Comments for the selected article (inside modal)
   useEffect(() => {
     if (!selected) return;
     let active = true;
@@ -186,11 +186,11 @@ function ArticlesBrowser() {
     if (slug === activeCategory) return;
     setLoading(true);
     setSearchInput(null);
-    
+
     const params = new URLSearchParams();
     if (slug !== "all") params.set("category", slug);
     if (urlSearch) params.set("search", urlSearch);
-    
+
     const qs = params.toString();
     router.push(`/articles${qs ? `?${qs}` : ""}`, { scroll: false });
   };
@@ -198,11 +198,11 @@ function ArticlesBrowser() {
   const handleInlineSearch = (e: React.FormEvent) => {
     e.preventDefault();
     const q = query.trim();
-    
+
     const params = new URLSearchParams();
     if (activeCategory !== "all") params.set("category", activeCategory);
     if (q) params.set("search", q);
-    
+
     const qs = params.toString();
     router.push(`/articles${qs ? `?${qs}` : ""}`, { scroll: false });
   };
@@ -277,7 +277,7 @@ function ArticlesBrowser() {
   return (
     <main className="min-h-screen bg-[var(--cream)] pb-20">
       {/* Immersive Centered Hero with background video */}
-      <section className="relative isolate flex min-h-[55vh] items-center justify-center overflow-hidden bg-[#20283a] px-5 py-20 text-center text-white sm:px-8 sm:py-28">
+      <section className="relative isolate flex min-h-[75vh] items-center justify-center overflow-hidden bg-[#20283a] px-5 py-24 text-center text-white sm:px-8 sm:py-32 lg:min-h-[80vh]">
         <video
           src={HERO_VIDEO_SRC}
           className="absolute inset-0 -z-10 h-full w-full object-cover"
@@ -296,12 +296,12 @@ function ArticlesBrowser() {
             <span className="h-1.5 w-1.5 rounded-full bg-[#F47822] animate-pulse" />
             Dream More Affiliate Market
           </p>
-          
-          <h1 className="mt-6 text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl text-white drop-shadow-lg">
+
+          <h1 className="mt-6 text-4xl font-bold tracking-tight text-white drop-shadow-lg sm:text-5xl lg:text-6xl">
             Dream More Articles
           </h1>
-          
-          <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-white/90 sm:text-lg drop-shadow">
+
+          <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-white/90 drop-shadow sm:text-lg">
             Discover marketplace news, in-depth product guides, and useful business updates curated directly by Dream More.
           </p>
         </div>
@@ -313,7 +313,6 @@ function ArticlesBrowser() {
         className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur"
       >
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
-          
           {/* Categories */}
           <div className="flex-1 overflow-x-auto">
             <ul className="flex min-w-max items-center gap-1">
@@ -409,20 +408,28 @@ function ArticlesBrowser() {
             {/* Featured */}
             {featured && (
               <article className="grid overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-xl lg:grid-cols-2">
-                <Link href={`/articles/${featured.slug}`} className="relative block">
-                  {featured.image ? (
-                    <Image
-                      src={featured.image}
-                      alt=""
-                      width={1000}
-                      height={620}
-                      unoptimized
-                      className="h-64 w-full object-cover lg:h-full"
-                    />
+                {/* Featured Media: Shows Video if exists, else Image */}
+                <div className="relative block h-64 lg:h-full min-h-[300px] bg-slate-900">
+                  {featured.videoUrl ? (
+                    <VideoPlayer url={featured.videoUrl} title={featured.title} />
+                  ) : featured.image ? (
+                    <Link href={`/articles/${featured.slug}`} className="block h-full w-full">
+                      <Image
+                        src={featured.image}
+                        alt=""
+                        width={1000}
+                        height={620}
+                        unoptimized
+                        className="h-full w-full object-cover"
+                      />
+                    </Link>
                   ) : (
-                    <LogoPlaceholder className="h-64 lg:h-full" size={96} />
+                    <Link href={`/articles/${featured.slug}`} className="block h-full w-full">
+                      <LogoPlaceholder className="h-full w-full" size={96} />
+                    </Link>
                   )}
-                </Link>
+                </div>
+
                 <div className="flex flex-col justify-center p-6 sm:p-10">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="rounded-full bg-[#EB6D3D]/15 px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#9c3d1a]">
@@ -447,6 +454,7 @@ function ArticlesBrowser() {
                     >
                       Read article <ArrowRight size={16} />
                     </Link>
+
                     <button
                       type="button"
                       onClick={() => openPreview(featured)}
@@ -454,6 +462,14 @@ function ArticlesBrowser() {
                     >
                       Quick preview
                     </button>
+
+                    {/* Comment Button (Featured) - Opens Full Screen Page */}
+                    <Link
+                      href={`/articles/${featured.slug}#comments`}
+                      className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                    >
+                      <MessageSquare size={16} /> Comment
+                    </Link>
                   </div>
                 </div>
               </article>
@@ -467,28 +483,37 @@ function ArticlesBrowser() {
                     key={article.id}
                     className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition duration-200 hover:-translate-y-1 hover:border-[#EB6D3D]/50 hover:shadow-xl"
                   >
-                    <Link href={`/articles/${article.slug}`} className="relative block">
-                      {article.image ? (
-                        <Image
-                          src={article.image}
-                          alt=""
-                          width={700}
-                          height={420}
-                          unoptimized
-                          className="h-44 w-full object-cover transition duration-300 group-hover:scale-[1.02]"
-                        />
+                    {/* Media: Shows Video if exists, else Image */}
+                    <div className="relative block bg-slate-900 h-44">
+                      {article.videoUrl ? (
+                        <VideoPlayer url={article.videoUrl} title={article.title} />
+                      ) : article.image ? (
+                        <Link href={`/articles/${article.slug}`} className="block h-full w-full">
+                          <Image
+                            src={article.image}
+                            alt=""
+                            width={700}
+                            height={420}
+                            unoptimized
+                            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+                          />
+                        </Link>
                       ) : (
-                        <LogoPlaceholder className="h-44" size={72} />
+                        <Link href={`/articles/${article.slug}`} className="block h-full w-full">
+                          <LogoPlaceholder className="h-full w-full" size={72} />
+                        </Link>
                       )}
-                      <span className="absolute left-3 top-3 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#cf5427] shadow-sm">
+                      
+                      <span className="absolute left-3 top-3 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#cf5427] shadow-sm z-10">
                         {categoryName(categories, article.category)}
                       </span>
                       {article.videoUrl && (
-                        <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-[#20283a]/85 px-2 py-1 text-[11px] font-bold text-white shadow-sm">
+                        <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-[#20283a]/85 px-2 py-1 text-[11px] font-bold text-white shadow-sm z-10">
                           <Video size={12} /> Video
                         </span>
                       )}
-                    </Link>
+                    </div>
+                    
                     <div className="flex flex-1 flex-col p-4">
                       <p className="text-xs text-slate-400">{formatDate(article.createdAt)}</p>
                       <h3 className="mt-1.5 text-lg font-bold leading-snug text-slate-900">
@@ -499,14 +524,16 @@ function ArticlesBrowser() {
                       <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">
                         {article.description}
                       </p>
-                      <div className="mt-auto flex items-center justify-between gap-2 pt-4">
-                        <button
-                          type="button"
-                          onClick={() => openPreview(article)}
-                          className="text-sm font-semibold text-slate-600 transition hover:text-[#cf5427]"
+                      
+                      <div className="mt-auto flex items-center justify-between gap-2 pt-4 border-t border-slate-100 mt-4">
+                        {/* Comment Button (Grid) - Opens Full Screen Page */}
+                        <Link
+                          href={`/articles/${article.slug}#comments`}
+                          className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 transition hover:text-[#cf5427]"
                         >
-                          Preview
-                        </button>
+                          <MessageSquare size={15} /> Comment
+                        </Link>
+
                         <Link
                           href={`/articles/${article.slug}`}
                           className="inline-flex items-center gap-1 text-sm font-bold text-[#cf5427] transition hover:text-[#9c3d1a]"

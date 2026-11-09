@@ -24,12 +24,9 @@ export default function ArticlePage() {
   const [categories, setCategories] = useState<PublicCategory[]>([]);
   const [related, setRelated] = useState<ArticleSummary[]>([]);
   const [error, setError] = useState("");
-
-  // Which slug the current `article`/`error` belongs to.
-  // While `loadedSlug !== slug`, we're still loading.
   const [loadedSlug, setLoadedSlug] = useState<string | null>(null);
 
-  // Article fetch — no setState in the effect body.
+  // Article fetch
   useEffect(() => {
     let active = true;
 
@@ -57,6 +54,7 @@ export default function ArticlePage() {
     };
   }, [slug]);
 
+  // Categories fetch (for top nav)
   useEffect(() => {
     let active = true;
     api
@@ -72,7 +70,7 @@ export default function ArticlePage() {
     };
   }, []);
 
-  // Related articles from the same category
+  // Related articles
   useEffect(() => {
     if (!article?.category) return;
     let active = true;
@@ -91,7 +89,6 @@ export default function ArticlePage() {
     };
   }, [article?.category, article?.slug]);
 
-  // Derived, not stored: loading whenever the data on hand doesn't match the slug.
   const loading = loadedSlug !== slug;
 
   if (loading) {
@@ -122,7 +119,7 @@ export default function ArticlePage() {
 
   return (
     <main className="min-h-screen bg-[var(--cream)] pb-20">
-      {/* Category navigation bar */}
+      {/* Top Navigation Bar */}
       <nav
         aria-label="Article categories"
         className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur"
@@ -156,7 +153,9 @@ export default function ArticlePage() {
         </div>
       </nav>
 
-      <div className="mx-auto max-w-7xl px-4 pt-8 sm:px-6">
+      {/* FULL SCREEN ARTICLE CONTAINER */}
+      <div className="mx-auto max-w-4xl px-4 pt-8 sm:px-6">
+        
         {/* Breadcrumb */}
         <p className="mb-5 flex flex-wrap items-center gap-2 text-sm text-slate-500">
           <Link href="/articles" className="font-semibold text-[#cf5427] hover:underline">
@@ -171,134 +170,119 @@ export default function ArticlePage() {
           </Link>
         </p>
 
-        <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_20rem]">
-          {/* Article */}
-          <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
-            {article.image && (
-              <Image
-                src={article.image}
-                alt=""
-                width={1400}
-                height={800}
-                unoptimized
-                className="max-h-[30rem] w-full object-cover"
-              />
-            )}
-            <div className="p-6 sm:p-10">
-              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
-                <Link
-                  href={`/articles?category=${article.category || "general"}`}
-                  className="rounded-full bg-[#EB6D3D]/15 px-3 py-1 font-bold uppercase tracking-wide text-[#9c3d1a]"
-                >
-                  {label}
-                </Link>
-                <span>{formatDate(article.createdAt)}</span>
+        {/* Main Article */}
+        <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+          
+          {/* Feature Image */}
+          {article.image && (
+            <Image
+              src={article.image}
+              alt=""
+              width={1400}
+              height={800}
+              unoptimized
+              className="max-h-[30rem] w-full object-cover"
+            />
+          )}
+          
+          <div className="p-6 sm:p-10">
+            {/* Meta Info */}
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-500">
+              <span className="rounded-full bg-[#EB6D3D]/15 px-3 py-1 font-bold uppercase tracking-wide text-[#9c3d1a]">
+                {label}
+              </span>
+              <span>{formatDate(article.createdAt)}</span>
+              <span className="inline-flex items-center gap-1">
+                <Clock size={13} /> {readingMinutes(article.content)} min read
+              </span>
+              {typeof article.views === "number" && (
                 <span className="inline-flex items-center gap-1">
-                  <Clock size={13} /> {readingMinutes(article.content)} min read
+                  <Eye size={13} /> {article.views.toLocaleString()} views
                 </span>
-                {typeof article.views === "number" && (
-                  <span className="inline-flex items-center gap-1">
-                    <Eye size={13} /> {article.views.toLocaleString()} views
-                  </span>
-                )}
-              </div>
-
-              <h1 className="mt-4 text-3xl font-bold leading-tight text-slate-900 sm:text-4xl">
-                {article.title}
-              </h1>
-              <p className="mt-4 border-b border-slate-100 pb-6 text-lg leading-7 text-slate-600">
-                {article.description}
-              </p>
-
-              <div className="whitespace-pre-wrap break-words py-6 text-base leading-8 text-slate-700">
-                {article.content}
-              </div>
-
-              {article.videoUrl && (
-                <div className="pb-6">
-                  <VideoPlayer url={article.videoUrl} title={article.title} />
-                </div>
               )}
-
-              {article.note && (
-                <aside className="rounded-xl border-l-4 border-[#EB6D3D] bg-[#EB6D3D]/10 p-4 text-sm leading-6 text-slate-700">
-                  {article.note}
-                </aside>
-              )}
-
-              <div className="mt-8 border-t border-slate-100 pt-6">
-                <Link
-                  href="/articles"
-                  className="inline-flex items-center gap-2 text-sm font-semibold text-[#cf5427]"
-                >
-                  <ArrowLeft size={16} /> Back to all articles
-                </Link>
-              </div>
             </div>
-          </article>
 
-          {/* Sidebar */}
-          <aside className="space-y-6">
-            <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-              <h2 className="text-base font-bold text-slate-900">Categories</h2>
-              <ul className="mt-3 space-y-1">
-                {categories.map((c) => (
-                  <li key={c.id}>
-                    <Link
-                      href={`/articles?category=${c.slug}`}
-                      className={`flex items-center justify-between rounded-lg px-3 py-2 text-sm transition hover:bg-slate-50 ${
-                        article.category === c.slug
-                          ? "bg-[#EB6D3D]/10 font-semibold text-[#9c3d1a]"
-                          : "text-slate-700"
-                      }`}
-                    >
-                      <span>{c.name}</span>
-                      <span className="text-xs text-slate-400">{c.count}</span>
-                    </Link>
-                  </li>
-                ))}
-              </ul>
-            </section>
+            <h1 className="mt-4 text-3xl font-bold leading-tight text-slate-900 sm:text-4xl">
+              {article.title}
+            </h1>
+            <p className="mt-4 border-b border-slate-100 pb-6 text-lg leading-7 text-slate-600">
+              {article.description}
+            </p>
 
-            {related.length > 0 && (
-              <section className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-                <h2 className="text-base font-bold text-slate-900">
-                  More in {label}
-                </h2>
-                <ul className="mt-4 space-y-4">
-                  {related.map((item) => (
-                    <li key={item.id}>
-                      <Link href={`/articles/${item.slug}`} className="group flex gap-3">
-                        {item.image ? (
-                          <Image
-                            src={item.image}
-                            alt=""
-                            width={96}
-                            height={72}
-                            unoptimized
-                            className="h-16 w-20 shrink-0 rounded-lg object-cover"
-                          />
-                        ) : (
-                          <div className="flex h-16 w-20 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400">
-                            <FileText size={20} />
-                          </div>
-                        )}
-                        <div className="min-w-0">
-                          <p className="line-clamp-2 text-sm font-semibold leading-snug text-slate-900 group-hover:text-[#cf5427]">
-                            {item.title}
-                          </p>
-                          <p className="mt-1 text-xs text-slate-400">
-                            {formatDate(item.createdAt)}
-                          </p>
-                        </div>
-                      </Link>
-                    </li>
-                  ))}
-                </ul>
-              </section>
+            {/* Content */}
+            <div className="whitespace-pre-wrap break-words py-6 text-base leading-8 text-slate-700">
+              {article.content}
+            </div>
+
+            {/* Video */}
+            {article.videoUrl && (
+              <div className="pb-6">
+                <VideoPlayer url={article.videoUrl} title={article.title} />
+              </div>
             )}
-          </aside>
-        </div>
+
+            {/* Note */}
+            {article.note && (
+              <aside className="rounded-xl border-l-4 border-[#EB6D3D] bg-[#EB6D3D]/10 p-4 text-sm leading-6 text-slate-700">
+                {article.note}
+              </aside>
+            )}
+
+            {/* Comment Section */}
+            <div id="comments" className="mt-8 border-t border-slate-100 pt-6">
+              <h3 className="text-lg font-bold text-slate-900 mb-4">Comments</h3>
+              <p className="text-sm text-slate-500 mb-6">
+                Your articles comment section goes here. If you have a dedicated comment component, place it inside this `div`.
+              </p>
+              <Link
+                href="/articles"
+                className="inline-flex items-center gap-2 text-sm font-semibold text-[#cf5427]"
+              >
+                <ArrowLeft size={16} /> Back to all articles
+              </Link>
+            </div>
+          </div>
+        </article>
+
+        {/* Related Articles - Moved to Bottom (Full Width) */}
+        {related.length > 0 && (
+          <section className="mt-10">
+            <h2 className="mb-4 text-xl font-bold text-slate-900">More Articles</h2>
+            <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
+              {related.map((item) => (
+                <Link 
+                  key={item.id} 
+                  href={`/articles/${item.slug}`} 
+                  className="group flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md"
+                >
+                  {item.image ? (
+                    <Image
+                      src={item.image}
+                      alt=""
+                      width={400}
+                      height={250}
+                      unoptimized
+                      className="h-32 w-full object-cover transition duration-300 group-hover:scale-105"
+                    />
+                  ) : (
+                    <div className="flex h-32 w-full items-center justify-center bg-slate-100 text-slate-400">
+                      <FileText size={24} />
+                    </div>
+                  )}
+                  <div className="p-4">
+                    <p className="line-clamp-2 text-sm font-semibold leading-snug text-slate-900 group-hover:text-[#cf5427]">
+                      {item.title}
+                    </p>
+                    <p className="mt-2 text-xs text-slate-400">
+                      {formatDate(item.createdAt)}
+                    </p>
+                  </div>
+                </Link>
+              ))}
+            </div>
+          </section>
+        )}
+
       </div>
     </main>
   );

@@ -10,7 +10,6 @@ import {
   Pencil,
   Plus,
   Send,
-  Settings2,
   Trash2,
   Video,
 } from "lucide-react";
@@ -51,7 +50,6 @@ export default function AdminArticlesPage() {
   const [error, setError] = useState("");
   const [filter, setFilter] = useState<Filter>("all");
   const [category, setCategory] = useState("all");
-  const [openVideoId, setOpenVideoId] = useState<string | null>(null);
   const [sendingId, setSendingId] = useState<string | null>(null);
   const [notice, setNotice] = useState<{ ok: boolean; text: string } | null>(null);
 
@@ -157,17 +155,20 @@ export default function AdminArticlesPage() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
+          {/* Button 1: Article NOTE form */}
           <Link
-            href="/admin/articles/categories"
-            className="inline-flex h-11 items-center gap-2 rounded-xl border border-slate-300 bg-white px-4 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-          >
-            <Settings2 size={16} /> Manage categories
-          </Link>
-          <Link
-            href="/admin/articles/new"
+            href="/admin/articles/new/note"
             className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#EB6D3D] px-4 text-sm font-bold text-[#20283a] transition hover:bg-[#cf5427] hover:text-white"
           >
-            <Plus size={17} /> Add article
+            <Plus size={17} /> Add article note
+          </Link>
+
+          {/* Button 2: Article VIDEO form */}
+          <Link
+            href="/admin/articles/new/video"
+            className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#20283a] px-4 text-sm font-bold text-white transition hover:bg-[#EB6D3D] hover:text-[#20283a]"
+          >
+            <Video size={17} /> Add article video
           </Link>
         </div>
       </header>
@@ -272,104 +273,101 @@ export default function AdminArticlesPage() {
               const hasVideo = Boolean(
                 article.videoUrl && getVideoSource(article.videoUrl)
               );
-              const videoOpen = openVideoId === article.id;
 
               return (
                 <article
                   key={article.id}
-                  className="flex flex-wrap items-center gap-4 p-4 sm:p-5"
+                  className="flex flex-col gap-4 p-4 sm:p-5"
                 >
-                  {article.image ? (
-                    <Image
-                      src={article.image}
-                      alt=""
-                      width={96}
-                      height={72}
-                      unoptimized
-                      className="h-16 w-24 rounded-lg object-cover"
-                    />
-                  ) : (
-                    <div className="flex h-16 w-24 items-center justify-center rounded-lg bg-slate-100 text-slate-400">
-                      <FileText size={22} />
-                    </div>
-                  )}
-
-                  <div className="min-w-[220px] flex-1">
-                    <div className="flex flex-wrap items-center gap-2">
-                      <span className="rounded-full bg-[#EB6D3D]/15 px-2.5 py-0.5 text-xs font-semibold text-[#9c3d1a]">
-                        {categoryLabel(categories, article.category || "general")}
-                      </span>
-                      <h2 className="font-semibold text-slate-900">{article.title}</h2>
-                    </div>
-                    <p className="mt-1 line-clamp-2 text-sm text-slate-500">
-                      {article.description}
-                    </p>
-                    <p className="mt-1 flex flex-wrap items-center gap-x-3 text-xs text-slate-400">
-                      <span>/articles/{article.slug}</span>
-                      <span>Updated {new Date(article.updatedAt).toLocaleDateString()}</span>
-                      <span className="inline-flex items-center gap-1">
-                        <Eye size={12} /> {(article.views || 0).toLocaleString()} views
-                      </span>
-                    </p>
-                    {hasVideo && (
-                      <button
-                        type="button"
-                        onClick={() => setOpenVideoId(videoOpen ? null : article.id)}
-                        aria-expanded={videoOpen}
-                        className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-sky-50 px-2.5 py-1 text-xs font-semibold text-sky-800 transition hover:bg-sky-100"
-                      >
-                        <Video size={13} /> {videoOpen ? "Hide video" : "Show video"}
-                      </button>
-                    )}
-                  </div>
-
-                  <span
-                    className={`rounded-full px-3 py-1 text-xs font-bold ${
-                      article.published
-                        ? "bg-emerald-50 text-emerald-700"
-                        : "bg-slate-100 text-slate-600"
-                    }`}
-                  >
-                    {article.published ? "Published" : "Draft"}
-                  </span>
-
-                  <div className="flex items-center gap-2">
-                    {article.published && (
-                      <button
-                        type="button"
-                        onClick={() => void sendToTelegram(article)}
-                        disabled={sendingId !== null}
-                        className="inline-flex items-center gap-2 rounded-lg border border-sky-200 px-3 py-2 text-sm font-semibold text-sky-800 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
-                      >
-                        <Send size={15} />
-                        {sendingId === article.id ? "Sending..." : "Send to Telegram"}
-                      </button>
-                    )}
-                    <Link
-                      href={`/admin/articles/${article.id}/edit`}
-                      aria-label={`Edit ${article.title}`}
-                      className="rounded-lg border border-slate-200 p-2 text-slate-600 transition hover:border-[#EB6D3D] hover:text-[#9c3d1a]"
-                    >
-                      <Pencil size={16} />
-                    </Link>
-                    <button
-                      type="button"
-                      onClick={() => void deleteArticle(article)}
-                      aria-label={`Delete ${article.title}`}
-                      className="rounded-lg border border-slate-200 p-2 text-red-600 transition hover:border-red-200 hover:bg-red-50"
-                    >
-                      <Trash2 size={16} />
-                    </button>
-                  </div>
-
-                  {hasVideo && videoOpen && (
-                    <div className="w-full basis-full">
-                      <div className="max-w-2xl">
-                        <VideoPlayer
-                          url={article.videoUrl as string}
-                          title={article.title}
-                        />
+                  {/* Top row: Image, Text, Actions */}
+                  <div className="flex flex-wrap items-start gap-4">
+                    
+                    {/* Thumbnail: Shows Image if exists, else Video Icon if video exists, else File Icon */}
+                    {article.image ? (
+                      <Image
+                        src={article.image}
+                        alt=""
+                        width={96}
+                        height={72}
+                        unoptimized
+                        className="h-16 w-24 shrink-0 rounded-lg object-cover border border-slate-200"
+                      />
+                    ) : (
+                      <div className="flex h-16 w-24 shrink-0 items-center justify-center rounded-lg bg-slate-100 text-slate-400">
+                        {hasVideo ? <Video size={22} className="text-sky-500" /> : <FileText size={22} />}
                       </div>
+                    )}
+
+                    {/* Article Info */}
+                    <div className="min-w-[220px] flex-1">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="rounded-full bg-[#EB6D3D]/15 px-2.5 py-0.5 text-xs font-semibold text-[#9c3d1a]">
+                          {categoryLabel(categories, article.category || "general")}
+                        </span>
+                        <h2 className="font-semibold text-slate-900">{article.title}</h2>
+                      </div>
+                      <p className="mt-1 line-clamp-2 text-sm text-slate-500">
+                        {article.description}
+                      </p>
+                      <p className="mt-1 flex flex-wrap items-center gap-x-3 text-xs text-slate-400">
+                        <span>/articles/{article.slug}</span>
+                        <span>Updated {new Date(article.updatedAt).toLocaleDateString()}</span>
+                        <span className="inline-flex items-center gap-1">
+                          <Eye size={12} /> {(article.views || 0).toLocaleString()} views
+                        </span>
+                      </p>
+                    </div>
+
+                    {/* Status and Buttons */}
+                    <div className="flex flex-col items-end gap-2">
+                      <span
+                        className={`rounded-full px-3 py-1 text-xs font-bold ${
+                          article.published
+                            ? "bg-emerald-50 text-emerald-700"
+                            : "bg-slate-100 text-slate-600"
+                        }`}
+                      >
+                        {article.published ? "Published" : "Draft"}
+                      </span>
+
+                      <div className="flex items-center gap-2">
+                        {article.published && (
+                          <button
+                            type="button"
+                            onClick={() => void sendToTelegram(article)}
+                            disabled={sendingId !== null}
+                            className="inline-flex items-center gap-2 rounded-lg border border-sky-200 px-3 py-1.5 text-xs font-semibold text-sky-800 transition hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-60"
+                          >
+                            <Send size={14} />
+                            {sendingId === article.id ? "Sending..." : "Send"}
+                          </button>
+                        )}
+                        <Link
+                          href={`/admin/articles/${article.id}/edit`}
+                          aria-label={`Edit ${article.title}`}
+                          className="rounded-lg border border-slate-200 p-1.5 text-slate-600 transition hover:border-[#EB6D3D] hover:text-[#9c3d1a]"
+                        >
+                          <Pencil size={16} />
+                        </Link>
+                        <button
+                          type="button"
+                          onClick={() => void deleteArticle(article)}
+                          aria-label={`Delete ${article.title}`}
+                          className="rounded-lg border border-slate-200 p-1.5 text-red-600 transition hover:border-red-200 hover:bg-red-50"
+                        >
+                          <Trash2 size={16} />
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Video Player: Shows automatically below if video exists */}
+                  {hasVideo && (
+                    <div className="w-full max-w-2xl mt-2">
+                      <VideoPlayer
+                        url={article.videoUrl as string}
+                        title={article.title}
+                      />
                     </div>
                   )}
                 </article>
