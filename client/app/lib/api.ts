@@ -6,20 +6,17 @@ import axios, {
 } from 'axios';
 
 // ============================================================
-// Base URL (normalized) — Updated with your Railway Backend URL
+// Base URL (normalized)
 // ============================================================
-const PRODUCTION_FALLBACK = 'https://alemayehuplasticm-production.up.railway.app';
-
+// ✅ FIXED: Removed all production/Railway fallbacks.
+// It will now use localhost by default, or your .env variable.
 const rawUrl =
-  process.env.NEXT_PUBLIC_API_URL ||
-  (process.env.NODE_ENV === 'production'
-    ? PRODUCTION_FALLBACK
-    : 'http://localhost:5000');
+  process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
 export const API_URL = rawUrl
   .trim()
-  .replace(/\/+\$/, '')
-  .replace(/\/api\$/i, '');
+  .replace(/\/+$/, '')
+  .replace(/\/api$/i, '');
 
 // ✅ Instance for the EXTERNAL backend (Express)
 export const api: AxiosInstance = axios.create({
@@ -122,13 +119,21 @@ nextApi.interceptors.response.use((r) => r, handleAuthError);
 // ============================================================
 // Types
 // ============================================================
+export interface ProductPrice {
+  currency: string;
+  amount: number;
+}
+
 export interface Product {
   id: string;
   name: string;
   slug: string;
   price: number;
+  currency?: string;
+  prices?: ProductPrice[] | null;
   discountPrice?: number | null;
   images: string[];
+  videoUrl?: string | null;
   stock: number;
   sku?: string;
   description?: string;
@@ -152,7 +157,7 @@ export interface User {
 }
 
 // ============================================================
-// UPLOAD API — Cloudinary-backed
+// UPLOAD API
 // ============================================================
 export interface UploadResponse {
   success: boolean;
@@ -169,13 +174,14 @@ export interface UploadResponse {
 async function postFile(
   endpoint: string,
   file: File,
-  fieldName: string
+  fieldName: string,
+  timeout = 120000
 ): Promise<UploadResponse> {
   const formData = new FormData();
   formData.append(fieldName, file);
 
   const response = await api.post<UploadResponse>(endpoint, formData, {
-    timeout: 120000,
+    timeout,
     transformRequest: [
       (data: FormData, headers: Record<string, unknown>) => {
         if (headers && typeof headers === 'object') {
@@ -203,6 +209,9 @@ export const uploadApi = {
     }
     return results;
   },
+
+  uploadProductVideo: (file: File) =>
+    postFile('/api/upload/product-video', file, 'video', 300000),
 
   uploadCategoryImage: (file: File) =>
     postFile('/api/upload/category', file, 'image'),

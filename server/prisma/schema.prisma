@@ -140,6 +140,9 @@ model Product {
   slug              String   @unique
   description       String   @db.Text
   price             Decimal  @db.Decimal(10, 2)
+  currency          String   @default("ETB")
+  // ✅ Multi-currency prices: [{ "currency": "ETB", "amount": 1500 }, ...]
+  prices            Json?
   discountPrice     Decimal? @db.Decimal(10, 2)
   stock             Int      @default(0)
   sku               String   @unique

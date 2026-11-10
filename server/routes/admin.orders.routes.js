@@ -4,10 +4,7 @@ const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { sendOrderApprovalEmail } = require('../lib/email');
 
 const router = express.Router();
-const ORDER_STATUSES = [
-  'CONFIRMED',
-  'CANCELLED',
-];
+const ORDER_STATUSES = ['CONFIRMED', 'CANCELLED'];
 
 const allowedTransitions = {
   PENDING: ['CONFIRMED', 'CANCELLED'],
@@ -16,6 +13,7 @@ const allowedTransitions = {
 const normalizeText = (value) =>
   typeof value === 'string' ? value.trim() : '';
 
+// GET ALL ORDERS (Admin)
 router.get('/', requireAuth, requireAdmin, async (req, res) => {
   try {
     const orders = await prisma.order.findMany({
@@ -31,10 +29,7 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
             quantity: true,
             unitPrice: true,
             product: {
-              select: {
-                name: true,
-                images: true,
-              },
+              select: { name: true, images: true },
             },
           },
         },
@@ -60,6 +55,7 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+// UPDATE ORDER STATUS (Approve / Cancel)
 router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
   try {
     const nextStatus = normalizeText(req.body?.status).toUpperCase();
@@ -101,6 +97,7 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
         throw error;
       }
 
+      // Restore stock if cancelled
       if (nextStatus === 'CANCELLED') {
         for (const item of order.items) {
           if (item.productId) {
@@ -118,12 +115,7 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
           include: {
             items: {
               include: {
-                product: {
-                  select: {
-                    name: true,
-                    images: true,
-                  },
-                },
+                product: { select: { name: true, images: true } },
               },
             },
           },
@@ -134,6 +126,8 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
 
     const updatedOrder = result.order;
     let notificationSent = null;
+
+    // ✅ SEND EMAIL IF CONFIRMED
     if (result.statusChanged && nextStatus === 'CONFIRMED') {
       try {
         await sendOrderApprovalEmail(updatedOrder);
@@ -163,14 +157,10 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
     });
   } catch (error) {
     if (error.statusCode) {
-      return res
-        .status(error.statusCode)
-        .json({ success: false, error: error.message });
+      return res.status(error.statusCode).json({ success: false, error: error.message });
     }
     console.error('Failed to update order status:', error);
-    return res
-      .status(500)
-      .json({ success: false, error: 'Failed to update order status' });
+    return res.status(500).json({ success: false, error: 'Failed to update order status' });
   }
 });
 

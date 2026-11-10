@@ -1,7 +1,7 @@
 // app/admin/products/[id]/page.tsx
 "use client";
 
-import React, { useState, useEffect, useCallback, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import Image from "next/image";
@@ -18,6 +18,7 @@ import {
   AlertCircle,
   Info,
   Clock,
+  Video as VideoIcon,
 } from "lucide-react";
 
 // ============================================================
@@ -30,10 +31,7 @@ const RAW_API_BASE =
 const API_URL = RAW_API_BASE.replace(/\/+$/, "");
 
 // ============================================================
-// Image resolver — Cloudinary ONLY
-//   • Full https URL      → as-is
-//   • res.cloudinary.com  → prefixed with https://
-//   • Anything else       → null
+// Media resolvers — Cloudinary / full URLs only
 // ============================================================
 function resolveImage(raw: unknown): string | null {
   if (typeof raw !== "string") return null;
@@ -46,6 +44,37 @@ function resolveImage(raw: unknown): string | null {
 
   return null;
 }
+
+function resolveVideo(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const s = raw.trim();
+  if (!s) return null;
+
+  if (s.startsWith("http://") || s.startsWith("https://")) return s;
+  if (s.startsWith("res.cloudinary.com/")) return `https://${s}`;
+
+  return null;
+}
+
+// ✅ Helper: Check if URL is a YouTube (including Shorts) or Vimeo link and convert to embed URL
+const getVideoEmbedUrl = (url: string) => {
+  if (!url) return null;
+  
+  // Matches watch?v=, youtu.be/, /embed/, and /shorts/
+  const ytMatch = url.match(
+    /(?:youtube\.com\/(?:[^\/]+\/.+\/|(?:v|e(?:mbed)?)\/|.*[?&]v=|shorts\/)|youtu\.be\/)([^"&?\/\s]{11})/
+  );
+  if (ytMatch && ytMatch[1]) {
+    return `https://www.youtube.com/embed/${ytMatch[1]}`;
+  }
+  
+  const vimeoMatch = url.match(/vimeo\.com\/(?:.*#|.*\/videos\/)?([0-9]+)/);
+  if (vimeoMatch && vimeoMatch[1]) {
+    return `https://player.vimeo.com/video/${vimeoMatch[1]}`;
+  }
+  
+  return null;
+};
 
 // ============================================================
 // Axios instance
@@ -77,7 +106,6 @@ api.interceptors.response.use(
       localStorage.removeItem("user");
       sessionStorage.removeItem("user");
       if (typeof window !== "undefined") {
-        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
         window.location.href = "/auth/signin";
       }
     }
@@ -88,6 +116,11 @@ api.interceptors.response.use(
 // ============================================================
 // Types
 // ============================================================
+interface ProductPrice {
+  currency: string;
+  amount: number;
+}
+
 interface Product {
   id: string;
   name: string;
@@ -103,10 +136,13 @@ interface Product {
     slug: string;
   } | null;
   price: number;
+  currency?: string;
+  prices?: ProductPrice[] | null;
   discountPrice?: number;
   stock: number;
   sku: string;
   images: string[];
+  videoUrl?: string | null;
   tags: string[];
   brand?: string;
   weight?: number;
@@ -120,6 +156,39 @@ interface Product {
 interface DetailPageProps {
   params: Promise<{ id: string }>;
 }
+
+// ============================================================
+// Money helpers
+// ============================================================
+const DEFAULT_CURRENCY = "ETB";
+
+const formatMoney = (amount: number, currency: string = DEFAULT_CURRENCY) => {
+  const value = Number(amount) || 0;
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    return `${currency} ${value.toFixed(2)}`;
+  }
+};
+
+const getProductPrices = (product: Product): ProductPrice[] => {
+  if (Array.isArray(product.prices) && product.prices.length > 0) {
+    return product.prices.filter(
+      (p) => p && typeof p.currency === "string" && Number(p.amount) > 0
+    );
+  }
+  return [
+    {
+      currency: product.currency || DEFAULT_CURRENCY,
+      amount: product.price,
+    },
+  ];
+};
 
 // ============================================================
 // Notification
@@ -174,9 +243,7 @@ const Notification: React.FC<NotificationProps> = ({
   return (
     <div
       className={`fixed top-4 right-4 z-50 transition-all duration-300 ${
-        isVisible
-          ? "opacity-100 translate-x-0"
-          : "opacity-0 translate-x-full"
+        isVisible ? "opacity-100 translate-x-0" : "opacity-0 translate-x-full"
       }`}
     >
       <div
@@ -209,16 +276,6 @@ const isAuthenticated = (): boolean => {
     localStorage.getItem("authToken") ||
     sessionStorage.getItem("authToken");
   return !!token;
-};
-
-const getToken = (): string | null => {
-  if (typeof window === "undefined") return null;
-  return (
-    localStorage.getItem("token") ||
-    sessionStorage.getItem("token") ||
-    localStorage.getItem("authToken") ||
-    sessionStorage.getItem("authToken")
-  );
 };
 
 const redirectToLogin = (router: ReturnType<typeof useRouter>) => {
@@ -277,6 +334,8 @@ const ProductImage: React.FC<{
 // ============================================================
 const ProductDetailPage: React.FC<DetailPageProps> = ({ params }) => {
   const router = useRouter();
+  const { id: productId } = React.use(params);
+
   const [loading, setLoading] = useState(true);
   const [product, setProduct] = useState<Product | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -284,25 +343,6 @@ const ProductDetailPage: React.FC<DetailPageProps> = ({ params }) => {
     type: "success" | "error" | "info" | "warning";
     message: string;
   } | null>(null);
-  const [productId, setProductId] = useState<string | null>(null);
-
-  const hasSetProductId = useRef(false);
-  const hasFetchedProduct = useRef(false);
-
-  const unwrappedParams = React.use(params);
-
-  useEffect(() => {
-    if (unwrappedParams && unwrappedParams.id && !hasSetProductId.current) {
-      hasSetProductId.current = true;
-      setProductId(unwrappedParams.id);
-    }
-  }, [unwrappedParams]);
-
-  useEffect(() => {
-    if (!isAuthenticated()) {
-      redirectToLogin(router);
-    }
-  }, [router]);
 
   const showNotification = (
     type: "success" | "error" | "info" | "warning",
@@ -311,67 +351,56 @@ const ProductDetailPage: React.FC<DetailPageProps> = ({ params }) => {
 
   const clearNotification = () => setNotification(null);
 
-  const fetchProduct = useCallback(async () => {
-    if (!productId) return;
+  useEffect(() => {
+    if (!isAuthenticated()) {
+      redirectToLogin(router);
+      return;
+    }
 
-    try {
-      setLoading(true);
-      setError(null);
+    let active = true;
 
-      if (!isAuthenticated()) {
-        redirectToLogin(router);
-        return;
-      }
+    api
+      .get(`/api/products/${productId}`)
+      .then((response) => {
+        if (!active) return;
 
-      const token = getToken();
-      const response = await api.get(`/api/products/${productId}`, {
-        headers: { Authorization: `Bearer ${token}` },
+        let productData = response.data;
+        if (response.data?.product) {
+          productData = response.data.product;
+        } else if (response.data?.data) {
+          productData = response.data.data;
+        }
+
+        if (productData) {
+          setProduct(productData);
+        } else {
+          setError("Product not found");
+        }
+      })
+      .catch((err) => {
+        if (!active) return;
+        console.error("Error fetching product:", err);
+
+        if (axios.isAxiosError(err)) {
+          if (err.response?.status === 404) {
+            setError("Product not found");
+          } else if (err.response?.status !== 401) {
+            setError(err.response?.data?.error || "Failed to load product");
+          }
+        } else {
+          setError("An unexpected error occurred");
+        }
+      })
+      .finally(() => {
+        if (active) setLoading(false);
       });
 
-      let productData = response.data;
-      if (response.data && response.data.product) {
-        productData = response.data.product;
-      } else if (response.data && response.data.data) {
-        productData = response.data.data;
-      }
-
-      if (productData) {
-        setProduct(productData);
-      } else {
-        setError("Product not found");
-      }
-    } catch (err) {
-      console.error("Error fetching product:", err);
-      if (axios.isAxiosError(err)) {
-        if (err.response?.status === 401) {
-          localStorage.removeItem("token");
-          localStorage.removeItem("authToken");
-          sessionStorage.removeItem("token");
-          sessionStorage.removeItem("authToken");
-          showNotification("error", "Session expired. Please login again.");
-          setTimeout(() => router.push("/auth/signin"), 1500);
-        } else if (err.response?.status === 404) {
-          setError("Product not found");
-        } else {
-          setError(err.response?.data?.error || "Failed to load product");
-        }
-      } else {
-        setError("An unexpected error occurred");
-      }
-    } finally {
-      setLoading(false);
-    }
+    return () => {
+      active = false;
+    };
   }, [productId, router]);
 
-  useEffect(() => {
-    if (productId && !hasFetchedProduct.current) {
-      hasFetchedProduct.current = true;
-      fetchProduct();
-    }
-  }, [productId, fetchProduct]);
-
   const handleDelete = async () => {
-    if (!productId) return;
     if (!confirm("Are you sure you want to delete this product?")) return;
 
     try {
@@ -380,10 +409,7 @@ const ProductDetailPage: React.FC<DetailPageProps> = ({ params }) => {
         return;
       }
 
-      const token = getToken();
-      const response = await api.delete(`/api/products/${productId}`, {
-        headers: { Authorization: `Bearer ${token}` },
-      });
+      const response = await api.delete(`/api/products/${productId}`);
 
       if (response.data.success) {
         showNotification("success", "Product deleted successfully!");
@@ -397,32 +423,15 @@ const ProductDetailPage: React.FC<DetailPageProps> = ({ params }) => {
     } catch (err) {
       console.error("Error deleting product:", err);
       if (axios.isAxiosError(err)) {
-        if (err.response?.status === 401) {
-          localStorage.removeItem("token");
-          localStorage.removeItem("authToken");
-          sessionStorage.removeItem("token");
-          sessionStorage.removeItem("authToken");
-          showNotification("error", "Session expired. Please login again.");
-          setTimeout(() => router.push("/auth/signin"), 1500);
-        } else {
-          showNotification(
-            "error",
-            err.response?.data?.error || "Failed to delete product"
-          );
-        }
+        showNotification(
+          "error",
+          err.response?.data?.error || "Failed to delete product"
+        );
       } else {
         showNotification("error", "An unexpected error occurred");
       }
     }
   };
-
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "ETB",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount || 0);
 
   const formatDate = (dateString: string) => {
     if (!dateString) return "N/A";
@@ -466,6 +475,10 @@ const ProductDetailPage: React.FC<DetailPageProps> = ({ params }) => {
       </div>
     );
   }
+
+  const prices = getProductPrices(product);
+  const mainCurrency = prices[0]?.currency || DEFAULT_CURRENCY;
+  const videoUrl = resolveVideo(product.videoUrl);
 
   return (
     <div className="space-y-6">
@@ -571,6 +584,39 @@ const ProductDetailPage: React.FC<DetailPageProps> = ({ params }) => {
             )}
           </div>
 
+          {/* ✅ FIXED: Video Preview */}
+          <div className="bg-white rounded-xl border border-gray-200 p-5">
+            <h3 className="font-semibold text-gray-900 text-sm mb-3">
+              Product Video
+            </h3>
+            {videoUrl ? (
+              <div className="overflow-hidden rounded-lg bg-black">
+                {/* If it's YouTube/Vimeo, render an iframe. Otherwise render a standard video tag. */}
+                {getVideoEmbedUrl(videoUrl) ? (
+                  <iframe
+                    src={getVideoEmbedUrl(videoUrl)!}
+                    className="w-full aspect-video"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                    allowFullScreen
+                  />
+                ) : (
+                  <video
+                    src={videoUrl}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    className="max-h-[420px] w-full"
+                  />
+                )}
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500">
+                <VideoIcon className="w-12 h-12 text-gray-300 mx-auto mb-2" />
+                <p className="text-sm">No video available</p>
+              </div>
+            )}
+          </div>
+
           {/* Description */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="font-semibold text-gray-900 text-sm mb-2">
@@ -640,34 +686,49 @@ const ProductDetailPage: React.FC<DetailPageProps> = ({ params }) => {
 
         {/* Sidebar */}
         <div className="space-y-6">
-          {/* Pricing */}
+          {/* Pricing — one row per currency */}
           <div className="bg-white rounded-xl border border-gray-200 p-5">
             <h3 className="font-semibold text-gray-900 text-sm mb-3">
               Pricing
             </h3>
             <div className="space-y-3">
-              <div className="flex justify-between items-center">
-                <span className="text-sm text-gray-600">Price</span>
-                <span className="text-lg font-bold text-gray-900">
-                  {formatCurrency(product.price)}
-                </span>
-              </div>
+              {prices.map((p, index) => (
+                <div
+                  key={`${p.currency}-${index}`}
+                  className="flex justify-between items-center"
+                >
+                  <span className="text-sm text-gray-600">
+                    {index === 0 ? `Price (${p.currency})` : p.currency}
+                  </span>
+                  <span
+                    className={
+                      index === 0
+                        ? "text-lg font-bold text-gray-900"
+                        : "text-sm font-semibold text-gray-700"
+                    }
+                  >
+                    {formatMoney(p.amount, p.currency)}
+                  </span>
+                </div>
+              ))}
+
               {product.discountPrice &&
                 product.discountPrice < product.price && (
                   <>
-                    <div className="flex justify-between items-center">
+                    <div className="flex justify-between items-center border-t border-gray-100 pt-3">
                       <span className="text-sm text-gray-600">
-                        Discounted Price
+                        Discounted Price ({mainCurrency})
                       </span>
                       <span className="text-lg font-bold text-yellow-600">
-                        {formatCurrency(product.discountPrice)}
+                        {formatMoney(product.discountPrice, mainCurrency)}
                       </span>
                     </div>
                     <div className="flex justify-between items-center text-sm">
                       <span className="text-yellow-600">You Save</span>
                       <span className="text-yellow-600 font-medium">
-                        {formatCurrency(
-                          product.price - product.discountPrice
+                        {formatMoney(
+                          product.price - product.discountPrice,
+                          mainCurrency
                         )}
                       </span>
                     </div>
@@ -675,12 +736,12 @@ const ProductDetailPage: React.FC<DetailPageProps> = ({ params }) => {
                 )}
               {product.discountPrice &&
                 product.discountPrice >= product.price && (
-                  <div className="flex justify-between items-center">
+                  <div className="flex justify-between items-center border-t border-gray-100 pt-3">
                     <span className="text-sm text-red-500">
                       Invalid discount price
                     </span>
                     <span className="text-sm text-red-500 line-through">
-                      {formatCurrency(product.discountPrice)}
+                      {formatMoney(product.discountPrice, mainCurrency)}
                     </span>
                   </div>
                 )}

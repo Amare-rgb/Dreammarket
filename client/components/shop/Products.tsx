@@ -5,11 +5,18 @@ import Link from "next/link";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUpRight, Search, ShoppingCart, X } from "lucide-react";
+import { ArrowUpRight, Search, ShoppingCart, Video, X, Trash2 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { readCart, writeCart } from "@/app/lib/cart";
 
-// ✅ Local type — no dependency on `@/data/products`
+// ─────────────────────────────────────────────────────────────────────────────
+// Types
+// ─────────────────────────────────────────────────────────────────────────────
+export interface ProductPrice {
+  currency: string;
+  amount: number;
+}
+
 export interface Product {
   id: string;
   slug: string;
@@ -17,12 +24,15 @@ export interface Product {
   category: string;
   description: string;
   price: number;
+  currency: string;
+  prices: ProductPrice[];
   discountPrice: number | null;
   unit: string;
   stock: number;
   featured?: boolean;
   badge?: string;
   images: string[];
+  videoUrl: string | null;
   liters?: number | null;
 }
 
@@ -35,36 +45,118 @@ interface CategoryOption {
   parentId?: string | null;
 }
 
+interface ApiPrice {
+  currency?: string;
+  amount?: number | string;
+}
+
 interface ApiProduct {
-  id: string;
+  id?: string;
+  _id?: string;
   slug?: string;
   name: string;
   category?: { name?: string } | null;
+  categoryName?: string;
   description?: string | null;
-  price: number | string;
+  price?: number | string;
+  currency?: string;
+  prices?: ApiPrice[] | null;
   discountPrice?: number | string | null;
   unitOfMeasurement?: string | null;
   stock?: number | null;
   isFeatured?: boolean;
   images?: string[] | null;
+  videoUrl?: string | null;
+  video?: string | null;
   liters?: number | string | null;
   volume?: number | string | null;
   size?: string | null;
   capacity?: string | null;
 }
 
-// ────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 // API base
-// ────────────────────────────────────────────────────────────────────────────
+// ─────────────────────────────────────────────────────────────────────────────
 const RAW_API_BASE =
   process.env.NEXT_PUBLIC_API_URL ||
   process.env.NEXT_PUBLIC_API_BASE_URL ||
   "http://localhost:5000";
 const API_BASE_URL = RAW_API_BASE.replace(/\/+$/, "");
 
-// ────────────────────────────────────────────────────────────────────────────
-// Liter detection helpers
-// ────────────────────────────────────────────────────────────────────────────
+const DEFAULT_CURRENCY = "ETB";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+function formatMoney(amount: number, currency: string = DEFAULT_CURRENCY) {
+  if (!Number.isFinite(amount)) return `${currency} 0`;
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    }).format(amount);
+  } catch {
+    return `${currency} ${amount.toLocaleString()}`;
+  }
+}
+
+function resolveImage(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const s = raw.trim();
+  if (!s) return null;
+  if (s.startsWith("data:")) return s;
+  if (s.startsWith("http://") || s.startsWith("https://")) return s;
+  if (s.startsWith("res.cloudinary.com/")) return `https://${s}`;
+  return null;
+}
+
+function resolveVideo(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const s = raw.trim();
+  if (!s) return null;
+  if (s.startsWith("http://") || s.startsWith("https://")) return s;
+  if (s.startsWith("res.cloudinary.com/")) return `https://${s}`;
+  return null;
+}
+
+const isPositive = (v: unknown): v is number =>
+  typeof v === "number" && Number.isFinite(v) && v > 0;
+
+function normalizePrices(p: ApiProduct): ProductPrice[] {
+  const list: ProductPrice[] = [];
+
+  if (Array.isArray(p.prices)) {
+    for (const raw of p.prices) {
+      const currency =
+        typeof raw?.currency === "string" && raw.currency.trim()
+          ? raw.currency.toUpperCase()
+          : null;
+      const amount = Number(raw?.amount);
+      if (currency && isPositive(amount)) {
+        list.push({ currency, amount });
+      }
+    }
+  }
+
+  if (list.length === 0) {
+    const amount = Number(p.price);
+    const currency =
+      typeof p.currency === "string" && p.currency.trim()
+        ? p.currency.toUpperCase()
+        : DEFAULT_CURRENCY;
+    list.push({ currency, amount: isPositive(amount) ? amount : 0 });
+  }
+
+  const seen = new Set<string>();
+  return list.filter((x) => {
+    if (seen.has(x.currency)) return false;
+    seen.add(x.currency);
+    return true;
+  });
+}
+
 function detectLiters(product: {
   name?: string;
   description?: string;
@@ -94,14 +186,13 @@ function detectLiters(product: {
   if (fromSize) return fromSize;
 
   const haystack = `${product.name || ""} ${product.description || ""}`;
-  const matches = haystack.match(
+  const m = haystack.match(
     /(\d+(?:\.\d+)?)\s*(?:l|lt|ltr|liter|litre|liters|litres)\b/i
   );
-  if (matches) {
-    const n = parseFloat(matches[1]);
+  if (m) {
+    const n = parseFloat(m[1]);
     if (!isNaN(n) && n > 0) return n;
   }
-
   return null;
 }
 
@@ -128,24 +219,6 @@ function parseBucketValue(label: string): number {
   return m ? parseFloat(m[1]) : 0;
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Image resolver — Cloudinary ONLY
-// ────────────────────────────────────────────────────────────────────────────
-function resolveImage(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  const s = raw.trim();
-  if (!s) return null;
-
-  if (s.startsWith("data:")) return s;
-  if (s.startsWith("http://") || s.startsWith("https://")) return s;
-  if (s.startsWith("res.cloudinary.com/")) return `https://${s}`;
-
-  return null;
-}
-
-// ────────────────────────────────────────────────────────────────────────────
-// Package icon — used as image fallback
-// ────────────────────────────────────────────────────────────────────────────
 function PackageIcon({ className = "h-10 w-10" }: { className?: string }) {
   return (
     <svg
@@ -170,21 +243,40 @@ function PackageIcon({ className = "h-10 w-10" }: { className?: string }) {
   );
 }
 
-// ────────────────────────────────────────────────────────────────────────────
-// Product image — 2-stage fallback (source → package icon)
-// ────────────────────────────────────────────────────────────────────────────
 const ProductImage: React.FC<{
   src: string | null;
+  videoUrl?: string | null;
   alt: string;
   priority?: boolean;
-}> = ({ src, alt, priority = false }) => {
+}> = ({ src, videoUrl, alt, priority = false }) => {
   const [prevSrc, setPrevSrc] = useState(src);
   const [hasError, setHasError] = useState(false);
+  const [hovering, setHovering] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   if (src !== prevSrc) {
     setPrevSrc(src);
     setHasError(false);
   }
+
+  const showVideo = Boolean(videoUrl) && hovering && !hasError;
+
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v) return;
+    if (showVideo) {
+      v.muted = true;
+      const playPromise = v.play();
+      if (playPromise && typeof playPromise.catch === "function") {
+        playPromise.catch(() => {});
+      }
+    } else {
+      v.pause();
+      try {
+        v.currentTime = 0;
+      } catch {}
+    }
+  }, [showVideo]);
 
   if (!src || hasError) {
     return (
@@ -195,23 +287,44 @@ const ProductImage: React.FC<{
   }
 
   return (
-    <Image
-      src={src}
-      alt={alt}
-      fill
-      unoptimized
-      className="object-cover object-center transition-transform duration-500 ease-out group-hover:scale-[1.04]"
-      onError={() => setHasError(true)}
-      sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
-      loading={priority ? "eager" : "lazy"}
-      fetchPriority={priority ? "high" : "auto"}
-    />
+    <div
+      className="relative h-full w-full"
+      onMouseEnter={() => videoUrl && setHovering(true)}
+      onMouseLeave={() => setHovering(false)}
+      onTouchStart={() => videoUrl && setHovering(true)}
+    >
+      <Image
+        src={src}
+        alt={alt}
+        fill
+        unoptimized
+        className={`object-cover object-center transition-all duration-500 ease-out ${
+          showVideo ? "opacity-0" : "opacity-100 group-hover:scale-[1.04]"
+        }`}
+        onError={() => setHasError(true)}
+        sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
+        loading={priority ? "eager" : "lazy"}
+        fetchPriority={priority ? "high" : "auto"}
+      />
+
+      {videoUrl && (
+        <video
+          ref={videoRef}
+          src={videoUrl}
+          muted
+          loop
+          playsInline
+          preload="none"
+          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${
+            showVideo ? "opacity-100" : "opacity-0 pointer-events-none"
+          }`}
+          aria-hidden="true"
+        />
+      )}
+    </div>
   );
 };
 
-// ────────────────────────────────────────────────────────────────────────────
-// Main component
-// ────────────────────────────────────────────────────────────────────────────
 export default function Products() {
   const { t } = useLanguage();
   const searchParams = useSearchParams();
@@ -222,6 +335,21 @@ export default function Products() {
   const [categoriesList, setCategoriesList] = useState<CategoryOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+
+  // ✅ FIX: Initialize state directly reading localStorage, no useEffect needed
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
+    if (typeof window === "undefined") return false;
+    const userData = localStorage.getItem("user") || sessionStorage.getItem("user");
+    if (!userData) return false;
+    try {
+      const parsed = JSON.parse(userData);
+      return String(parsed?.role || "").toUpperCase() === "ADMIN";
+    } catch {
+      return false;
+    }
+  });
+
+  const [deletingCatId, setDeletingCatId] = useState<string | null>(null);
 
   const [selectedCategory, setSelectedCategory] =
     useState<string>(initialCategoryParam);
@@ -239,6 +367,7 @@ export default function Products() {
       const cart = readCart();
       const existing = cart.find((item) => item.productId === product.id);
       const nextQuantity = (existing?.quantity || 0) + 1;
+
       if (nextQuantity > product.stock) {
         setCartFeedback({
           productId: product.id,
@@ -251,6 +380,13 @@ export default function Products() {
         return;
       }
 
+      const effectivePrice =
+        product.discountPrice != null &&
+        product.discountPrice > 0 &&
+        product.discountPrice < product.price
+          ? product.discountPrice
+          : product.price;
+
       const nextCart = existing
         ? cart.map((item) =>
             item.productId === product.id
@@ -259,11 +395,7 @@ export default function Products() {
                   name: product.name,
                   slug: product.slug,
                   image,
-                  unitPrice:
-                    product.discountPrice != null &&
-                    product.discountPrice < product.price
-                      ? product.discountPrice
-                      : product.price,
+                  unitPrice: effectivePrice,
                   quantity: nextQuantity,
                 }
               : item
@@ -275,11 +407,7 @@ export default function Products() {
               name: product.name,
               slug: product.slug,
               image,
-              unitPrice:
-                product.discountPrice != null &&
-                product.discountPrice < product.price
-                  ? product.discountPrice
-                  : product.price,
+              unitPrice: effectivePrice,
               quantity: 1,
             },
           ];
@@ -290,8 +418,8 @@ export default function Products() {
         message: t("checkout.added_to_cart", "Added to your order."),
         isError: false,
       });
-    } catch (error) {
-      console.error("Could not save product to the cart:", error);
+    } catch (err) {
+      console.error("Could not save product to the cart:", err);
       setCartFeedback({
         productId: product.id,
         message: t(
@@ -309,6 +437,35 @@ export default function Products() {
     return catName;
   };
 
+  // ✅ Handle Category Delete
+  const handleDeleteCategory = async (categoryId: string, categoryName: string) => {
+    if (!confirm(`Are you sure you want to delete the category "${categoryName}"?`)) return;
+
+    setDeletingCatId(categoryId);
+    try {
+      const token = localStorage.getItem("token") || sessionStorage.getItem("token");
+      const res = await fetch(`${API_BASE_URL}/api/categories/${categoryId}`, {
+        method: "DELETE",
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+
+      if (!res.ok) {
+        const errorData = await res.json();
+        throw new Error(errorData.error || "Failed to delete category");
+      }
+
+      setCategoriesList((prev) => prev.filter((c) => c.id !== categoryId));
+      if (selectedCategory.toLowerCase() === categoryName.toLowerCase()) {
+        setSelectedCategory("All");
+      }
+    } catch (err) {
+      alert(err instanceof Error ? err.message : "Failed to delete category");
+    } finally {
+      setDeletingCatId(null);
+    }
+  };
+
+  // ── Sync category from URL once ────────────────────────────────────────
   useEffect(() => {
     const cat = searchParams.get("category");
     if (cat && cat !== selectedCategory && !hasInitializedFromURL.current) {
@@ -317,6 +474,7 @@ export default function Products() {
     }
   }, [searchParams, selectedCategory]);
 
+  // ── Load categories ────────────────────────────────────────────────────
   useEffect(() => {
     let isMounted = true;
     const fetchCategories = async () => {
@@ -348,6 +506,7 @@ export default function Products() {
     };
   }, []);
 
+  // ── Load products ──────────────────────────────────────────────────────
   useEffect(() => {
     let isMounted = true;
 
@@ -370,20 +529,32 @@ export default function Products() {
 
         if (Array.isArray(rawProducts) && rawProducts.length > 0) {
           const mapped: Product[] = (rawProducts as ApiProduct[]).map((p) => {
-            const categoryName = p.category?.name || "Other Products";
+            const categoryName =
+              p.category?.name || p.categoryName || "Other Products";
 
-            // ✅ Cloudinary-only — drop non-URL images
             const imageList: string[] = Array.isArray(p.images)
               ? p.images
                   .map((img) => resolveImage(img))
                   .filter((u): u is string => Boolean(u))
               : [];
 
-            const price = Number(p.price) || 0;
-            const discountPrice = p.discountPrice
-              ? Number(p.discountPrice)
-              : null;
-            const stock = typeof p.stock === "number" ? p.stock : 0;
+            const videoUrl =
+              resolveVideo(p.videoUrl) ?? resolveVideo(p.video);
+
+            const prices = normalizePrices(p);
+            const primary = prices[0];
+            const price = primary.amount;
+            const currency = primary.currency;
+
+            const hasDiscount =
+              p.discountPrice !== null &&
+              p.discountPrice !== undefined &&
+              Number(p.discountPrice) > 0 &&
+              Number(p.discountPrice) < price;
+            const discountPrice = hasDiscount ? Number(p.discountPrice) : null;
+
+            const stock =
+              typeof p.stock === "number" && p.stock >= 0 ? p.stock : 0;
 
             const liters = detectLiters({
               name: p.name,
@@ -395,18 +566,21 @@ export default function Products() {
             });
 
             return {
-              id: p.id,
-              slug: p.slug || p.id,
+              id: p.id ?? p._id ?? "",
+              slug: p.slug || p.id || p._id || "",
               name: p.name,
               category: categoryName,
               description: p.description || "",
               price,
+              currency,
+              prices,
               discountPrice,
               unit: p.unitOfMeasurement || "pcs",
               stock,
-              featured: Boolean(discountPrice || p.isFeatured),
-              badge: discountPrice ? "Sale" : undefined,
+              featured: hasDiscount || Boolean(p.isFeatured),
+              badge: hasDiscount ? "Sale" : undefined,
               images: imageList,
+              videoUrl,
               liters,
             };
           });
@@ -433,6 +607,7 @@ export default function Products() {
     };
   }, []);
 
+  // ── Liter tabs ─────────────────────────────────────────────────────────
   const literTabs = useMemo(() => {
     const set = new Set<string>();
     products.forEach((p) => {
@@ -448,6 +623,7 @@ export default function Products() {
     return sorted.length > 0 ? ["All", ...sorted] : [];
   }, [products]);
 
+  // ── Category tabs ──────────────────────────────────────────────────────
   const categoryTabs = useMemo(() => {
     const set = new Set<string>(["All"]);
     categoriesList.forEach((c) => set.add(c.name));
@@ -457,6 +633,7 @@ export default function Products() {
     return Array.from(set);
   }, [categoriesList, products]);
 
+  // ── Filtered + sorted ──────────────────────────────────────────────────
   const filteredProducts = useMemo(() => {
     const normalizedSearch = search.toLowerCase().trim();
     const normalizedCategory = selectedCategory.toLowerCase().trim();
@@ -549,6 +726,7 @@ export default function Products() {
       {/* Catalogue */}
       <section className="px-5 py-12 sm:px-8 lg:px-12 lg:py-16">
         <div className="mx-auto max-w-7xl lg:grid lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-5">
+          {/* Categories sidebar */}
           <aside className="mb-6 rounded-2xl border border-[#3a2a1e]/10 bg-white p-3 shadow-[0_12px_30px_rgba(58,42,30,.05)] lg:mb-0 lg:h-fit lg:sticky lg:top-24 lg:p-4">
             <div className="mb-3 flex items-center justify-between">
               <h2 className="text-sm font-bold uppercase tracking-[0.2em] text-[#b98a3e]">
@@ -569,42 +747,81 @@ export default function Products() {
               {categoryTabs.map((category) => {
                 const active =
                   selectedCategory.toLowerCase() === category.toLowerCase();
+                  
+                // ✅ Find the actual category object to get the ID for deletion
+                const categoryObj = categoriesList.find(c => c.name === category);
+                const isDeleting = deletingCatId === categoryObj?.id;
+
                 return (
-                  <button
+                  <div
                     key={category}
-                    type="button"
-                    onClick={() => setSelectedCategory(category)}
-                    className={`flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left text-sm font-medium transition-all duration-200 ${
+                    className={`group flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left text-sm font-medium transition-all duration-200 ${
                       active
                         ? "bg-[#EB6D3D] text-[#20283a] shadow-md"
                         : "bg-[#faf6ee] text-[#7a6a58] hover:bg-[#f0e8d8] hover:text-[#1a1410]"
                     }`}
                   >
-                    <span>{getCategoryLabel(category)}</span>
-                    <span
-                      className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full text-[10px] font-bold ${
-                        active ? "bg-[#20283a] text-white" : "bg-white text-[#7a6a58]"
-                      }`}
+                    <button
+                      type="button"
+                      onClick={() => setSelectedCategory(category)}
+                      className="flex-1 text-left truncate"
                     >
-                      {products.filter((product) => {
-                        const productCat = (product.category || "").toLowerCase().trim();
-                        const normalized = category.toLowerCase();
-                        return (
-                          normalized === "all" ||
-                          productCat === normalized ||
-                          productCat.includes(normalized) ||
-                          normalized.includes(productCat)
-                        );
-                      }).length}
-                    </span>
-                  </button>
+                      {getCategoryLabel(category)}
+                    </button>
+                    
+                    <div className="flex items-center gap-1">
+                      {/* ✅ Admin Delete Button */}
+                      {isAdmin && categoryObj && category !== "All" && (
+                        <button
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            void handleDeleteCategory(categoryObj.id, categoryObj.name);
+                          }}
+                          disabled={isDeleting}
+                          className={`p-1 rounded-md transition-colors ${
+                            active
+                              ? "hover:bg-[#20283a]/20 text-[#20283a]"
+                              : "hover:bg-red-100 text-red-500 opacity-0 group-hover:opacity-100"
+                          }`}
+                          title="Delete Category"
+                        >
+                          {isDeleting ? (
+                            <div className={`w-3 h-3 border-2 ${active ? "border-[#20283a]" : "border-red-500"} border-t-transparent rounded-full animate-spin`} />
+                          ) : (
+                            <Trash2 size={14} />
+                          )}
+                        </button>
+                      )}
+                      
+                      <span
+                        className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full text-[10px] font-bold ${
+                          active
+                            ? "bg-[#20283a] text-white"
+                            : "bg-white text-[#7a6a58]"
+                        }`}
+                      >
+                        {products.filter((product) => {
+                          const productCat = (product.category || "")
+                            .toLowerCase()
+                            .trim();
+                          const normalized = category.toLowerCase();
+                          return (
+                            normalized === "all" ||
+                            productCat === normalized ||
+                            productCat.includes(normalized) ||
+                            normalized.includes(productCat)
+                          );
+                        }).length}
+                      </span>
+                    </div>
+                  </div>
                 );
               })}
             </div>
           </aside>
 
           <div className="min-w-0">
-            {/* Controls Bar */}
+            {/* Controls */}
             <div className="mb-8 rounded-3xl border border-[#3a2a1e]/10 bg-white p-4 shadow-[0_15px_45px_rgba(58,42,30,.06)] sm:p-5">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div className="relative w-full lg:max-w-md">
@@ -680,10 +897,10 @@ export default function Products() {
               )}
             </div>
 
-            {/* Results Summary */}
+            {/* Results summary */}
             <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm text-[#7a6a58]">
-                {t("shop.showing", "Showing")} {" "}
+                {t("shop.showing", "Showing")}{" "}
                 <span className="font-bold text-[#1a1410]">
                   {filteredProducts.length}
                 </span>{" "}
@@ -693,7 +910,7 @@ export default function Products() {
                 {selectedCategory.toLowerCase() !== "all" && (
                   <span>
                     {" "}
-                    {t("shop.in", "in")} {" "}
+                    {t("shop.in", "in")}{" "}
                     <strong className="text-[#1a1410] capitalize">
                       {getCategoryLabel(selectedCategory)}
                     </strong>
@@ -723,6 +940,7 @@ export default function Products() {
               )}
             </div>
 
+            {/* Grid */}
             {loading ? (
               <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
                 {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
@@ -746,10 +964,12 @@ export default function Products() {
 
                   const hasDiscount =
                     product.discountPrice != null &&
+                    product.discountPrice > 0 &&
                     product.discountPrice < product.price;
                   const displayPrice = hasDiscount
                     ? product.discountPrice!
                     : product.price;
+
                   const discountPercent = hasDiscount
                     ? Math.round(
                         ((product.price - product.discountPrice!) /
@@ -757,9 +977,11 @@ export default function Products() {
                           100
                       )
                     : 0;
-                  const isAvailable = product.stock > 0;
 
+                  const otherPrices = product.prices.slice(1);
+                  const isAvailable = product.stock > 0;
                   const imageUrl = product.images?.[0] ?? null;
+                  const hasVideo = Boolean(product.videoUrl);
 
                   return (
                     <div
@@ -772,6 +994,7 @@ export default function Products() {
                       >
                         <ProductImage
                           src={imageUrl}
+                          videoUrl={product.videoUrl}
                           alt={product.name}
                           priority={isAboveTheFold}
                         />
@@ -790,6 +1013,12 @@ export default function Products() {
                           {hasDiscount && (
                             <span className="rounded-full bg-red-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm">
                               -{discountPercent}%
+                            </span>
+                          )}
+                          {hasVideo && (
+                            <span className="inline-flex items-center gap-1 rounded-full bg-[#EB6D3D] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm">
+                              <Video size={10} />
+                              Video
                             </span>
                           )}
                         </div>
@@ -828,7 +1057,7 @@ export default function Products() {
                         <div className="mt-2.5 flex items-baseline justify-between gap-2">
                           <div className="flex items-baseline gap-1">
                             <span className="text-base font-bold text-[#1a1410]">
-                              ETB {displayPrice.toLocaleString()}
+                              {formatMoney(displayPrice, product.currency)}
                             </span>
                             <span className="text-[10px] text-[#7a6a58]">
                               /{product.unit}
@@ -836,10 +1065,27 @@ export default function Products() {
                           </div>
                           {hasDiscount && (
                             <span className="text-[10px] text-gray-400 line-through">
-                              ETB {product.price.toLocaleString()}
+                              {formatMoney(product.price, product.currency)}
                             </span>
                           )}
                         </div>
+
+                        {otherPrices.length > 0 && (
+                          <div className="mt-1.5 space-y-0.5">
+                            {otherPrices.map((p) => (
+                              <div
+                                key={p.currency}
+                                className="flex items-center justify-between text-[10px] text-[#7a6a58]"
+                              >
+                                <span className="font-semibold uppercase tracking-wide">
+                                  {p.currency}
+                                </span>
+                                <span>{formatMoney(p.amount, p.currency)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
                         <button
                           type="button"
                           onClick={() => addToCart(product, imageUrl)}
@@ -849,6 +1095,7 @@ export default function Products() {
                           <ShoppingCart size={15} />
                           {t("checkout.add_to_order", "Add to cart")}
                         </button>
+
                         {cartFeedback?.productId === product.id && (
                           <p
                             role="status"

@@ -6,9 +6,6 @@ const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 // ═══════════════════════════════════════════════════════════
 // Categories API — Dream More Affiliate Market
-//  • Storage: local uploads or other external image URLs
-//  • Database: Neon (PostgreSQL) via Prisma
-//  • No Order/Article/Cart references
 // ═══════════════════════════════════════════════════════════
 
 // ── Shared select — same shape for every endpoint ──────────
@@ -29,7 +26,7 @@ const CATEGORY_PUBLIC_SELECT = {
  * Normalise an image value:
  *   - http(s) URL → kept as-is
  *   - null / '' / undefined     → null
- *   - anything else (local path, garbage) → null (rejected)
+ *   - anything else → null (rejected)
  */
 function normaliseImage(value) {
   if (value === null || value === undefined) return null;
@@ -37,13 +34,12 @@ function normaliseImage(value) {
   const trimmed = value.trim();
   if (!trimmed) return null;
   if (/^https?:\/\//i.test(trimmed)) return trimmed;
-  // Reject anything that isn't a full URL (local paths like /uploads/xxx)
   console.warn(`⚠️ Rejected non-URL image value: ${trimmed}`);
   return null;
 }
 
 // ── Auth user helper ───────────────────────────────────────
-const getAuthUserId = (req) => req.user?.id || null;
+const getAuthUserId = (req) => req.user?.id || req.user?.userId || null;
 
 // ============================================================
 // ADMIN — Get ALL categories
@@ -224,7 +220,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
       return res.status(401).json({ error: 'User not authenticated' });
     }
 
-    // Verify user exists
+    // Verify user exists (to prevent foreign key errors)
     const existingUser = await prisma.user.findUnique({
       where: { id: userId },
       select: { id: true },
@@ -236,7 +232,6 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
         .json({ error: 'Invalid user session. Please login again.' });
     }
 
-    // Normalise image — only full external URLs are accepted
     const normalizedImage = normaliseImage(image);
 
     if (image && !normalizedImage) {
@@ -259,6 +254,13 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
     res.status(201).json(category);
   } catch (error) {
     console.error('Error creating category:', error);
+    
+    // Handle Prisma unique constraint errors (e.g. duplicate name or slug)
+    if (error.code === 'P2002') {
+      const field = error.meta?.target?.[0] || 'field';
+      return res.status(400).json({ error: `A category with this ${field} already exists.` });
+    }
+    
     res.status(500).json({ error: 'Failed to create category' });
   }
 });
@@ -293,6 +295,12 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
     res.json(updated);
   } catch (error) {
     console.error('Error updating category:', error);
+    
+    if (error.code === 'P2002') {
+      const field = error.meta?.target?.[0] || 'field';
+      return res.status(400).json({ error: `A category with this ${field} already exists.` });
+    }
+    
     res.status(500).json({ error: 'Failed to update category' });
   }
 });

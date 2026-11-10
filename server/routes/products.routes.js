@@ -12,8 +12,58 @@ const UPLOAD_ROOT = path.resolve(__dirname, '..', 'uploads');
 // Dream More Affiliate Market — Products API
 //  • Storage: local disk (/uploads)
 //  • Database: Neon (PostgreSQL) via Prisma
-//  • Order/OrderItem/Article/Cart/CartItem models have been removed
 // ═══════════════════════════════════════════════════════════
+
+// ── Multi-currency helpers ──────────────────────────────────
+function normalizePrices(rawPrices, fallbackPrice, fallbackCurrency = 'ETB') {
+  const list = [];
+  if (Array.isArray(rawPrices)) {
+    for (const p of rawPrices) {
+      const currency = typeof p?.currency === 'string' ? p.currency.toUpperCase() : null;
+      const amount = Number(p?.amount);
+      if (currency && Number.isFinite(amount) && amount > 0) {
+        list.push({ currency, amount });
+      }
+    }
+  }
+  
+  // Deduplicate by currency
+  const seen = new Set();
+  const deduped = list.filter((p) => {
+    if (seen.has(p.currency)) return false;
+    seen.add(p.currency);
+    return true;
+  });
+
+  // If empty, fallback to the single price
+  if (deduped.length === 0) {
+    const amount = Number(fallbackPrice);
+    const currency = String(fallbackCurrency || 'ETB').toUpperCase();
+    if (Number.isFinite(amount) && amount > 0) {
+      deduped.push({ currency, amount });
+    }
+  }
+  return deduped;
+}
+
+function serializeProduct(product) {
+  if (!product) return product;
+  const price = Number(product.price) || 0;
+  const dbPrices = Array.isArray(product.prices) ? product.prices : [];
+  
+  // If DB has prices, use them. Otherwise, build one from the base price.
+  const prices = dbPrices.length > 0 ? dbPrices : [{ currency: product.currency || 'ETB', amount: price }];
+
+  return {
+    ...product,
+    price: Number(product.price),
+    currency: product.currency || 'ETB',
+    prices: prices,
+    discountPrice: product.discountPrice ? Number(product.discountPrice) : null,
+    pricePerUnit: product.pricePerUnit ? Number(product.pricePerUnit) : null,
+    salePrice: product.discountPrice ? Number(product.discountPrice) : null,
+  };
+}
 
 // ── Local upload cleanup ────────────────────────────────────
 function getLocalUploadPath(url) {
@@ -98,12 +148,7 @@ router.get('/admin/all', requireAuth, requireAdmin, async (req, res) => {
       prisma.product.count({ where }),
     ]);
 
-    const productsWithNumbers = products.map((p) => ({
-      ...p,
-      price: Number(p.price),
-      discountPrice: p.discountPrice ? Number(p.discountPrice) : null,
-      pricePerUnit: p.pricePerUnit ? Number(p.pricePerUnit) : null,
-    }));
+    const productsWithNumbers = products.map((p) => serializeProduct(p));
 
     res.json({
       products: productsWithNumbers,
@@ -165,13 +210,7 @@ router.get('/public', async (req, res) => {
       prisma.product.count({ where }),
     ]);
 
-    const productsWithNumbers = products.map((p) => ({
-      ...p,
-      price: Number(p.price),
-      discountPrice: p.discountPrice ? Number(p.discountPrice) : null,
-      pricePerUnit: p.pricePerUnit ? Number(p.pricePerUnit) : null,
-      salePrice: p.discountPrice ? Number(p.discountPrice) : null,
-    }));
+    const productsWithNumbers = products.map((p) => serializeProduct(p));
 
     res.json({
       products: productsWithNumbers,
@@ -257,13 +296,7 @@ router.get('/', async (req, res) => {
       prisma.product.count({ where }),
     ]);
 
-    const productsWithDetails = products.map((product) => ({
-      ...product,
-      price: Number(product.price),
-      discountPrice: product.discountPrice ? Number(product.discountPrice) : null,
-      pricePerUnit: product.pricePerUnit ? Number(product.pricePerUnit) : null,
-      salePrice: product.discountPrice ? Number(product.discountPrice) : null,
-    }));
+    const productsWithDetails = products.map((product) => serializeProduct(product));
 
     res.json({
       products: productsWithDetails,
@@ -302,12 +335,7 @@ router.get('/:id', async (req, res) => {
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    res.json({
-      ...product,
-      price: Number(product.price),
-      discountPrice: product.discountPrice ? Number(product.discountPrice) : null,
-      pricePerUnit: product.pricePerUnit ? Number(product.pricePerUnit) : null,
-    });
+    res.json(serializeProduct(product));
   } catch (error) {
     console.error('Error fetching product:', error);
     res.status(500).json({ error: 'Failed to fetch product' });
@@ -316,7 +344,6 @@ router.get('/:id', async (req, res) => {
 
 // ============================================================
 // POST /api/products — Create product (ADMIN ONLY)
-// images[] contains URLs returned by POST /api/upload
 // ============================================================
 router.post('/', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -357,11 +384,16 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
         typeof body.stock === 'string' ? parseInt(body.stock, 10) : body.stock;
     }
 
+    // ── Normalize Prices ────────────────────────────────────
+    const normalizedPrices = normalizePrices(body.prices, body.price, body.currency);
+    const primaryPrice = normalizedPrices[0];
+
     const productData = {
       name: body.name,
       description: body.description,
-      price:
-        typeof body.price === 'string' ? parseFloat(body.price) : body.price,
+      price: primaryPrice ? primaryPrice.amount : (parseFloat(body.price) || 0),
+      currency: primaryPrice ? primaryPrice.currency : 'ETB',
+      prices: normalizedPrices, // Save JSON array
       discountPrice: discountPriceValue,
       stock: stockValue,
       sku: body.sku || `SKU-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
@@ -456,16 +488,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
 
     res.status(201).json({
       success: true,
-      product: {
-        ...product,
-        price: Number(product.price),
-        discountPrice: product.discountPrice
-          ? Number(product.discountPrice)
-          : null,
-        pricePerUnit: product.pricePerUnit
-          ? Number(product.pricePerUnit)
-          : null,
-      },
+      product: serializeProduct(product),
       message: 'Product created successfully!',
     });
   } catch (error) {
@@ -479,7 +502,6 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
 
 // ============================================================
 // PUT /api/products/:id — Update product (ADMIN ONLY)
-// Local images that are no longer referenced get deleted.
 // ============================================================
 router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
@@ -503,7 +525,23 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
 
     if (body.name !== undefined) updateData.name = body.name;
     if (body.description !== undefined) updateData.description = body.description;
-    if (body.price !== undefined) updateData.price = parseFloat(body.price);
+    
+    // ── Update Prices ───────────────────────────────────────
+    if (body.prices !== undefined) {
+      const normalizedPrices = normalizePrices(
+        body.prices, 
+        body.price || existingProduct.price, 
+        body.currency || existingProduct.currency
+      );
+      updateData.prices = normalizedPrices;
+      if (normalizedPrices[0]) {
+        updateData.price = normalizedPrices[0].amount;
+        updateData.currency = normalizedPrices[0].currency;
+      }
+    } else if (body.price !== undefined) {
+      updateData.price = parseFloat(body.price);
+    }
+
     if (body.discountPrice !== undefined) {
       updateData.discountPrice = body.discountPrice
         ? parseFloat(body.discountPrice)
@@ -566,8 +604,6 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
     });
 
     // ── Delete orphaned local images ─────────────────────────
-    // Any image that existed before but is not in the new array
-    // is removed from local storage to free disk space.
     if (updateData.images !== undefined) {
       const oldImages = Array.isArray(existingProduct.images)
         ? existingProduct.images
@@ -599,16 +635,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
 
     res.json({
       success: true,
-      product: {
-        ...updated,
-        price: Number(updated.price),
-        discountPrice: updated.discountPrice
-          ? Number(updated.discountPrice)
-          : null,
-        pricePerUnit: updated.pricePerUnit
-          ? Number(updated.pricePerUnit)
-          : null,
-      },
+      product: serializeProduct(updated),
       message: 'Product updated successfully',
     });
   } catch (error) {
@@ -619,7 +646,6 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
 
 // ============================================================
 // DELETE /api/products/:id — Delete product (ADMIN ONLY)
-// Also deletes its local images.
 // ============================================================
 router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {

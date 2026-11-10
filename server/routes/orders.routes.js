@@ -1,10 +1,10 @@
+// routes/orders.routes.js
 const express = require('express');
 const prisma = require('../lib/prisma');
 const { requireAuth } = require('../middleware/auth');
 
 const router = express.Router();
-const normalizeText = (value) =>
-  typeof value === 'string' ? value.trim() : '';
+const normalizeText = (value) => typeof value === 'string' ? value.trim() : '';
 
 router.get('/', requireAuth, async (req, res) => {
   try {
@@ -29,11 +29,7 @@ router.get('/', requireAuth, async (req, res) => {
             sku: true,
             quantity: true,
             unitPrice: true,
-            product: {
-              select: {
-                images: true,
-              },
-            },
+            product: { select: { images: true } },
           },
         },
       },
@@ -89,16 +85,12 @@ router.post('/', requireAuth, async (req, res) => {
     }
 
     if (
-      !customerName ||
-      customerName.length > 160 ||
-      !customerPhone ||
-      customerPhone.length > 40 ||
-      !shippingAddress ||
-      shippingAddress.length > 1000 ||
+      !customerName || customerName.length > 160 ||
+      !customerPhone || customerPhone.length > 40 ||
+      !shippingAddress || shippingAddress.length > 1000 ||
       note.length > 4000 ||
       paymentMethod !== 'CASH_ON_DELIVERY' ||
-      rawItems.length === 0 ||
-      rawItems.length > 100
+      rawItems.length === 0 || rawItems.length > 100
     ) {
       return res.status(400).json({
         success: false,
@@ -118,18 +110,12 @@ router.post('/', requireAuth, async (req, res) => {
     for (const item of rawItems) {
       const productId = normalizeText(item?.productId);
       const quantity = Number(item?.quantity);
-      if (
-        !productId ||
-        !Number.isSafeInteger(quantity) ||
-        quantity < 1 ||
-        quantity > 999
-      ) {
+      if (!productId || !Number.isSafeInteger(quantity) || quantity < 1 || quantity > 999) {
         return res.status(400).json({
           success: false,
           error: 'Each item must have a valid product and quantity from 1 to 999.',
         });
       }
-
       const nextQuantity = (quantities.get(productId) || 0) + quantity;
       if (nextQuantity > 999) {
         return res.status(400).json({
@@ -143,13 +129,7 @@ router.post('/', requireAuth, async (req, res) => {
     const order = await prisma.$transaction(async (transaction) => {
       const products = await transaction.product.findMany({
         where: { id: { in: [...quantities.keys()] } },
-        select: {
-          id: true,
-          name: true,
-          sku: true,
-          price: true,
-          discountPrice: true,
-        },
+        select: { id: true, name: true, sku: true, price: true, discountPrice: true },
       });
 
       if (products.length !== quantities.size) {
@@ -166,16 +146,13 @@ router.post('/', requireAuth, async (req, res) => {
           data: { stock: { decrement: quantity } },
         });
         if (changed.count !== 1) {
-          const error = new Error(
-            `${product.name} does not have enough stock for this order.`
-          );
+          const error = new Error(`${product.name} does not have enough stock for this order.`);
           error.statusCode = 409;
           throw error;
         }
 
         const discountedPrice = Number(product.discountPrice);
-        const unitPrice =
-          discountedPrice > 0 ? discountedPrice : Number(product.price);
+        const unitPrice = discountedPrice > 0 ? discountedPrice : Number(product.price);
         orderItems.push({
           productId: product.id,
           productName: product.name,
@@ -185,14 +162,10 @@ router.post('/', requireAuth, async (req, res) => {
         });
       }
 
-      const total = orderItems.reduce(
-        (sum, item) => sum + item.unitPrice * item.quantity,
-        0
-      );
-      const [nextOrderNumber] = await transaction.$queryRaw`
-        SELECT nextval('"orders_order_number_seq"') AS value
-      `;
-      const orderNumber = String(nextOrderNumber.value);
+      const total = orderItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
+      
+      // ✅ FIX: Generate unique order number without relying on a database sequence
+      const orderNumber = `ORD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
 
       return transaction.order.create({
         data: {
@@ -209,13 +182,7 @@ router.post('/', requireAuth, async (req, res) => {
         },
         include: {
           items: {
-            include: {
-              product: {
-                select: {
-                  images: true,
-                },
-              },
-            },
+            include: { product: { select: { images: true } } },
           },
         },
       });
@@ -235,9 +202,7 @@ router.post('/', requireAuth, async (req, res) => {
     });
   } catch (error) {
     if (error.statusCode) {
-      return res
-        .status(error.statusCode)
-        .json({ success: false, error: error.message });
+      return res.status(error.statusCode).json({ success: false, error: error.message });
     }
     console.error('Failed to create customer order:', error);
     return res.status(500).json({ success: false, error: 'Failed to create order.' });

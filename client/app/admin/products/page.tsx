@@ -23,6 +23,8 @@ import {
   Image as ImageIcon,
   ChevronLeft,
   ChevronRight,
+  Play,
+  X,
 } from "lucide-react";
 import ProductCreateModal from "./ProductCreateModal";
 
@@ -53,6 +55,18 @@ function resolveImage(raw: unknown): string | null {
   if (s.startsWith("res.cloudinary.com/")) return `https://${s}`;
 
   // Anything else (legacy /uploads/... path or stray filename) → no image
+  return null;
+}
+
+// ============================================================
+// Video URL resolver — same rules as images
+// ============================================================
+function resolveVideo(raw: unknown): string | null {
+  if (typeof raw !== "string") return null;
+  const s = raw.trim();
+  if (!s) return null;
+  if (s.startsWith("http://") || s.startsWith("https://")) return s;
+  if (s.startsWith("res.cloudinary.com/")) return `https://${s}`;
   return null;
 }
 
@@ -104,6 +118,11 @@ interface Category {
   parentId?: string | null;
 }
 
+interface ProductPrice {
+  currency: string;
+  amount: number;
+}
+
 interface Product {
   id: string;
   name: string;
@@ -111,11 +130,14 @@ interface Product {
   category: Category | null;
   subCategory?: Category | null;
   price: number;
+  currency?: string;
+  prices?: ProductPrice[] | null;
   discountPrice?: number;
   salePrice?: number;
   stock: number;
   sku: string;
   images: string[];
+  videoUrl?: string | null;
   tags: string[];
   brand?: string;
   weight?: number;
@@ -131,6 +153,41 @@ interface NotificationProps {
   message: string;
   onClose: () => void;
 }
+
+// ============================================================
+// Money helpers
+// ============================================================
+const DEFAULT_CURRENCY = "ETB";
+
+const formatMoney = (amount: number, currency: string = DEFAULT_CURRENCY) => {
+  const value = Number(amount) || 0;
+  try {
+    return new Intl.NumberFormat("en-US", {
+      style: "currency",
+      currency,
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+  } catch {
+    return `${currency} ${value.toFixed(2)}`;
+  }
+};
+
+// Returns every price of a product. Falls back to the single main price
+// for older products that were created before multi-currency prices.
+const getProductPrices = (product: Product): ProductPrice[] => {
+  if (Array.isArray(product.prices) && product.prices.length > 0) {
+    return product.prices.filter(
+      (p) => p && typeof p.currency === "string" && Number(p.amount) > 0
+    );
+  }
+  return [
+    {
+      currency: product.currency || DEFAULT_CURRENCY,
+      amount: product.price,
+    },
+  ];
+};
 
 // ============================================================
 // Notification
@@ -241,6 +298,68 @@ const ProductImage: React.FC<{
 };
 
 // ============================================================
+// Video preview modal
+// ============================================================
+const VideoPreviewModal: React.FC<{
+  url: string;
+  title: string;
+  onClose: () => void;
+}> = ({ url, title, onClose }) => {
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") onClose();
+    };
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    window.addEventListener("keydown", handleKeyDown);
+    return () => {
+      document.body.style.overflow = previousOverflow;
+      window.removeEventListener("keydown", handleKeyDown);
+    };
+  }, [onClose]);
+
+  return (
+    <div
+      className="fixed inset-0 z-[110] flex items-center justify-center bg-slate-950/70 p-3 backdrop-blur-sm sm:p-6"
+      onMouseDown={(event) => {
+        if (event.target === event.currentTarget) onClose();
+      }}
+    >
+      <section
+        role="dialog"
+        aria-modal="true"
+        aria-label={`Video of ${title}`}
+        className="w-full max-w-3xl overflow-hidden rounded-2xl bg-white shadow-2xl"
+      >
+        <header className="flex items-center justify-between border-b border-slate-100 px-4 py-3">
+          <h2 className="truncate pr-3 text-sm font-semibold text-slate-900">
+            {title}
+          </h2>
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close video"
+            className="flex h-8 w-8 items-center justify-center rounded-full text-slate-500 transition hover:bg-slate-100 hover:text-slate-900"
+          >
+            <X size={18} />
+          </button>
+        </header>
+        <div className="bg-black">
+          <video
+            src={url}
+            controls
+            autoPlay
+            playsInline
+            preload="metadata"
+            className="max-h-[70vh] w-full"
+          />
+        </div>
+      </section>
+    </div>
+  );
+};
+
+// ============================================================
 // Pagination helper
 // ============================================================
 function getPageNumbers(
@@ -294,6 +413,10 @@ const ProductsPage: React.FC = () => {
   const [selectedCategory, setSelectedCategory] = useState("");
   const [showFilters, setShowFilters] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
+  const [videoPreview, setVideoPreview] = useState<{
+    url: string;
+    title: string;
+  } | null>(null);
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
@@ -551,14 +674,6 @@ const ProductsPage: React.FC = () => {
     }
   };
 
-  const formatCurrency = (amount: number) =>
-    new Intl.NumberFormat("en-US", {
-      style: "currency",
-      currency: "ETB",
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }).format(amount || 0);
-
   const formatDate = (dateString: string) => {
     if (!dateString) return "N/A";
     return new Date(dateString).toLocaleString("en-US", {
@@ -614,6 +729,13 @@ const ProductsPage: React.FC = () => {
           categories={categories}
           onClose={() => setShowCreateModal(false)}
           onCreated={handleProductCreated}
+        />
+      )}
+      {videoPreview && (
+        <VideoPreviewModal
+          url={videoPreview.url}
+          title={videoPreview.title}
+          onClose={() => setVideoPreview(null)}
         />
       )}
 
@@ -720,7 +842,7 @@ const ProductsPage: React.FC = () => {
 
         <div className="overflow-x-auto">
           {products.length > 0 ? (
-            <table className="w-full min-w-[900px]">
+            <table className="w-full min-w-[1000px]">
               <thead>
                 <tr className="bg-gray-50 border-b border-gray-200">
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
@@ -730,7 +852,10 @@ const ProductsPage: React.FC = () => {
                     Category
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
-                    Price
+                    Prices
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                    Video
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                     Stock
@@ -746,6 +871,9 @@ const ProductsPage: React.FC = () => {
               <tbody className="divide-y divide-gray-200">
                 {products.map((product) => {
                   const imageUrl = getFirstImage(product.images);
+                  const videoUrl = resolveVideo(product.videoUrl);
+                  const prices = getProductPrices(product);
+                  const mainCurrency = prices[0]?.currency || DEFAULT_CURRENCY;
                   return (
                     <tr
                       key={product.id}
@@ -778,17 +906,48 @@ const ProductsPage: React.FC = () => {
                         </div>
                       </td>
                       <td className="px-4 py-3">
-                        <div className="flex flex-wrap items-center whitespace-nowrap space-x-1">
-                          <span className="text-sm font-semibold text-gray-900">
-                            {formatCurrency(product.price)}
-                          </span>
+                        <div className="flex flex-col gap-0.5 whitespace-nowrap">
+                          {prices.map((p, index) => (
+                            <span
+                              key={`${p.currency}-${index}`}
+                              className={
+                                index === 0
+                                  ? "text-sm font-semibold text-gray-900"
+                                  : "text-xs text-gray-600"
+                              }
+                            >
+                              {formatMoney(p.amount, p.currency)}
+                            </span>
+                          ))}
                           {product.discountPrice &&
                             product.discountPrice > 0 && (
                               <span className="text-xs text-yellow-600 font-medium">
-                                (Disc: {formatCurrency(product.discountPrice)})
+                                (Disc:{" "}
+                                {formatMoney(product.discountPrice, mainCurrency)}
+                                )
                               </span>
                             )}
                         </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {videoUrl ? (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setVideoPreview({
+                                url: videoUrl,
+                                title: product.name,
+                              })
+                            }
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-[#EB6D3D] px-2.5 py-1 text-xs font-semibold text-[#cf5427] transition-colors hover:bg-[#EB6D3D]/10"
+                            title="Play product video"
+                          >
+                            <Play className="w-3.5 h-3.5" />
+                            Play
+                          </button>
+                        ) : (
+                          <span className="text-xs text-gray-400">No video</span>
+                        )}
                       </td>
                       <td className="px-4 py-3">
                         <span
