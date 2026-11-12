@@ -1,6 +1,10 @@
 // server.js
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
+console.log(
+  '🔐 GOOGLE_CLIENT_ID loaded:',
+  process.env.GOOGLE_CLIENT_ID ? 'YES' : 'NO — check server/.env'
+);
 const express = require('express');
 const cors = require('cors');
 const http = require('http');

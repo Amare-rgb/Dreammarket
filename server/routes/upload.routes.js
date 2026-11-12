@@ -169,6 +169,19 @@ function fileToUrl(req, file) {
     .split(path.sep)
     .map((segment) => encodeURIComponent(segment))
     .join('/')}`;
+
+  // Prefer a publicly reachable base URL so external services
+  // (Telegram, social previews, etc.) can fetch the file.
+  const publicBase = (
+    process.env.PUBLIC_API_URL ||
+    process.env.API_PUBLIC_URL ||
+    process.env.SERVER_PUBLIC_URL ||
+    ''
+  ).replace(/\/+$/, '');
+  if (publicBase) {
+    return `${publicBase}${publicPath}`;
+  }
+
   return `${req.protocol}://${req.get('host')}${publicPath}`;
 }
 
@@ -335,6 +348,51 @@ router.post('/product-video', requireAuth, requireAdmin, (req, res) => {
   const uploader = buildUploader({
     subfolder: 'products/videos',
     maxSizeMB: 100,
+    maxFiles: 1,
+    videos: true,
+  });
+  const mw = uploader.fields([
+    { name: 'video', maxCount: 1 },
+    { name: 'file', maxCount: 1 },
+  ]);
+
+  mw(req, res, (err) => {
+    const mErr = handleMulterErrors(err, res);
+    if (mErr) return;
+
+    const file = pickSingleFile(req);
+    if (!file) {
+      return res.status(400).json({
+        success: false,
+        error: 'No video uploaded (field "video" or "file").',
+        code: 'NO_FILE',
+      });
+    }
+
+    const url = fileToUrl(req, file);
+    const publicId = fileToPublicId(file);
+    return res.json({
+      success: true,
+      url,
+      secure_url: url,
+      publicId,
+      public_id: publicId,
+      fileName: file.originalname,
+      fileSize: file.size,
+      fileType: file.mimetype,
+    });
+  });
+});
+
+/* ────────────────────────────────────────────────────────────────
+   ARTICLE VIDEO — single   (ADMIN ONLY)
+   POST /api/upload/article-video
+   field: "video" | "file"
+   ──────────────────────────────────────────────────────────────── */
+router.post('/article-video', requireAuth, requireAdmin, (req, res) => {
+  const uploader = buildUploader({
+    subfolder: 'articles/videos',
+    maxSizeMB: 200,
     maxFiles: 1,
     videos: true,
   });

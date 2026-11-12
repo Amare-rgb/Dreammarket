@@ -13,6 +13,7 @@ export interface ArticleSummary {
   category?: string | null;
   image: string | null;
   videoUrl?: string | null;
+  pdfUrl?: string | null;
   createdAt: string;
 }
 

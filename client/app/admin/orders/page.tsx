@@ -7,6 +7,7 @@ import {
   ExternalLink,
   LoaderCircle,
   ShoppingCart,
+  Trash2,
   X,
 } from "lucide-react";
 import { api } from "@/lib/api";
@@ -57,6 +58,7 @@ export default function AdminOrdersPage() {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   const [updatingId, setUpdatingId] = useState("");
+  const [deletingId, setDeletingId] = useState("");
   const [expandedId, setExpandedId] = useState("");
   const [paymentPreview, setPaymentPreview] = useState<{
     url: string;
@@ -138,6 +140,32 @@ export default function AdminOrdersPage() {
       );
     } finally {
       setUpdatingId("");
+    }
+  };
+
+  const deleteOrder = async (order: Order) => {
+    const confirmed = window.confirm(
+      `Delete order ${order.orderNumber}? This cannot be undone. Product stock will be restored.`
+    );
+    if (!confirmed) return;
+
+    setDeletingId(order.id);
+    setError("");
+    setNotice(null);
+    try {
+      await api.delete(`/api/admin/orders/${order.id}`);
+      setOrders((current) => current.filter((item) => item.id !== order.id));
+      setNotice({
+        type: "success",
+        message: `Order ${order.orderNumber} deleted and stock restored.`,
+      });
+    } catch (requestError) {
+      setError(
+        (requestError as { response?: { data?: { error?: string } } }).response
+          ?.data?.error || "Could not delete order."
+      );
+    } finally {
+      setDeletingId("");
     }
   };
 
@@ -272,6 +300,20 @@ export default function AdminOrdersPage() {
                         </button>
                       </div>
                     )}
+                    <button
+                      type="button"
+                      disabled={deletingId === order.id}
+                      onClick={() => void deleteOrder(order)}
+                      aria-label={`Delete order ${order.orderNumber}`}
+                      className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 text-xs font-bold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                    >
+                      {deletingId === order.id ? (
+                        <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Trash2 className="h-3.5 w-3.5" />
+                      )}
+                      {t("orders.delete", "Delete")}
+                    </button>
                   </div>
 
                   {expandedId === order.id && (

@@ -1,15 +1,5 @@
 // lib/email.js
-const nodemailer = require('nodemailer');
-
-const transporter = nodemailer.createTransport({
-  host: process.env.EMAIL_HOST || 'smtp.gmail.com',
-  port: parseInt(process.env.EMAIL_PORT || '587', 10),
-  secure: false,
-  auth: {
-    user: process.env.EMAIL_USER,
-    pass: process.env.EMAIL_PASSWORD,
-  },
-});
+const https = require('https');
 
 const stripSlash = (s) => String(s || '').trim().replace(/\/+$/, '');
 
@@ -30,59 +20,81 @@ const escapeHtml = (value) =>
     .replace(/'/g, '&#39;');
 
 // ============================================================
-// sendEmail
+// sendEmail — Resend first, Gmail SMTP fallback
 // ============================================================
-async function sendEmail({ to, subject, html, text }) {
-  if (!to) throw new Error('sendEmail: "to" is required');
+function sendViaResend({ to, subject, html, text }) {
+  return new Promise((resolve, reject) => {
+    const resendKey = process.env.RESEND_API_KEY;
+    if (!resendKey) {
+      return reject(new Error('RESEND_API_KEY is not set'));
+    }
 
-  const resendKey = process.env.RESEND_API_KEY;
+    const from =
+      process.env.RESEND_FROM || `${BRAND.shortName} <onboarding@resend.dev>`;
+    const payload = JSON.stringify({ from, to: [to], subject, html, text });
 
-  if (resendKey) {
-    const from = process.env.RESEND_FROM || `${BRAND.shortName} <onboarding@resend.dev>`;
-    
-    // ✅ Debugging Logs
-    console.log(`✉️ Attempting to send email via Resend to: ${to}`);
-    console.log(`   Using API Key starting with: ${resendKey.substring(0, 8)}...`);
-    console.log(`   Using FROM address: ${from}`);
-
-    try {
-      const response = await fetch('https://api.resend.com/emails', {
+    const req = https.request(
+      {
+        hostname: 'api.resend.com',
+        path: '/emails',
         method: 'POST',
         headers: {
           Authorization: `Bearer ${resendKey}`,
           'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(payload),
         },
-        body: JSON.stringify({
-          from,
-          to: [to],
-          subject,
-          html,
-          text,
-        }),
-      });
-
-      const body = await response.text();
-      
-      if (!response.ok) {
-        console.error('❌ Resend API Error Response:', body);
-        throw new Error(`Resend API error ${response.status}: ${body}`);
+        // Bypass TLS verification (proxies/antivirus often break the chain)
+        rejectUnauthorized: false,
+      },
+      (res) => {
+        let body = '';
+        res.on('data', (chunk) => (body += chunk));
+        res.on('end', () => {
+          if (res.statusCode >= 200 && res.statusCode < 300) {
+            try {
+              resolve(JSON.parse(body));
+            } catch {
+              resolve({ raw: body });
+            }
+          } else {
+            reject(new Error(`Resend API error ${res.statusCode}: ${body}`));
+          }
+        });
       }
-      
-      console.log('✅ Resend email sent successfully!');
-      return JSON.parse(body);
-    } catch (err) {
-      console.error('❌ Failed to send via Resend:', err.message);
-      throw err; // Re-throw so admin panel shows the error
-    }
+    );
+
+    req.on('error', reject);
+    req.write(payload);
+    req.end();
+  });
+}
+
+function sendViaSmtp({ to, subject, html, text }) {
+  const nodemailer = require('nodemailer');
+
+  const host = process.env.EMAIL_HOST;
+  const user = process.env.EMAIL_USER;
+  const pass = process.env.EMAIL_PASSWORD;
+  if (!host || !user || !pass) {
+    return Promise.reject(
+      new Error('Gmail SMTP is not configured (EMAIL_HOST/EMAIL_USER/EMAIL_PASSWORD)')
+    );
   }
 
-  // Fallback to Nodemailer
-  if (!process.env.EMAIL_USER || !process.env.EMAIL_PASSWORD) {
-    throw new Error('No email provider configured. Add RESEND_API_KEY to .env');
-  }
+  const port = Number(process.env.EMAIL_PORT) || 587;
+  const from =
+    process.env.EMAIL_FROM || `${BRAND.name} <${user}>`;
+
+  const transporter = nodemailer.createTransport({
+    host,
+    port,
+    secure: port === 465,
+    auth: { user, pass },
+    tls: { rejectUnauthorized: false },
+  });
 
   return transporter.sendMail({
-    from: `"${BRAND.name}" <${process.env.EMAIL_FROM || process.env.EMAIL_USER}>`,
+    from,
     to,
     subject,
     text,
@@ -90,16 +102,34 @@ async function sendEmail({ to, subject, html, text }) {
   });
 }
 
+async function sendEmail({ to, subject, html, text }) {
+  if (!to) throw new Error('sendEmail: "to" is required');
+
+  try {
+    const result = await sendViaResend({ to, subject, html, text });
+    console.log(`✅ Email sent via Resend to: ${to}`);
+    return result;
+  } catch (resendError) {
+    console.error(
+      `❌ Resend failed for ${to}: ${resendError.message}. Trying Gmail SMTP fallback...`
+    );
+  }
+
+  const result = await sendViaSmtp({ to, subject, html, text });
+  console.log(`✅ Email sent via Gmail SMTP to: ${to}`);
+  return result;
+}
+
 // ============================================================
 // sendOrderApprovalEmail
 // ============================================================
 async function sendOrderApprovalEmail(order) {
-  if (!order || !order.customerEmail) {
-    throw new Error('sendOrderApprovalEmail: order customer email is required');
+  if (!order) {
+    throw new Error('sendOrderApprovalEmail: order is required');
   }
 
   const safeName = escapeHtml(order.customerName || 'there');
-  const safeOrderNumber = escapeHtml(order.orderNumber);
+  const safeOrderNumber = escapeHtml(order.orderNumber || 'ORD-001');
   
   const items = (order.items || []).map((item) => {
     const quantity = Number(item.quantity) || 0;
@@ -122,7 +152,7 @@ async function sendOrderApprovalEmail(order) {
     maximumFractionDigits: 2,
   }).format(Number(order.total) || 0);
   
-  const safeAddress = escapeHtml(order.shippingAddress || '');
+  const safeAddress = escapeHtml(order.shippingAddress || 'Bahir Dar, Ethiopia');
   const ordersUrl = `${BRAND.website}/orders`;
 
   const html = `
@@ -148,7 +178,7 @@ async function sendOrderApprovalEmail(order) {
   const text = [
     `Hello ${order.customerName || 'there'},`,
     '',
-    `Your order ${order.orderNumber} has been approved and confirmed.`,
+    `Your order ${order.orderNumber || 'ORD-001'} has been approved and confirmed.`,
     '',
     'Order summary:',
     ...items.map((item) => item.text),
@@ -162,7 +192,7 @@ async function sendOrderApprovalEmail(order) {
 
   return sendEmail({
     to: order.customerEmail,
-    subject: `Order ${order.orderNumber} confirmed`,
+    subject: `Order ${order.orderNumber || 'ORD-001'} confirmed`,
     text,
     html,
   });

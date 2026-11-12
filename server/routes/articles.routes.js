@@ -81,6 +81,7 @@ function articleInput(body) {
   const category = text(body?.category).toLowerCase() || 'general';
   const image = text(body?.image);
   const videoUrl = text(body?.videoUrl);
+  const pdfUrl = text(body?.pdfUrl);
   const note = text(body?.note);
   const published = body?.published === true || body?.published === 'true';
 
@@ -106,6 +107,11 @@ function articleInput(body) {
       error: 'The video URL must be a valid link starting with http:// or https://.',
     };
   }
+  if (pdfUrl && (pdfUrl.length > 500 || !isValidHttpUrl(pdfUrl))) {
+    return {
+      error: 'The PDF URL must be a valid link starting with http:// or https://.',
+    };
+  }
 
   const slug = createSlug(text(body?.slug) || title);
   if (!slug) return { error: 'Enter a title that can be used as an article URL.' };
@@ -119,6 +125,7 @@ function articleInput(body) {
       category,
       image: image || null,
       videoUrl: videoUrl || null,
+      pdfUrl: pdfUrl || null,
       note: note || null,
       published,
     },
@@ -571,6 +578,7 @@ router.get('/:slug', async (req, res) => {
         category: true,
         image: true,
         videoUrl: true,
+        pdfUrl: true,
         note: true,
         views: true,
         createdAt: true,

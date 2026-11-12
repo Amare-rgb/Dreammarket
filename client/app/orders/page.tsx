@@ -164,7 +164,12 @@ export default function OrdersPage() {
                       {t("orders.order_number", "Order number")}
                     </p>
                     <h2 className="mt-1 font-bold text-[#20283a]">
-                      {order.orderNumber}
+                      <Link
+                        href={`/orders/${encodeURIComponent(order.orderNumber)}`}
+                        className="hover:text-[#cf5427] hover:underline"
+                      >
+                        {order.orderNumber}
+                      </Link>
                     </h2>
                     <p className="mt-1 text-xs text-slate-500">
                       {new Date(order.createdAt).toLocaleString()}
@@ -241,6 +246,12 @@ export default function OrdersPage() {
                         )}
                       </a>
                     )}
+                    <Link
+                      href={`/orders/${encodeURIComponent(order.orderNumber)}`}
+                      className="mt-1 inline-block text-xs font-semibold text-[#cf5427] underline"
+                    >
+                      {t("orders.view_details", "View details")}
+                    </Link>
                   </div>
                   <p className="text-right text-sm font-bold text-[#20283a]">
                     {t("orders.total_label", "Total")}{" "}

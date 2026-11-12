@@ -89,16 +89,16 @@ const DEFAULT_CURRENCY = "ETB";
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
 function formatMoney(amount: number, currency: string = DEFAULT_CURRENCY) {
-  if (!Number.isFinite(amount)) return `${currency} 0`;
+  if (!Number.isFinite(amount)) return `${currency} 0.00`;
   try {
     return new Intl.NumberFormat("en-US", {
       style: "currency",
       currency,
-      minimumFractionDigits: 0,
+      minimumFractionDigits: 2,
       maximumFractionDigits: 2,
     }).format(amount);
   } catch {
-    return `${currency} ${amount.toLocaleString()}`;
+    return `${currency} ${amount.toFixed(2)}`;
   }
 }
 
@@ -966,9 +966,6 @@ export default function Products() {
                     product.discountPrice != null &&
                     product.discountPrice > 0 &&
                     product.discountPrice < product.price;
-                  const displayPrice = hasDiscount
-                    ? product.discountPrice!
-                    : product.price;
 
                   const discountPercent = hasDiscount
                     ? Math.round(
@@ -978,7 +975,13 @@ export default function Products() {
                       )
                     : 0;
 
-                  const otherPrices = product.prices.slice(1);
+                  // Discount ratio so the sale price applies to every currency
+                  const discountRatio = hasDiscount
+                    ? product.discountPrice! / product.price
+                    : 1;
+                  const discountSaving = hasDiscount
+                    ? product.price - product.discountPrice!
+                    : 0;
                   const isAvailable = product.stock > 0;
                   const imageUrl = product.images?.[0] ?? null;
                   const hasVideo = Boolean(product.videoUrl);
@@ -1054,37 +1057,41 @@ export default function Products() {
                           </p>
                         </div>
 
-                        <div className="mt-2.5 flex items-baseline justify-between gap-2">
-                          <div className="flex items-baseline gap-1">
-                            <span className="text-base font-bold text-[#1a1410]">
-                              {formatMoney(displayPrice, product.currency)}
-                            </span>
-                            <span className="text-[10px] text-[#7a6a58]">
-                              /{product.unit}
-                            </span>
-                          </div>
-                          {hasDiscount && (
-                            <span className="text-[10px] text-gray-400 line-through">
-                              {formatMoney(product.price, product.currency)}
-                            </span>
-                          )}
-                        </div>
-
-                        {otherPrices.length > 0 && (
-                          <div className="mt-1.5 space-y-0.5">
-                            {otherPrices.map((p) => (
+                        <div className="mt-2.5 space-y-0.5">
+                          {product.prices.map((p) => {
+                            const isPrimary = p.currency === product.currency;
+                            const effective = isPrimary
+                              ? hasDiscount
+                                ? product.discountPrice!
+                                : p.amount
+                              : Math.round(p.amount * discountRatio * 100) / 100;
+                            return (
                               <div
                                 key={p.currency}
-                                className="flex items-center justify-between text-[10px] text-[#7a6a58]"
+                                className="flex items-baseline gap-1.5"
                               >
-                                <span className="font-semibold uppercase tracking-wide">
-                                  {p.currency}
+                                <span className="text-[11px] font-bold text-[#1a1410]">
+                                  {formatMoney(effective, p.currency)}
                                 </span>
-                                <span>{formatMoney(p.amount, p.currency)}</span>
+                                {isPrimary && (
+                                  <span className="text-[9px] text-[#7a6a58]">
+                                    /{product.unit}
+                                  </span>
+                                )}
                               </div>
-                            ))}
-                          </div>
-                        )}
+                            );
+                          })}
+                          {hasDiscount && (
+                            <p className="text-[10px] font-semibold text-red-600">
+                              (Disc:{" "}
+                              {formatMoney(
+                                discountSaving,
+                                product.currency
+                              )}
+                              )
+                            </p>
+                          )}
+                        </div>
 
                         <button
                           type="button"

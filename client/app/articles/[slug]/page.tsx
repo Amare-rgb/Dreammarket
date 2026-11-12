@@ -221,6 +221,32 @@ export default function ArticlePage() {
               </div>
             )}
 
+            {/* PDF attachment */}
+            {article.pdfUrl && (
+              <div className="pb-6">
+                <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
+                  <h2 className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-[#9c3d1a]">
+                    <FileText size={16} /> Attached PDF
+                  </h2>
+                  <a
+                    href={article.pdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="rounded-lg bg-[#20283a] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#2e3a52]"
+                  >
+                    Open / Download PDF
+                  </a>
+                </div>
+                <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
+                  <iframe
+                    src={article.pdfUrl}
+                    title={`${article.title} PDF`}
+                    className="h-[32rem] w-full"
+                  />
+                </div>
+              </div>
+            )}
+
             {/* Note */}
             {article.note && (
               <aside className="rounded-xl border-l-4 border-[#EB6D3D] bg-[#EB6D3D]/10 p-4 text-sm leading-6 text-slate-700">

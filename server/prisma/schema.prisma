@@ -225,6 +225,7 @@ model Article {
   category    String   @default("general")
   image       String?
   videoUrl    String?
+  pdfUrl      String?
   note        String?  @db.Text
   published   Boolean  @default(false)
   views       Int      @default(0)

@@ -1,6 +1,6 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useLanguage } from "@/context/LanguageContext";
@@ -52,6 +52,182 @@ export default function SignInPage() {
   const [rememberMe, setRememberMe] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const googleBtnRef = useRef<HTMLDivElement>(null);
+
+  const apiBaseUrl =
+    process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
+
+  // Store auth data and redirect based on role (shared by password + Google login)
+  const completeSignIn = (data: {
+    token?: string;
+    user?: { role?: string } & Record<string, unknown>;
+  }) => {
+    if (data.token) {
+      localStorage.setItem("authToken", data.token);
+      localStorage.setItem("token", data.token);
+      sessionStorage.setItem("authToken", data.token);
+      sessionStorage.setItem("token", data.token);
+    }
+
+    if (data.user) {
+      const userData = data.user;
+      localStorage.setItem("user", JSON.stringify(userData));
+      sessionStorage.setItem("user", JSON.stringify(userData));
+
+      if (userData.role) {
+        const roleUpper = userData.role.toUpperCase();
+        localStorage.setItem("userRole", roleUpper);
+        sessionStorage.setItem("userRole", roleUpper);
+      }
+    }
+
+    window.dispatchEvent(new Event("storage"));
+    window.dispatchEvent(new Event("auth-change"));
+
+    const userRole =
+      data.user?.role?.toUpperCase() ||
+      localStorage.getItem("userRole") ||
+      "USER";
+
+    let redirectUrl = "/shop";
+    if (userRole === "ADMIN") {
+      redirectUrl = "/admin/dashboard";
+    } else if (userRole === "SELLER" || userRole === "FARMER") {
+      redirectUrl = "/seller/dashboard";
+    }
+
+    const requestedRedirect = new URLSearchParams(
+      window.location.search
+    ).get("redirectTo");
+    router.replace(
+      requestedRedirect === "/contact" ? requestedRedirect : redirectUrl
+    );
+  };
+
+  // Google credential callback — receives the ID token from Google
+  const handleGoogleCredential = useCallback(
+    async (response: { credential?: string }) => {
+      const credential = response?.credential;
+      if (!credential) {
+        setError(
+          t(
+            "auth.signin.error_google_failed",
+            "Google login failed. Please try again."
+          )
+        );
+        return;
+      }
+
+      setError(null);
+      setIsLoading(true);
+
+      try {
+        const res = await fetch(`${apiBaseUrl}/api/auth/google`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ credential }),
+        });
+
+        const responseText = await res.text();
+        let data;
+        try {
+          data = JSON.parse(responseText);
+        } catch {
+          throw new Error(
+            t(
+              "auth.signin.error_server_response",
+              "Server returned invalid response. Please check backend is running."
+            )
+          );
+        }
+
+        if (!res.ok || !data.success) {
+          throw new Error(
+            data.error ||
+              t(
+                "auth.signin.error_google_failed",
+                "Google login failed. Please try again."
+              )
+          );
+        }
+
+        completeSignIn(data);
+      } catch (err) {
+        setError(
+          err instanceof Error
+            ? err.message
+            : t(
+                "auth.signin.error_google_failed",
+                "Google login failed. Please try again."
+              )
+        );
+      } finally {
+        setIsLoading(false);
+      }
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    },
+    [apiBaseUrl, router, t]
+  );
+
+  // Load Google Identity Services and render the official button
+  useEffect(() => {
+    const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
+    console.log(
+      "🔐 Google Client ID configured:",
+      clientId ? "YES" : "NO — set NEXT_PUBLIC_GOOGLE_CLIENT_ID in client/.env.local"
+    );
+    if (!clientId || !googleBtnRef.current) return;
+
+    const initGoogle = () => {
+      const google = (window as unknown as {
+        google?: {
+          accounts?: {
+            id?: {
+              initialize: (config: {
+                client_id: string;
+                callback: (response: { credential?: string }) => void;
+              }) => void;
+              renderButton: (
+                element: HTMLElement,
+                options: Record<string, unknown>
+              ) => void;
+            };
+          };
+        };
+      }).google;
+
+      if (!google?.accounts?.id || !googleBtnRef.current) return;
+
+      google.accounts.id.initialize({
+        client_id: clientId,
+        callback: handleGoogleCredential,
+      });
+
+      google.accounts.id.renderButton(googleBtnRef.current, {
+        type: "standard",
+        theme: "outline",
+        size: "large",
+        width: "100%",
+        text: "continue_with",
+        shape: "pill",
+      });
+    };
+
+    const existing = (
+      window as unknown as { google?: { accounts?: { id?: unknown } } }
+    ).google;
+    if (existing?.accounts?.id) {
+      initGoogle();
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.src = "https://accounts.google.com/gsi/client";
+    script.async = true;
+    script.defer = true;
+    script.onload = initGoogle;
+    document.head.appendChild(script);
+  }, [handleGoogleCredential]);
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -174,52 +350,7 @@ export default function SignInPage() {
       console.log("🔍 Token received:", data.token ? "Yes" : "No");
       console.log("🔍 User role:", data.user?.role);
 
-      if (data.token) {
-        localStorage.setItem("authToken", data.token);
-        localStorage.setItem("token", data.token);
-        sessionStorage.setItem("authToken", data.token);
-        sessionStorage.setItem("token", data.token);
-        console.log("✅ Token stored");
-      }
-
-      if (data.user) {
-        const userData = data.user;
-        localStorage.setItem("user", JSON.stringify(userData));
-        sessionStorage.setItem("user", JSON.stringify(userData));
-
-        if (userData.role) {
-          const roleUpper = userData.role.toUpperCase();
-          localStorage.setItem("userRole", roleUpper);
-          sessionStorage.setItem("userRole", roleUpper);
-          console.log("👤 User role stored:", roleUpper);
-        }
-      }
-
-      window.dispatchEvent(new Event("storage"));
-      window.dispatchEvent(new Event("auth-change"));
-
-      const userRole =
-        data.user?.role?.toUpperCase() ||
-        localStorage.getItem("userRole") ||
-        "USER";
-
-      console.log("🔄 Redirecting with role:", userRole);
-
-      let redirectUrl = "/shop";
-      if (userRole === "ADMIN") {
-        redirectUrl = "/admin/dashboard";
-      } else if (userRole === "SELLER" || userRole === "FARMER") {
-        redirectUrl = "/seller/dashboard";
-      }
-
-      console.log("🚀 Redirecting to:", redirectUrl);
-
-      const requestedRedirect = new URLSearchParams(
-        window.location.search
-      ).get("redirectTo");
-      router.replace(
-        requestedRedirect === "/contact" ? requestedRedirect : redirectUrl
-      );
+      completeSignIn(data);
     } catch (err) {
       const errorMessage =
         err instanceof Error
@@ -395,6 +526,27 @@ export default function SignInPage() {
                 )}
               </button>
             </form>
+
+            <div className="mt-5">
+              <div className="mb-3 flex items-center gap-4">
+                <div className="h-px flex-1 bg-[#3a2a1e]/10" />
+                <span className="text-xs text-[#7a6a58]">
+                  {t("auth.signin.or_continue_with", "or continue with")}
+                </span>
+                <div className="h-px flex-1 bg-[#3a2a1e]/10" />
+              </div>
+              <div
+                ref={googleBtnRef}
+                className="flex min-h-[44px] items-center justify-center"
+              >
+                {!process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID && (
+                  <span className="text-xs text-red-500">
+                    Google login not configured (missing
+                    NEXT_PUBLIC_GOOGLE_CLIENT_ID)
+                  </span>
+                )}
+              </div>
+            </div>
 
             <div className="my-5 flex items-center gap-4">
               <div className="h-px flex-1 bg-[#3a2a1e]/10" />

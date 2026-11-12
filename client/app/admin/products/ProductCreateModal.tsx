@@ -112,6 +112,7 @@ export default function ProductCreateModal({
     { id: 1, currency: DEFAULT_CURRENCY, amount: "" },
   ]);
   const [stock, setStock] = useState("0");
+  const [discountPrice, setDiscountPrice] = useState("");
   const [images, setImages] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   
@@ -380,6 +381,21 @@ export default function ProductCreateModal({
 
     const primary = prices[0];
 
+    let discountValue: number | null = null;
+    if (discountPrice.trim() !== "") {
+      discountValue = Number(discountPrice);
+      if (
+        !Number.isFinite(discountValue) ||
+        discountValue <= 0 ||
+        discountValue >= primary.amount
+      ) {
+        setError(
+          `Discount price must be greater than 0 and less than the ${primary.currency} price (${primary.amount}).`
+        );
+        return;
+      }
+    }
+
     setSubmitting(true);
     try {
       await api.post("/api/products", {
@@ -390,6 +406,7 @@ export default function ProductCreateModal({
         pricePerUnit: primary.amount,
         currency: primary.currency,
         prices,
+        discountPrice: discountValue,
         stock: Number(stock),
         images,
         videoUrl: videoUrl || undefined,
@@ -488,13 +505,18 @@ export default function ProductCreateModal({
                   className="h-11 min-w-0 flex-1 rounded-lg border border-slate-300 bg-white px-3 font-normal outline-none transition focus:border-[#EB6D3D] focus:ring-2 focus:ring-[#EB6D3D]/20"
                 >
                   <option value="">Select a category</option>
-                  {availableCategories
-                    .filter((category) => !category.parentId)
-                    .map((category) => (
+                  {availableCategories.map((category) => {
+                    const parentName = category.parentId
+                      ? availableCategories.find(
+                          (c) => c.id === category.parentId
+                        )?.name
+                      : null;
+                    return (
                       <option key={category.id} value={category.id}>
-                        {category.name}
+                        {parentName ? `${parentName} / ${category.name}` : category.name}
                       </option>
-                    ))}
+                    );
+                  })}
                 </select>
                 <div className="flex gap-2">
                   <button
@@ -631,6 +653,23 @@ export default function ProductCreateModal({
                 Add another currency
               </button>
             </div>
+
+            <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
+              Discount price ({priceRows[0]?.currency || DEFAULT_CURRENCY}){" "}
+              <span className="font-normal text-slate-400">(optional)</span>
+              <input
+                type="number"
+                min="0"
+                step="0.01"
+                value={discountPrice}
+                onChange={(event) => setDiscountPrice(event.target.value)}
+                placeholder="Sale price shown to customers"
+                className="mt-1.5 h-11 w-full rounded-lg border border-slate-300 px-3 font-normal outline-none transition focus:border-[#EB6D3D] focus:ring-2 focus:ring-[#EB6D3D]/20"
+              />
+              <span className="mt-1 block text-xs font-normal text-slate-500">
+                Must be lower than the main price. Leave empty for no discount.
+              </span>
+            </label>
 
             <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
               Stock quantity <span className="text-red-600">*</span>

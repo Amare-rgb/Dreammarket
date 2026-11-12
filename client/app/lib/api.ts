@@ -213,6 +213,9 @@ export const uploadApi = {
   uploadProductVideo: (file: File) =>
     postFile('/api/upload/product-video', file, 'video', 300000),
 
+  uploadArticleVideo: (file: File) =>
+    postFile('/api/upload/article-video', file, 'video', 300000),
+
   uploadCategoryImage: (file: File) =>
     postFile('/api/upload/category', file, 'image'),
 

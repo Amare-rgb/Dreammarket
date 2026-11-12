@@ -13,7 +13,7 @@ export interface ArticleCategory {
 type ApiError = { response?: { data?: { error?: string } } };
 
 export const apiErrorText = (e: unknown, fallback: string) =>
-  (e as ApiError).response?.data?.error ||
+  (e as ApiError | null | undefined)?.response?.data?.error ||
   (e instanceof Error ? e.message : fallback);
 
 export const categoryLabel = (

@@ -2,6 +2,7 @@ const express = require('express');
 const prisma = require('../lib/prisma');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { sendOrderApprovalEmail } = require('../lib/email');
+const { sendOrderApprovalSms } = require('../lib/sms');
 
 const router = express.Router();
 const ORDER_STATUSES = ['CONFIRMED', 'CANCELLED'];
@@ -126,6 +127,7 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
 
     const updatedOrder = result.order;
     let notificationSent = null;
+    let smsSent = null;
 
     // ✅ SEND EMAIL IF CONFIRMED
     if (result.statusChanged && nextStatus === 'CONFIRMED') {
@@ -139,11 +141,24 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
           notificationError
         );
       }
+
+      // ✅ SEND SMS IF CONFIRMED
+      try {
+        await sendOrderApprovalSms(updatedOrder);
+        smsSent = true;
+      } catch (smsError) {
+        smsSent = false;
+        console.error(
+          `Order ${updatedOrder.orderNumber} was confirmed, but the customer approval SMS failed:`,
+          smsError
+        );
+      }
     }
 
     return res.json({
       success: true,
       notificationSent,
+      smsSent,
       order: {
         ...updatedOrder,
         total: Number(updatedOrder.total),
@@ -161,6 +176,38 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
     }
     console.error('Failed to update order status:', error);
     return res.status(500).json({ success: false, error: 'Failed to update order status' });
+  }
+});
+
+// DELETE ORDER (Admin)
+router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const order = await prisma.order.findUnique({
+      where: { id: req.params.id },
+      include: { items: true },
+    });
+    if (!order) {
+      return res.status(404).json({ success: false, error: 'Order not found.' });
+    }
+
+    await prisma.$transaction(async (transaction) => {
+      // Restore stock for every item that still references a product
+      for (const item of order.items) {
+        if (item.productId) {
+          await transaction.product.updateMany({
+            where: { id: item.productId },
+            data: { stock: { increment: item.quantity } },
+          });
+        }
+      }
+      // OrderItem rows cascade-delete with the order
+      await transaction.order.delete({ where: { id: order.id } });
+    });
+
+    return res.json({ success: true });
+  } catch (error) {
+    console.error('Failed to delete order:', error);
+    return res.status(500).json({ success: false, error: 'Failed to delete order' });
   }
 });
 

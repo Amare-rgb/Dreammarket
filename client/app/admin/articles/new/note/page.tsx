@@ -3,7 +3,7 @@
 import { ChangeEvent, FormEvent, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
-import { X, UploadCloud, Check, Plus, LoaderCircle } from "lucide-react";
+import { X, UploadCloud, Check, Plus, LoaderCircle, FileText } from "lucide-react";
 import { api, uploadApi } from "@/lib/api";
 import {
   apiErrorText as errorText,
@@ -17,6 +17,7 @@ export default function NewArticleNotePage() {
   const router = useRouter();
   const { categories, loading: categoriesLoading, create: createCategory } = useArticleCategories();
   const fileRef = useRef<HTMLInputElement>(null);
+  const pdfRef = useRef<HTMLInputElement>(null);
 
   // Form state
   const [category, setCategory] = useState("");
@@ -25,6 +26,7 @@ export default function NewArticleNotePage() {
   const [content, setContent] = useState("");
   const [note, setNote] = useState("");
   const [image, setImage] = useState("");
+  const [pdfUrl, setPdfUrl] = useState("");
   const [published, setPublished] = useState(false);
 
   // Status state
@@ -70,6 +72,36 @@ export default function NewArticleNotePage() {
     }
   };
 
+  // Handle PDF upload
+  const handlePdf = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    if (file.type !== "application/pdf") {
+      setError("Choose a PDF file.");
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      setError("PDF size must be 20 MB or less.");
+      return;
+    }
+
+    setError("");
+    setUploading(true);
+    try {
+      const res = await uploadApi.uploadPdf(file);
+      if (!res.success || !res.url) {
+        throw new Error("PDF upload did not return a file URL.");
+      }
+      setPdfUrl(res.url);
+    } catch (e) {
+      setError(errorText(e, "Failed to upload the PDF file."));
+    } finally {
+      setUploading(false);
+    }
+  };
+
   // Handle new category creation
   const handleCreateCategory = async () => {
     const name = newCategoryName.trim();
@@ -108,6 +140,7 @@ export default function NewArticleNotePage() {
         note: note.trim(),
         image: image,
         videoUrl: "",
+        pdfUrl: pdfUrl,
         published,
       });
       router.push("/admin/articles");
@@ -334,6 +367,58 @@ export default function NewArticleNotePage() {
                     <>
                       <UploadCloud size={20} />
                       <span className="text-xs font-semibold">Upload</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+
+            {/* PDF Upload (Optional) */}
+            <div>
+              <label className="mb-1 block text-sm font-semibold text-slate-700">
+                Article PDF (Optional)
+              </label>
+
+              <input
+                ref={pdfRef}
+                type="file"
+                accept="application/pdf"
+                onChange={handlePdf}
+                className="hidden"
+              />
+
+              {pdfUrl ? (
+                <div className="mt-2 flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <FileText size={20} className="shrink-0 text-[#EB6D3D]" />
+                  <a
+                    href={pdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="min-w-0 flex-1 truncate text-sm font-semibold text-[#cf5427] hover:underline"
+                  >
+                    {pdfUrl.split("/").pop()}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setPdfUrl("")}
+                    className="rounded-full bg-red-500 p-1 text-white shadow hover:bg-red-600"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => pdfRef.current?.click()}
+                  disabled={uploading}
+                  className="mt-2 flex h-16 w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 text-sm font-semibold text-slate-500 hover:border-[#EB6D3D] hover:text-[#EB6D3D] transition disabled:opacity-60"
+                >
+                  {uploading ? (
+                    <LoaderCircle className="animate-spin" size={18} />
+                  ) : (
+                    <>
+                      <FileText size={18} />
+                      <span>Upload PDF</span>
                     </>
                   )}
                 </button>

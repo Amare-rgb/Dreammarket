@@ -30,14 +30,24 @@ interface CategoryData {
   _count?: { products?: number };
 }
 
+interface ProductPriceEntry {
+  currency?: string | null;
+  amount?: number | string | null;
+}
+
 interface ProductData {
   id?: string;
   name?: string;
   image?: string | null;
   images?: string[] | null;
   categoryId?: string | null;
-  category?: string | null;
+  category?:
+    | { id?: string | null; name?: string | null; slug?: string | null }
+    | string
+    | null;
   price?: number | string | null;
+  currency?: string | null;
+  prices?: ProductPriceEntry[] | null;
   discountPrice?: number | string | null;
 }
 
@@ -48,8 +58,13 @@ interface HomeProductData {
   description?: string | null;
   image?: string | null;
   images?: string[] | null;
-  category?: { name?: string | null } | string | null;
+  category?:
+    | { id?: string | null; name?: string | null; slug?: string | null }
+    | string
+    | null;
   price: number | string;
+  currency?: string | null;
+  prices?: ProductPriceEntry[] | null;
   discountPrice?: number | string | null;
   stock?: number | null;
   unitOfMeasurement?: string | null;
@@ -63,6 +78,7 @@ interface CategoryItem {
   productCount: number;
   minPrice: number | null;
   maxPrice: number | null;
+  priceCurrency: string;
 }
 
 // ============================================================
@@ -109,17 +125,61 @@ function resolveImage(raw?: string | null): string | null {
 // ============================================================
 // Price helpers
 // ============================================================
-function effectivePrice(p: ProductData): number | null {
-  const raw =
-    p.discountPrice != null && Number(p.discountPrice) > 0
-      ? p.discountPrice
-      : p.price;
-  const n = Number(raw);
-  return Number.isFinite(n) && n > 0 ? n : null;
+function resolvePriceEntries(p: {
+  price?: number | string | null;
+  currency?: string | null;
+  prices?: ProductPriceEntry[] | null;
+}): { amount: number; currency: string }[] {
+  const list = Array.isArray(p.prices) ? p.prices : [];
+  const valid = list
+    .map((entry) => {
+      const amount = Number(entry?.amount);
+      const currency =
+        typeof entry?.currency === "string" && entry.currency.trim()
+          ? entry.currency.trim().toUpperCase()
+          : null;
+      return currency && Number.isFinite(amount) && amount > 0
+        ? { amount, currency }
+        : null;
+    })
+    .filter((e): e is { amount: number; currency: string } => e !== null);
+
+  if (valid.length > 0) return valid;
+
+  const amount = Number(p.price);
+  const fallbackCurrency =
+    typeof p.currency === "string" && p.currency.trim()
+      ? p.currency.trim().toUpperCase()
+      : "ETB";
+  if (Number.isFinite(amount) && amount > 0) {
+    return [{ amount, currency: fallbackCurrency }];
+  }
+  return [];
 }
 
-function formatPrice(n: number): string {
-  return `ETB ${n.toLocaleString()}`;
+function resolvePrimaryPrice(p: {
+  price?: number | string | null;
+  currency?: string | null;
+  prices?: ProductPriceEntry[] | null;
+}): { amount: number; currency: string } | null {
+  const valid = resolvePriceEntries(p);
+  const etb = valid.find((e) => e.currency === "ETB");
+  if (etb) return etb;
+  return valid[0] ?? null;
+}
+
+function effectivePrice(p: ProductData): { amount: number; currency: string } | null {
+  const primary = resolvePrimaryPrice(p);
+  if (!primary) return null;
+  const discount = p.discountPrice != null ? Number(p.discountPrice) : NaN;
+  if (Number.isFinite(discount) && discount > 0) {
+    return { amount: discount, currency: primary.currency };
+  }
+  return primary;
+}
+
+function formatPrice(n: number, currency = "ETB"): string {
+  return `${currency} ${n.toLocaleString()}`;
 }
 
 // ============================================================
@@ -133,6 +193,7 @@ function buildCategoryData(
   productCount: number;
   minPrice: number | null;
   maxPrice: number | null;
+  priceCurrency: string;
 } {
   const seen = new Set<string>();
   const images: string[] = [];
@@ -167,12 +228,20 @@ function buildCategoryData(
   }
 
   // 3. Compute stats
-  const prices = productsForCategory
+  const priceEntries = productsForCategory
     .map((p) => effectivePrice(p))
-    .filter((n): n is number => n !== null);
+    .filter((e): e is { amount: number; currency: string } => e !== null);
 
-  const minPrice = prices.length ? Math.min(...prices) : null;
-  const maxPrice = prices.length ? Math.max(...prices) : null;
+  const minEntry = priceEntries.length
+    ? priceEntries.reduce((a, b) => (b.amount < a.amount ? b : a))
+    : null;
+  const maxEntry = priceEntries.length
+    ? priceEntries.reduce((a, b) => (b.amount > a.amount ? b : a))
+    : null;
+
+  const minPrice = minEntry ? minEntry.amount : null;
+  const maxPrice = maxEntry ? maxEntry.amount : null;
+  const priceCurrency = minEntry?.currency || maxEntry?.currency || "ETB";
 
   // 4. Pad mosaic to exactly 4 cells
   const cells: (string | null)[] = [...images];
@@ -183,6 +252,7 @@ function buildCategoryData(
     productCount: cat._count?.products ?? productsForCategory.length,
     minPrice,
     maxPrice,
+    priceCurrency,
   };
 }
 
@@ -211,8 +281,8 @@ function CategoryCard({
   const priceText = !hasPrices
     ? null
     : product.minPrice === product.maxPrice
-    ? formatPrice(product.minPrice as number)
-    : `${fromLabel} ${formatPrice(product.minPrice as number)}`;
+    ? formatPrice(product.minPrice as number, product.priceCurrency)
+    : `${fromLabel} ${formatPrice(product.minPrice as number, product.priceCurrency)}`;
 
   return (
     <a
@@ -302,7 +372,7 @@ function ProductCards() {
           fetch(`${API_BASE_URL}/api/categories/public`, {
             cache: "no-store",
           }),
-          fetch(`${API_BASE_URL}/api/products?limit=200`, {
+          fetch(`${API_BASE_URL}/api/products/public?limit=200`, {
             cache: "no-store",
           }).catch(() => null),
         ]);
@@ -344,16 +414,24 @@ function ProductCards() {
             .toLowerCase();
 
           const productsForCategory = rawProducts.filter((p) => {
-            const pCat = (p.categoryId || p.category || "")
-              .toString()
-              .toLowerCase();
-            return (
-              pCat === slug ||
-              pCat === (cat.id || "").toString().toLowerCase()
-            );
+            const catObj =
+              typeof p.category === "object" && p.category ? p.category : null;
+            const candidates = [
+              p.categoryId,
+              catObj?.id,
+              catObj?.slug,
+              catObj?.name,
+              typeof p.category === "string" ? p.category : null,
+            ]
+              .map((v) => (v ?? "").toString().trim().toLowerCase())
+              .filter(Boolean);
+            const targets = [cat.id, cat.slug, cat.name]
+              .map((v) => (v ?? "").toString().trim().toLowerCase())
+              .filter(Boolean);
+            return candidates.some((c) => targets.includes(c));
           });
 
-          const { images, productCount, minPrice, maxPrice } =
+          const { images, productCount, minPrice, maxPrice, priceCurrency } =
             buildCategoryData(cat, productsForCategory);
 
           return {
@@ -364,6 +442,7 @@ function ProductCards() {
             productCount,
             minPrice,
             maxPrice,
+            priceCurrency,
           };
         });
 
@@ -522,7 +601,8 @@ function HomeProducts() {
         return;
       }
 
-      const price = Number(product.price) || 0;
+      const resolvedPrice = resolvePrimaryPrice(product);
+      const price = resolvedPrice?.amount ?? 0;
       const discountPrice =
         product.discountPrice != null ? Number(product.discountPrice) : null;
       const unitPrice =
@@ -674,7 +754,13 @@ function HomeProducts() {
         ) : (
           <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
             {products.map((product, index) => {
-              const price = Number(product.price) || 0;
+              const priceEntries = resolvePriceEntries(product);
+              const resolvedPrice = resolvePrimaryPrice(product);
+              const price = resolvedPrice?.amount ?? 0;
+              const currency = resolvedPrice?.currency ?? "ETB";
+              const otherPrices = priceEntries.filter(
+                (entry) => entry.currency !== currency
+              );
               const discountPrice =
                 product.discountPrice != null
                   ? Number(product.discountPrice)
@@ -739,14 +825,32 @@ function HomeProducts() {
                       </p>
                       <div className="mt-2 flex flex-wrap items-baseline justify-center gap-x-2 gap-y-1 text-center">
                         <span className="text-sm font-bold text-[#2a1f18]">
-                          ETB {(hasDiscount ? discountPrice : price).toLocaleString()}
+                          {currency}{" "}
+                          {(hasDiscount ? discountPrice : price).toLocaleString()}
                         </span>
                         {hasDiscount && (
                           <span className="text-xs text-gray-400 line-through">
-                            ETB {price.toLocaleString()}
+                            {currency} {price.toLocaleString()}
                           </span>
                         )}
                       </div>
+                      {otherPrices.length > 0 && (
+                        <div className="mt-1.5 space-y-0.5">
+                          {otherPrices.map((entry) => (
+                            <div
+                              key={entry.currency}
+                              className="flex items-center justify-between text-[10px] text-[#7a6a58]"
+                            >
+                              <span className="font-semibold uppercase tracking-wide">
+                                {entry.currency}
+                              </span>
+                              <span>
+                                {entry.currency} {entry.amount.toLocaleString()}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   </Link>
                   <div className="px-3 pb-3">

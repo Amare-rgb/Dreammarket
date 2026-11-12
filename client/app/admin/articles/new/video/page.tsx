@@ -1,9 +1,9 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { ChangeEvent, FormEvent, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { X, Video } from "lucide-react";
-import { api } from "@/lib/api";
+import { LoaderCircle, Upload, Video, X, FileText } from "lucide-react";
+import { api, uploadApi } from "@/lib/api";
 import { getVideoSource, isValidHttpUrl } from "@/lib/video";
 import {
   apiErrorText as errorText,
@@ -23,14 +23,76 @@ export default function NewArticleVideoPage() {
   const [description, setDescription] = useState("");
   const [content, setContent] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
+  const [pdfUrl, setPdfUrl] = useState("");
   const [published, setPublished] = useState(false);
 
   const [saving, setSaving] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [isOpen, setIsOpen] = useState(true);
+  const fileRef = useRef<HTMLInputElement>(null);
+  const pdfRef = useRef<HTMLInputElement>(null);
 
   const effectiveCategory = category || categories[0]?.slug || "";
   const videoSource = videoUrl.trim() ? getVideoSource(videoUrl) : null;
+
+  const handleVideoFile = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    if (!file.type.startsWith("video/")) {
+      setError("Choose a video file (mp4, webm, mov, etc.).");
+      return;
+    }
+    if (file.size > 200 * 1024 * 1024) {
+      setError("Video size must be 200 MB or less.");
+      return;
+    }
+
+    setError("");
+    setUploading(true);
+    try {
+      const res = await uploadApi.uploadArticleVideo(file);
+      if (!res.success || !res.url) {
+        throw new Error("Video upload did not return a URL.");
+      }
+      setVideoUrl(res.url);
+    } catch (err) {
+      setError(errorText(err, "Failed to upload the video file."));
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const handlePdf = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = "";
+    if (!file) return;
+
+    if (file.type !== "application/pdf") {
+      setError("Choose a PDF file.");
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      setError("PDF size must be 20 MB or less.");
+      return;
+    }
+
+    setError("");
+    setUploading(true);
+    try {
+      const res = await uploadApi.uploadPdf(file);
+      if (!res.success || !res.url) {
+        throw new Error("PDF upload did not return a file URL.");
+      }
+      setPdfUrl(res.url);
+    } catch (err) {
+      setError(errorText(err, "Failed to upload the PDF file."));
+    } finally {
+      setUploading(false);
+    }
+  };
 
   const submit = async (e: FormEvent) => {
     e.preventDefault();
@@ -58,6 +120,7 @@ export default function NewArticleVideoPage() {
         note: "",
         image: "",
         videoUrl: url,
+        pdfUrl: pdfUrl,
         published,
       });
       router.push("/admin/articles");
@@ -91,7 +154,7 @@ export default function NewArticleVideoPage() {
             </div>
             <div>
               <h2 className="text-xl font-bold text-slate-900">Add article video</h2>
-              <p className="text-sm text-slate-500">Attach a YouTube or Vimeo link.</p>
+              <p className="text-sm text-slate-500">Upload a local video or attach a YouTube/Vimeo link.</p>
             </div>
           </div>
           <button
@@ -161,18 +224,41 @@ export default function NewArticleVideoPage() {
               </select>
             </div>
 
-            {/* Video URL */}
+            {/* Video source: upload local file or paste a link */}
             <div>
               <label className="mb-1 block text-sm font-semibold text-slate-700">
-                Video URL <span className="text-[#EB6D3D]">*</span>
+                Video <span className="text-[#EB6D3D]">*</span>
               </label>
+              <div className="flex flex-wrap items-center gap-2">
+                <input
+                  ref={fileRef}
+                  type="file"
+                  accept="video/mp4,video/webm,video/quicktime,video/x-msvideo,video/x-matroska"
+                  onChange={(e) => void handleVideoFile(e)}
+                  className="hidden"
+                />
+                <button
+                  type="button"
+                  onClick={() => fileRef.current?.click()}
+                  disabled={uploading || saving}
+                  className="inline-flex h-10 items-center gap-2 rounded-lg border border-slate-300 px-3 text-sm font-semibold text-slate-700 transition hover:border-[#EB6D3D] hover:text-[#cf5427] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {uploading ? (
+                    <LoaderCircle size={16} className="animate-spin" />
+                  ) : (
+                    <Upload size={16} />
+                  )}
+                  {uploading ? "Uploading..." : "Upload local video"}
+                </button>
+                <span className="text-xs text-slate-400">or paste a link below</span>
+              </div>
               <input
                 type="url"
                 value={videoUrl}
                 onChange={(e) => setVideoUrl(e.target.value)}
                 maxLength={500}
-                placeholder="https://www.youtube.com/watch?v=..."
-                className={inputClass}
+                placeholder="https://www.youtube.com/watch?v=... or uploaded file URL"
+                className={`${inputClass} mt-2`}
               />
               {videoUrl.trim() && !videoSource && (
                 <p className="mt-1 text-xs text-red-600">
@@ -187,6 +273,58 @@ export default function NewArticleVideoPage() {
                 <VideoPlayer url={videoUrl} title={title || "Video preview"} />
               </div>
             )}
+
+            {/* PDF attachment (Optional) */}
+            <div>
+              <label className="mb-1 block text-sm font-semibold text-slate-700">
+                Article PDF (Optional)
+              </label>
+
+              <input
+                ref={pdfRef}
+                type="file"
+                accept="application/pdf"
+                onChange={(e) => void handlePdf(e)}
+                className="hidden"
+              />
+
+              {pdfUrl ? (
+                <div className="flex items-center gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <FileText size={20} className="shrink-0 text-[#EB6D3D]" />
+                  <a
+                    href={pdfUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="min-w-0 flex-1 truncate text-sm font-semibold text-[#cf5427] hover:underline"
+                  >
+                    {pdfUrl.split("/").pop()}
+                  </a>
+                  <button
+                    type="button"
+                    onClick={() => setPdfUrl("")}
+                    className="rounded-full bg-red-500 p-1 text-white shadow hover:bg-red-600"
+                  >
+                    <X size={12} />
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => pdfRef.current?.click()}
+                  disabled={uploading || saving}
+                  className="flex h-14 w-full items-center justify-center gap-2 rounded-lg border-2 border-dashed border-slate-300 bg-slate-50 text-sm font-semibold text-slate-500 hover:border-[#EB6D3D] hover:text-[#EB6D3D] transition disabled:opacity-60"
+                >
+                  {uploading ? (
+                    <LoaderCircle size={16} className="animate-spin" />
+                  ) : (
+                    <>
+                      <FileText size={16} />
+                      <span>Upload PDF</span>
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
 
             {/* Content */}
             <div>

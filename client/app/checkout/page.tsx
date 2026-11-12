@@ -6,13 +6,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
-  CheckCircle2,
   LoaderCircle,
   ShoppingBag,
   Trash2,
 } from "lucide-react";
 import { useAuth } from "@/app/providers";
-import { useLanguage } from "@/context/LanguageContext";
 import { api, uploadApi } from "@/lib/api";
 import { CartItem, readCart, writeCart } from "@/app/lib/cart";
 
@@ -21,28 +19,6 @@ interface CheckoutForm {
   customerPhone: string;
   shippingAddress: string;
   note: string;
-}
-
-interface CreatedOrderItem {
-  id: string;
-  productId: string | null;
-  productName: string;
-  quantity: number;
-  unitPrice: number;
-  image: string | null;
-}
-
-interface CreatedOrder {
-  orderNumber: string;
-  status: string;
-  createdAt: string;
-  total: number;
-  paymentMethod: string;
-  shippingAddress: string;
-  customerName: string;
-  customerPhone: string;
-  paymentProofUrl: string | null;
-  items: CreatedOrderItem[];
 }
 
 const money = (amount: number) =>
@@ -61,7 +37,6 @@ function responseError(error: unknown): string {
 
 export default function CheckoutPage() {
   const { user, status } = useAuth();
-  const { t } = useLanguage();
   const router = useRouter();
   const [items, setItems] = useState<CartItem[]>([]);
   const [form, setForm] = useState<CheckoutForm>({
@@ -77,7 +52,6 @@ export default function CheckoutPage() {
   const [paymentProofName, setPaymentProofName] = useState("");
   const [uploadingProof, setUploadingProof] = useState(false);
   const [paymentProofError, setPaymentProofError] = useState("");
-  const [createdOrder, setCreatedOrder] = useState<CreatedOrder | null>(null);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -195,19 +169,13 @@ export default function CheckoutPage() {
         paymentProofUrl: paymentProofUrl || undefined,
         items: items.map(({ productId, quantity }) => ({ productId, quantity })),
       });
-      const order = response.data.order as CreatedOrder;
-      setCreatedOrder({
-        ...order,
-        items: order.items.map((item) => ({
-          ...item,
-          image:
-            item.image ||
-            items.find((cartItem) => cartItem.productId === item.productId)
-              ?.image ||
-            null,
-        })),
-      });
+      const order = response.data.order as { orderNumber?: string };
       updateCart([]);
+      router.push(
+        order?.orderNumber
+          ? `/orders/${encodeURIComponent(order.orderNumber)}`
+          : "/orders"
+      );
     } catch (requestError) {
       setError(responseError(requestError));
     } finally {
@@ -224,141 +192,6 @@ export default function CheckoutPage() {
   }
 
   if (status === "unauthenticated") return null;
-
-  if (createdOrder) {
-    return (
-      <main className="min-h-screen bg-[var(--cream)] px-4 pb-12 pt-24 sm:px-6">
-        <section className="mx-auto max-w-xl overflow-hidden rounded-xl border border-green-200 bg-white shadow-md shadow-green-950/10">
-          <div className="bg-[#15803d] px-4 py-3.5 text-white sm:px-5">
-            <div className="flex items-start gap-3">
-              <CheckCircle2 className="mt-0.5 h-7 w-7 shrink-0" aria-hidden="true" />
-              <div className="min-w-0 flex-1">
-                <h1 className="text-lg font-bold leading-6">
-                  {t("checkout.success_title", "Order received successfully")}
-                </h1>
-                <p className="mt-0.5 text-xs leading-4 text-green-50">
-                  {t(
-                    "checkout.success_message",
-                    "Your order is awaiting review. We’ll update you when it is approved. Pay when your order is delivered."
-                  )}
-                </p>
-              </div>
-            </div>
-            <div className="mt-2.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1 border-t border-white/25 pt-2 text-xs">
-              <p className="min-w-0">
-                <span className="text-green-100">
-                  {t("checkout.success_order_number", "Order number")}:{" "}
-                </span>
-                <span className="break-all font-bold">{createdOrder.orderNumber}</span>
-              </p>
-              <span className="shrink-0 rounded-full bg-white px-2.5 py-1 text-[11px] font-bold text-[#166534]">
-                {t(
-                  `orders.status_${createdOrder.status.toLowerCase()}`,
-                  createdOrder.status.replaceAll("_", " ")
-                )}
-              </span>
-            </div>
-          </div>
-          <div className="space-y-3 p-3.5 sm:p-4">
-            <section>
-              <h2 className="text-sm font-bold text-[#20283a]">
-                {t("checkout.success_items_title", "Order summary")}
-              </h2>
-              <ul className="mt-1 divide-y divide-slate-100">
-                {createdOrder.items.map((item) => (
-                  <li key={item.id} className="flex items-center gap-2 py-1.5">
-                    <div className="relative h-9 w-9 shrink-0 overflow-hidden rounded-md bg-slate-100">
-                      {item.image ? (
-                        <Image
-                          src={item.image}
-                          alt={item.productName}
-                          fill
-                          unoptimized
-                          sizes="36px"
-                          className="object-cover"
-                        />
-                      ) : (
-                        <div className="flex h-full items-center justify-center">
-                          <ShoppingBag className="h-4 w-4 text-slate-300" />
-                        </div>
-                      )}
-                    </div>
-                    <div className="min-w-0 flex-1">
-                      <p className="line-clamp-1 text-xs font-semibold text-slate-800">
-                        {item.productName}
-                      </p>
-                      <p className="text-[11px] text-slate-500">
-                        {money(item.unitPrice)} × {item.quantity}
-                      </p>
-                    </div>
-                    <p className="shrink-0 text-xs font-semibold text-slate-800">
-                      {money(item.unitPrice * item.quantity)}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-              <div className="flex justify-between border-t border-slate-200 pt-2 text-sm font-bold text-[#20283a]">
-                <span>{t("checkout.success_total", "Order total")}</span>
-                <span>{money(createdOrder.total)}</span>
-              </div>
-            </section>
-            <section className="grid gap-2 rounded-lg bg-slate-50 p-2.5 text-[11px] sm:grid-cols-2">
-              <div>
-                <h2 className="text-xs font-bold text-[#20283a]">
-                  {t("checkout.success_delivery_title", "Delivery details")}
-                </h2>
-                <p className="mt-1 font-semibold text-slate-700">
-                  {createdOrder.customerName}
-                </p>
-                <p className="text-slate-600">{createdOrder.customerPhone}</p>
-                <p className="whitespace-pre-wrap text-slate-600">
-                  {createdOrder.shippingAddress}
-                </p>
-              </div>
-              <div>
-                <h2 className="text-xs font-bold text-[#20283a]">
-                  {t("checkout.success_payment_title", "Payment")}
-                </h2>
-                <p className="mt-1 text-slate-600">
-                  {t("checkout.cash_on_delivery", "Cash on delivery")}
-                </p>
-                <p className="text-slate-500">
-                  {new Date(createdOrder.createdAt).toLocaleString()}
-                </p>
-                {createdOrder.paymentProofUrl && (
-                  <a
-                    href={createdOrder.paymentProofUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-block font-semibold text-[#cf5427] underline"
-                  >
-                    {t(
-                      "checkout.success_payment_info",
-                      "View uploaded payment information"
-                    )}
-                  </a>
-                )}
-              </div>
-            </section>
-            <div className="flex flex-wrap justify-center gap-2">
-              <Link
-                href="/orders"
-                className="inline-flex h-9 items-center justify-center rounded-lg bg-[#20283a] px-3.5 text-xs font-bold text-white hover:bg-[#30384f]"
-              >
-                {t("checkout.success_view_orders", "View my orders")}
-              </Link>
-              <Link
-                href="/shop"
-                className="inline-flex h-9 items-center justify-center rounded-lg border border-slate-200 px-3.5 text-xs font-semibold text-slate-700 hover:bg-slate-50"
-              >
-                {t("checkout.success_continue_shopping", "Continue shopping")}
-              </Link>
-            </div>
-          </div>
-        </section>
-      </main>
-    );
-  }
 
   return (
     <main className="min-h-screen bg-[var(--cream)] px-4 pb-16 pt-28 sm:px-6">

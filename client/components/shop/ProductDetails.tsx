@@ -4,9 +4,10 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { ShoppingCart, Play } from "lucide-react";
+import { ShoppingCart, Play, ChevronLeft, ChevronRight } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { readCart, writeCart } from "@/app/lib/cart";
+import { getVideoSource } from "@/lib/video";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types — must match app/shop/[slug]/page.tsx
@@ -206,17 +207,32 @@ const ProductImage: React.FC<{
 // Lightbox
 // ─────────────────────────────────────────────────────────────────────────────
 function ImageLightbox({
-  src,
+  images,
+  index,
   alt,
   onClose,
+  onSelect,
 }: {
-  src: string;
+  images: string[];
+  index: number;
   alt: string;
   onClose: () => void;
+  onSelect: (index: number) => void;
 }) {
+  const count = images.length;
+  const safe = Math.min(Math.max(index, 0), Math.max(count - 1, 0));
+  const src = count > 0 ? images[safe] : null;
+
+  const goTo = (next: number) => {
+    if (count === 0) return;
+    onSelect(((next % count) + count) % count);
+  };
+
   useEffect(() => {
     const handleKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
+      if (e.key === "ArrowRight") goTo(safe + 1);
+      if (e.key === "ArrowLeft") goTo(safe - 1);
     };
     document.addEventListener("keydown", handleKey);
     document.body.style.overflow = "hidden";
@@ -224,38 +240,110 @@ function ImageLightbox({
       document.removeEventListener("keydown", handleKey);
       document.body.style.overflow = "";
     };
-  }, [onClose]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onClose, safe, count]);
+
+  if (!src) return null;
 
   return (
     <div
-      className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/95 p-4"
+      className="fixed inset-0 z-[9999] flex flex-col bg-black/95"
       onClick={onClose}
       role="dialog"
       aria-modal="true"
       aria-label={alt}
     >
-      <button
-        type="button"
-        onClick={onClose}
-        aria-label="Close fullscreen image"
-        className="absolute right-4 top-4 z-10 flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
-      >
-        <CloseIcon />
-      </button>
-
-      <div
-        className="relative h-full w-full max-h-[92vh] max-w-[92vw]"
-        onClick={(e) => e.stopPropagation()}
-      >
-        <Image
-          src={src}
-          alt={alt}
-          fill
-          unoptimized
-          className="object-contain"
-          sizes="100vw"
-        />
+      {/* Top bar — counter + close */}
+      <div className="flex items-center justify-between px-4 py-3">
+        <span className="text-xs font-semibold text-white/70">
+          {safe + 1} / {count}
+        </span>
+        <button
+          type="button"
+          onClick={onClose}
+          aria-label="Close fullscreen image"
+          className="flex h-11 w-11 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/20"
+        >
+          <CloseIcon />
+        </button>
       </div>
+
+      {/* Main image */}
+      <div className="relative flex min-h-0 flex-1 items-center justify-center px-4 pb-2">
+        <div
+          className="relative h-full w-full"
+          onClick={(e) => e.stopPropagation()}
+        >
+          <Image
+            key={src}
+            src={src}
+            alt={alt}
+            fill
+            unoptimized
+            className="object-contain"
+            sizes="100vw"
+            priority
+          />
+        </div>
+
+        {count > 1 && (
+          <>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                goTo(safe - 1);
+              }}
+              aria-label="Previous image"
+              className="absolute left-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/25"
+            >
+              <ChevronLeft className="h-6 w-6" />
+            </button>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                goTo(safe + 1);
+              }}
+              aria-label="Next image"
+              className="absolute right-3 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/10 text-white transition hover:bg-white/25"
+            >
+              <ChevronRight className="h-6 w-6" />
+            </button>
+          </>
+        )}
+      </div>
+
+      {/* Thumbnail strip */}
+      {count > 1 && (
+        <div
+          className="flex items-center justify-center gap-2 overflow-x-auto px-4 pb-4 pt-2"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {images.map((image, i) => (
+            <button
+              key={`${image}-${i}`}
+              type="button"
+              onClick={() => onSelect(i)}
+              aria-label={`View image ${i + 1}`}
+              className={`relative h-14 w-14 shrink-0 overflow-hidden rounded-lg border-2 transition ${
+                i === safe
+                  ? "border-[#F47822] opacity-100"
+                  : "border-transparent opacity-60 hover:opacity-100"
+              }`}
+            >
+              <Image
+                src={image}
+                alt=""
+                fill
+                unoptimized
+                className="object-cover"
+                sizes="56px"
+              />
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -265,6 +353,7 @@ function ImageLightbox({
 // ─────────────────────────────────────────────────────────────────────────────
 function ProductVideo({ src, title }: { src: string; title: string }) {
   const [open, setOpen] = useState(false);
+  const source = getVideoSource(src);
 
   useEffect(() => {
     if (!open) return;
@@ -279,6 +368,8 @@ function ProductVideo({ src, title }: { src: string; title: string }) {
     };
   }, [open]);
 
+  if (!source) return null;
+
   return (
     <section
       aria-labelledby="product-video-heading"
@@ -292,24 +383,51 @@ function ProductVideo({ src, title }: { src: string; title: string }) {
       </h2>
 
       <div className="relative overflow-hidden rounded-xl bg-black">
-        <video
-          src={src}
-          controls
-          playsInline
-          preload="metadata"
-          className="w-full max-h-[360px] object-contain bg-black"
-        />
-        <button
-          type="button"
-          onClick={() => setOpen(true)}
-          className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-xs font-semibold text-[#1a1410] shadow hover:bg-white"
-        >
-          <Play className="h-3.5 w-3.5" />
-          Fullscreen
-        </button>
+        {source.kind === "iframe" ? (
+          <div className="relative aspect-video w-full">
+            <iframe
+              src={source.src}
+              title={title}
+              loading="lazy"
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+              allowFullScreen
+              referrerPolicy="strict-origin-when-cross-origin"
+              className="absolute inset-0 h-full w-full"
+            />
+          </div>
+        ) : source.kind === "file" ? (
+          <video
+            src={source.src}
+            controls
+            playsInline
+            preload="metadata"
+            className="w-full max-h-[360px] object-contain bg-black"
+          />
+        ) : (
+          <a
+            href={source.src}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="flex aspect-video w-full items-center justify-center gap-2 bg-black/90 text-sm font-semibold text-white transition hover:bg-black"
+          >
+            <Play className="h-4 w-4" />
+            Watch video
+          </a>
+        )}
+
+        {source.kind !== "link" && (
+          <button
+            type="button"
+            onClick={() => setOpen(true)}
+            className="absolute right-3 top-3 flex items-center gap-1.5 rounded-full bg-white/90 px-3 py-1.5 text-xs font-semibold text-[#1a1410] shadow hover:bg-white"
+          >
+            <Play className="h-3.5 w-3.5" />
+            Fullscreen
+          </button>
+        )}
       </div>
 
-      {open && (
+      {open && source.kind !== "link" && (
         <div
           className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 p-4"
           onClick={() => setOpen(false)}
@@ -325,14 +443,25 @@ function ProductVideo({ src, title }: { src: string; title: string }) {
           >
             <CloseIcon />
           </button>
-          <video
-            src={src}
-            controls
-            autoPlay
-            playsInline
-            className="max-h-[90vh] max-w-[90vw] rounded-lg"
-            onClick={(e) => e.stopPropagation()}
-          />
+          {source.kind === "iframe" ? (
+            <iframe
+              src={source.src}
+              title={title}
+              allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; fullscreen"
+              allowFullScreen
+              className="aspect-video w-full max-w-5xl rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+          ) : (
+            <video
+              src={source.src}
+              controls
+              autoPlay
+              playsInline
+              className="max-h-[90vh] max-w-[90vw] rounded-lg"
+              onClick={(e) => e.stopPropagation()}
+            />
+          )}
         </div>
       )}
     </section>
@@ -369,6 +498,12 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
     product.discountPrice < price;
 
   const effectivePrice = hasDiscount ? (product.discountPrice as number) : price;
+
+  const discountPercent = hasDiscount
+    ? Math.round(
+        ((price - (product.discountPrice as number)) / price) * 100
+      )
+    : 0;
 
   // Cloudinary-only images
   const images = useMemo(() => {
@@ -548,9 +683,14 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
                   {t("product.per", "per")} {product.unit}
                 </span>
                 {hasDiscount && (
-                  <span className="pb-1 text-sm text-gray-400 line-through">
-                    {formatMoney(price, currency)}
-                  </span>
+                  <>
+                    <span className="pb-1 text-sm text-gray-400 line-through">
+                      {formatMoney(price, currency)}
+                    </span>
+                    <span className="mb-1 rounded-md bg-red-50 px-2 py-0.5 text-xs font-bold text-red-600">
+                      -{discountPercent}% OFF
+                    </span>
+                  </>
                 )}
               </div>
 
@@ -688,11 +828,13 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
         </div>
       </section>
 
-      {lightboxOpen && currentImage && (
+      {lightboxOpen && images.length > 0 && (
         <ImageLightbox
-          src={currentImage}
+          images={images}
+          index={safeIndex}
           alt={product.name}
           onClose={() => setLightboxOpen(false)}
+          onSelect={setSelectedImage}
         />
       )}
     </main>

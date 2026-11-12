@@ -75,6 +75,11 @@ export default function ProductCreateRoute() {
     await fetchCategories();
   };
 
+  const handleCategoryAdded = async () => {
+    // Refresh the categories list if one is created
+    await fetchCategories();
+  };
+
   if (loading) {
     return (
       <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60">
@@ -117,6 +122,7 @@ export default function ProductCreateRoute() {
       onClose={goToProducts}
       onCreated={goToProducts}
       onCategoryDeleted={handleCategoryDeleted}
+      onCategoryAdded={handleCategoryAdded}
     />
   );
 }

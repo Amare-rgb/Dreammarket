@@ -226,6 +226,120 @@ router.post('/login', async (req, res) => {
 });
 
 // ============================================================
+// GOOGLE LOGIN
+// POST /api/auth/google
+// Body: { credential } — Google ID token from Google Identity Services
+// ============================================================
+router.post('/google', async (req, res) => {
+  try {
+    const credential =
+      typeof req.body?.credential === 'string' ? req.body.credential.trim() : '';
+
+    if (!credential) {
+      return res.status(400).json({
+        success: false,
+        error: 'Google credential is required',
+      });
+    }
+
+    const clientId = process.env.GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      console.error('❌ GOOGLE_CLIENT_ID is not configured on the server');
+      return res.status(500).json({
+        success: false,
+        error: 'Google login is not configured on the server',
+      });
+    }
+
+    // Verify the ID token with Google
+    let profile;
+    try {
+      const axios = require('axios');
+      const https = require('https');
+      const { data } = await axios.get(
+        'https://oauth2.googleapis.com/tokeninfo',
+        {
+          params: { id_token: credential },
+          timeout: 10000,
+          httpsAgent: new https.Agent({ rejectUnauthorized: false }),
+        }
+      );
+      profile = data;
+    } catch (verifyError) {
+      console.error('❌ Google token verification failed:', verifyError.message);
+      return res.status(401).json({
+        success: false,
+        error: 'Google login failed. Please try again.',
+      });
+    }
+
+    const validIssuers = ['accounts.google.com', 'https://accounts.google.com'];
+    if (
+      !profile ||
+      profile.aud !== clientId ||
+      !validIssuers.includes(profile.iss) ||
+      String(profile.email_verified).toLowerCase() !== 'true' ||
+      !profile.email
+    ) {
+      return res.status(401).json({
+        success: false,
+        error: 'Google login failed. Invalid token.',
+      });
+    }
+
+    const email = normalizeEmail(profile.email);
+    const name =
+      (typeof profile.name === 'string' && profile.name.trim()) ||
+      email.split('@')[0];
+    const avatar =
+      typeof profile.picture === 'string' && profile.picture.trim()
+        ? profile.picture.trim()
+        : null;
+
+    let user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+      // OAuth account — random unusable password hash
+      const randomPassword = crypto.randomBytes(32).toString('hex');
+      const hashedPassword = await bcrypt.hash(randomPassword, BCRYPT_ROUNDS);
+
+      user = await prisma.user.create({
+        data: {
+          name,
+          email,
+          password: hashedPassword,
+          avatar,
+          role: 'USER',
+        },
+      });
+    } else if (avatar && !user.avatar) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: { avatar },
+      });
+    }
+
+    const token = generateToken(user.id, user.email, user.role);
+    const { password: _, ...userData } = user;
+
+    res.json({
+      success: true,
+      message: 'Login successful',
+      token,
+      user: userData,
+    });
+  } catch (error) {
+    console.error('❌ Google login error:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Google login failed. Please try again.',
+      details:
+        process.env.NODE_ENV === 'development' ? error.message : undefined,
+    });
+  }
+});
+
+// ============================================================
 // GET CURRENT USER
 // GET /api/auth/me
 // ============================================================

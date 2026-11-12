@@ -729,6 +729,8 @@ const ProductsPage: React.FC = () => {
           categories={categories}
           onClose={() => setShowCreateModal(false)}
           onCreated={handleProductCreated}
+          onCategoryAdded={() => void fetchCategories()}
+          onCategoryDeleted={() => void fetchCategories()}
         />
       )}
       {videoPreview && (

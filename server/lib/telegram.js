@@ -1,4 +1,5 @@
-const TELEGRAM_API_BASE_URL = 'https://api.telegram.org';
+const https = require('https');
+
 const TELEGRAM_REQUEST_TIMEOUT_MS = 10000;
 const TELEGRAM_MAX_MESSAGE_CODE_POINTS = 3500;
 
@@ -27,49 +28,103 @@ function getArticleUrl(slug) {
   return new URL(`/articles/${encodeURIComponent(slug)}`, siteUrl).toString();
 }
 
-async function telegramRequest(token, method, payload) {
-  const controller = new AbortController();
-  const timeout = setTimeout(
-    () => controller.abort(),
-    TELEGRAM_REQUEST_TIMEOUT_MS
-  );
-
-  let response;
-  try {
-    response = await fetch(
-      `${TELEGRAM_API_BASE_URL}/bot${token}/${method}`,
+function telegramRequest(token, method, payload) {
+  return new Promise((resolve, reject) => {
+    const body = JSON.stringify(payload);
+    const req = https.request(
       {
+        hostname: 'api.telegram.org',
+        path: `/bot${token}/${method}`,
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: controller.signal,
+        headers: {
+          'Content-Type': 'application/json',
+          'Content-Length': Buffer.byteLength(body),
+        },
+        // Bypass TLS verification (proxies/antivirus often break the chain)
+        rejectUnauthorized: false,
+        timeout: TELEGRAM_REQUEST_TIMEOUT_MS,
+      },
+      (res) => {
+        let data = '';
+        res.on('data', (chunk) => (data += chunk));
+        res.on('end', () => {
+          let result;
+          try {
+            result = JSON.parse(data);
+          } catch {
+            return reject(new Error('Telegram returned an unreadable response.'));
+          }
+
+          if (res.statusCode < 200 || res.statusCode >= 300 || result?.ok !== true) {
+            const description =
+              typeof result?.description === 'string'
+                ? result.description
+                : `HTTP ${res.statusCode}`;
+            return reject(new Error(`Telegram rejected the message: ${description}`));
+          }
+
+          resolve(result);
+        });
       }
     );
-  } catch (error) {
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new Error('Telegram did not respond before the request timed out.');
-    }
-    throw new Error('Could not connect to Telegram. Check the server network.');
-  } finally {
-    clearTimeout(timeout);
-  }
 
-  let result;
+    req.on('timeout', () => {
+      req.destroy(new Error('Telegram did not respond before the request timed out.'));
+    });
+    req.on('error', (error) => {
+      reject(
+        new Error(
+          `Could not connect to Telegram. Check the server network. (${error.message})`
+        )
+      );
+    });
+
+    req.write(body);
+    req.end();
+  });
+}
+
+function isHttpUrl(value) {
+  if (typeof value !== 'string' || !value.trim()) return false;
   try {
-    result = await response.json();
+    const url = new URL(value.trim());
+    return url.protocol === 'http:' || url.protocol === 'https:';
   } catch {
-    throw new Error('Telegram returned an unreadable response.');
+    return false;
   }
+}
 
-  if (!response.ok || result?.ok !== true) {
-    const description =
-      typeof result?.description === 'string'
-        ? result.description
-        : `HTTP ${response.status}`;
-    throw new Error(`Telegram rejected the message: ${description}`);
+// Resolve an article image value to a fetchable http(s) URL.
+// Handles relative /uploads/... paths stored by older uploads.
+function resolveImageUrl(value) {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (isHttpUrl(trimmed)) return trimmed;
+
+  if (trimmed.startsWith('/')) {
+    const base = (
+      process.env.PUBLIC_API_URL ||
+      process.env.API_PUBLIC_URL ||
+      process.env.SERVER_PUBLIC_URL ||
+      ''
+    ).replace(/\/+$/, '');
+    if (base && isHttpUrl(base)) {
+      return `${base}${trimmed}`;
+    }
   }
+  return null;
+}
 
-  return result;
+function isDirectVideoUrl(value) {
+  if (typeof value !== 'string' || !value.trim()) return false;
+  try {
+    const url = new URL(value.trim());
+    if (url.protocol !== 'http:' && url.protocol !== 'https:') return false;
+    return /\.(mp4|webm|mov|m4v|ogv|3gp)(\?.*)?$/i.test(url.pathname);
+  } catch {
+    return false;
+  }
 }
 
 function splitTelegramMessage(message) {
@@ -103,17 +158,26 @@ async function sendArticleAnnouncement(article) {
     '',
     `Article content:\n${article.content}`,
     '',
+    ...(article.videoUrl ? [`Video: ${article.videoUrl}`, ''] : []),
+    ...(article.pdfUrl ? [`PDF: ${article.pdfUrl}`, ''] : []),
     `Note:\n${article.note || 'No additional note provided.'}`,
     '',
     `Read the article: ${articleUrl}`,
   ].join('\n');
 
   let imageWarning;
-  if (article.image) {
+  const imageUrl = resolveImageUrl(article.image);
+  if (article.image && typeof article.image === 'string' && article.image.trim() && !imageUrl) {
+    imageWarning = `Article image is not a valid http(s) URL: ${article.image.trim()}`;
+    console.error(
+      `Telegram article image skipped for article ${article.id}: ${imageWarning}`
+    );
+  }
+  if (imageUrl) {
     try {
       await telegramRequest(token, 'sendPhoto', {
         chat_id: chatId,
-        photo: article.image,
+        photo: imageUrl,
         caption: article.title,
       });
     } catch (error) {
@@ -125,6 +189,45 @@ async function sendArticleAnnouncement(article) {
     }
   }
 
+  let videoWarning;
+  let videoSent = false;
+  if (article.videoUrl && isDirectVideoUrl(article.videoUrl)) {
+    try {
+      await telegramRequest(token, 'sendVideo', {
+        chat_id: chatId,
+        video: article.videoUrl,
+        caption: article.title,
+      });
+      videoSent = true;
+    } catch (error) {
+      videoWarning =
+        error instanceof Error
+          ? error.message
+          : 'Telegram could not send the article video.';
+      console.error(`Telegram article video failed for article ${article.id}: ${videoWarning}`);
+    }
+  }
+
+  let pdfWarning;
+  let pdfSent = false;
+  const pdfUrl = resolveImageUrl(article.pdfUrl);
+  if (pdfUrl && /\.pdf(\?.*)?$/i.test(new URL(pdfUrl).pathname)) {
+    try {
+      await telegramRequest(token, 'sendDocument', {
+        chat_id: chatId,
+        document: pdfUrl,
+        caption: article.title,
+      });
+      pdfSent = true;
+    } catch (error) {
+      pdfWarning =
+        error instanceof Error
+          ? error.message
+          : 'Telegram could not send the article PDF.';
+      console.error(`Telegram article PDF failed for article ${article.id}: ${pdfWarning}`);
+    }
+  }
+
   for (const chunk of splitTelegramMessage(message)) {
     await telegramRequest(token, 'sendMessage', {
       chat_id: chatId,
@@ -132,10 +235,13 @@ async function sendArticleAnnouncement(article) {
     });
   }
 
+  const warnings = [imageWarning, videoWarning, pdfWarning].filter(Boolean);
   return {
     sent: true,
     imageSent: article.image ? !imageWarning : false,
-    ...(imageWarning ? { warning: imageWarning } : {}),
+    videoSent,
+    pdfSent,
+    ...(warnings.length ? { warning: warnings.join(' | ') } : {}),
   };
 }
 

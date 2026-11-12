@@ -53,6 +53,62 @@ router.get('/', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/orders/:orderNumber — single order for the authenticated customer
+router.get('/:orderNumber', requireAuth, async (req, res) => {
+  try {
+    const user = await prisma.user.findUnique({
+      where: { id: req.user.id },
+      select: { email: true },
+    });
+    if (!user) {
+      return res.status(401).json({ success: false, error: 'User not found.' });
+    }
+
+    const order = await prisma.order.findFirst({
+      where: {
+        orderNumber: req.params.orderNumber,
+        customerEmail: { equals: user.email, mode: 'insensitive' },
+      },
+      include: {
+        items: {
+          orderBy: { createdAt: 'asc' },
+          select: {
+            id: true,
+            productId: true,
+            productName: true,
+            sku: true,
+            quantity: true,
+            unitPrice: true,
+            product: { select: { images: true } },
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      return res
+        .status(404)
+        .json({ success: false, error: 'Order not found.' });
+    }
+
+    return res.json({
+      success: true,
+      order: {
+        ...order,
+        total: Number(order.total),
+        items: order.items.map((item) => ({
+          ...item,
+          unitPrice: Number(item.unitPrice),
+          image: item.product?.images?.[0] || null,
+        })),
+      },
+    });
+  } catch (error) {
+    console.error('Failed to fetch customer order:', error);
+    return res.status(500).json({ success: false, error: 'Failed to fetch order.' });
+  }
+});
+
 router.post('/', requireAuth, async (req, res) => {
   try {
     const customerName = normalizeText(req.body?.customerName);
