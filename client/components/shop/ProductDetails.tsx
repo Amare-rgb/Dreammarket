@@ -27,8 +27,10 @@ export interface Product {
   currency: string;
   prices: ProductPrice[];
   discountPrice: number | null;
+  discountPrices?: { currency: string; amount: number }[] | null;
   unit: string;
   stock: number;
+  availabilityStatus?: string;
   featured?: boolean;
   badge?: string;
   images: string[];
@@ -491,19 +493,30 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
     [product.prices]
   );
 
+  // Build per-currency discount lookup
+  const discountMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (Array.isArray(product.discountPrices)) {
+      for (const d of product.discountPrices) {
+        if (d && typeof d.currency === "string" && Number(d.amount) > 0) {
+          map.set(d.currency.toUpperCase(), Number(d.amount));
+        }
+      }
+    }
+    // Fallback: single discountPrice applies to primary currency only
+    if (map.size === 0 && product.discountPrice != null && product.discountPrice > 0) {
+      map.set(currency.toUpperCase(), product.discountPrice);
+    }
+    return map;
+  }, [product.discountPrices, product.discountPrice, currency]);
+
+  const primaryDiscount = discountMap.get(currency.toUpperCase());
   const hasDiscount =
-    product.discountPrice !== null &&
-    product.discountPrice !== undefined &&
-    product.discountPrice > 0 &&
-    product.discountPrice < price;
+    primaryDiscount != null &&
+    primaryDiscount > 0 &&
+    primaryDiscount < price;
 
-  const effectivePrice = hasDiscount ? (product.discountPrice as number) : price;
-
-  const discountPercent = hasDiscount
-    ? Math.round(
-        ((price - (product.discountPrice as number)) / price) * 100
-      )
-    : 0;
+  const effectivePrice = hasDiscount ? (primaryDiscount as number) : price;
 
   // Cloudinary-only images
   const images = useMemo(() => {
@@ -600,6 +613,22 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
                     contain
                   />
 
+                  {(() => {
+                    const isTempOut =
+                      product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY";
+                    const isAvailable = product.stock > 0 && !isTempOut;
+                    if (isAvailable) return null;
+                    return (
+                      <div className="absolute inset-0 flex items-center justify-center bg-[#1a1410]/55 backdrop-blur-[1px]">
+                        <span className="rounded-full bg-white/95 px-4 py-2 text-xs font-bold uppercase tracking-wider text-[#1a1410] shadow-lg">
+                          {isTempOut
+                            ? t("product.out_of_stock_temp", "Out of stock temporarily")
+                            : t("product.out_of_stock", "Currently out of stock")}
+                        </span>
+                      </div>
+                    );
+                  })()}
+
                   {product.badge && (
                     <span className="absolute left-4 top-4 rounded-full bg-[#faf6ee]/95 px-3 py-1.5 text-[9px] font-bold uppercase tracking-[0.15em] text-[#b98a3e] shadow-sm backdrop-blur">
                       {product.badge === "Special Offer" ||
@@ -675,22 +704,24 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
               <div className="my-5 h-px bg-[#3a2a1e]/10" />
 
               {/* Main price — big, top */}
-              <div className="flex flex-wrap items-end gap-2.5 text-left">
-                <span className="font-serif-heading text-3xl font-semibold tracking-[-0.035em] text-[#1a1410] sm:text-[2.75rem]">
-                  {formatMoney(effectivePrice, currency)}
-                </span>
-                <span className="pb-1 text-sm text-[#7a6a58]">
-                  {t("product.per", "per")} {product.unit}
-                </span>
+              <div className="flex flex-col gap-1.5 text-left">
+                <div className="flex items-baseline gap-2.5">
+                  <span className="font-serif-heading text-3xl font-semibold tracking-[-0.035em] text-[#1a1410] sm:text-[2.75rem]">
+                    {formatMoney(price, currency)}
+                  </span>
+                  <span className="pb-1 text-sm text-[#7a6a58]">
+                    {t("product.per", "per")} {product.unit}
+                  </span>
+                </div>
                 {hasDiscount && (
-                  <>
-                    <span className="pb-1 text-sm text-gray-400 line-through">
-                      {formatMoney(price, currency)}
+                  <div className="flex items-center gap-2">
+                    <span className="rounded-md bg-red-100 px-2 py-0.5 text-xs font-bold text-red-700">
+                      {formatMoney(effectivePrice, currency)} disc
                     </span>
-                    <span className="mb-1 rounded-md bg-red-50 px-2 py-0.5 text-xs font-bold text-red-600">
-                      -{discountPercent}% OFF
+                    <span className="text-xs font-semibold text-red-600">
+                      Save {formatMoney(price - effectivePrice, currency)}
                     </span>
-                  </>
+                  </div>
                 )}
               </div>
 
@@ -701,43 +732,85 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
                     {t("product.also_available_in", "Also available in")}
                   </p>
                   <div className="space-y-1">
-                    {otherPrices.map((p) => (
-                      <div
-                        key={p.currency}
-                        className="flex items-center justify-between text-sm"
-                      >
-                        <span className="font-medium text-[#7a6a58]">
-                          {p.currency}
-                        </span>
-                        <span className="font-semibold text-[#1a1410]">
-                          {formatMoney(p.amount, p.currency)}
-                        </span>
-                      </div>
-                    ))}
+                    {otherPrices.map((p) => {
+                      const currencyDiscount = discountMap.get(p.currency.toUpperCase());
+                      const hasCurrencyDiscount =
+                        currencyDiscount != null &&
+                        currencyDiscount > 0 &&
+                        currencyDiscount < p.amount;
+                      const saving = hasCurrencyDiscount ? p.amount - currencyDiscount : 0;
+                      return (
+                        <div
+                          key={p.currency}
+                          className="flex flex-col gap-0.5"
+                        >
+                          <div className="flex items-center justify-between">
+                            <span className="font-medium text-[#7a6a58]">
+                              {p.currency}
+                            </span>
+                            <span className="font-semibold text-[#1a1410]">
+                              {formatMoney(p.amount, p.currency)}
+                            </span>
+                          </div>
+                          {hasCurrencyDiscount && (
+                            <div className="flex items-center gap-2 pl-4">
+                              <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">
+                                {formatMoney(currencyDiscount, p.currency)} disc
+                              </span>
+                              <span className="text-xs font-semibold text-red-600">
+                                Save {formatMoney(saving, p.currency)}
+                              </span>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
-              <div className="mt-3 flex items-center gap-2 text-sm">
-                <span
-                  className={`h-2.5 w-2.5 rounded-full ${
-                    product.stock > 0 ? "bg-[#e0a83c]" : "bg-red-500"
-                  }`}
-                />
-                <span className="text-[#7a6a58]">
-                  {product.stock > 0
-                    ? `${product.stock} ${product.unit} ${t(
-                        "product.in_production_stock",
-                        "available in this listing"
-                      )}`
-                    : t("product.out_of_stock", "Currently out of stock")}
-                </span>
-              </div>
+              {(() => {
+                const isTempOut =
+                  product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY";
+                const isAvailable = product.stock > 0 && !isTempOut;
+                return (
+                  <div className="mt-3 flex items-center gap-2 text-sm">
+                    <span
+                      className={`h-2.5 w-2.5 rounded-full ${
+                        isAvailable
+                          ? "bg-emerald-500"
+                          : isTempOut
+                          ? "bg-amber-500"
+                          : "bg-red-500"
+                      }`}
+                    />
+                    <span
+                      className={
+                        isAvailable
+                          ? "font-semibold text-emerald-700"
+                          : isTempOut
+                          ? "font-semibold text-amber-700"
+                          : "text-[#7a6a58]"
+                      }
+                    >
+                      {isAvailable
+                        ? t("product.available_now", "Available now")
+                        : isTempOut
+                        ? t("product.out_of_stock_temp", "Out of stock temporarily")
+                        : t("product.out_of_stock", "Currently out of stock")}
+                    </span>
+                  </div>
+                );
+              })()}
 
               {/* Description */}
               <section
                 aria-labelledby="product-description-heading"
-                className="mt-5 rounded-2xl bg-white p-4 shadow-sm ring-1 ring-[#3a2a1e]/5 sm:p-5"
+                className={`mt-5 rounded-2xl bg-white p-4 shadow-sm ring-1 sm:p-5 ${
+                  product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY" || product.stock < 1
+                    ? "ring-amber-200"
+                    : "ring-[#3a2a1e]/5"
+                }`}
               >
                 <h2
                   id="product-description-heading"
@@ -745,13 +818,35 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
                 >
                   {t("product.description_title", "Product Description")}
                 </h2>
-                <p className="mt-2 whitespace-pre-line break-words text-sm leading-6 text-[#625448]">
-                  {product.description?.trim() ||
-                    t(
-                      "product.description_unavailable",
-                      "No description has been added for this product yet."
-                    )}
-                </p>
+                {(() => {
+                  const isTempOut =
+                    product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY";
+                  const isAvailable = product.stock > 0 && !isTempOut;
+                  if (!isAvailable) {
+                    return (
+                      <p className="mt-2 whitespace-pre-line break-words text-sm leading-6 font-medium text-amber-700">
+                        {isTempOut
+                          ? t(
+                              "product.temp_out_desc",
+                              "This product is temporarily out of stock. We'll restock it soon — please check back later or contact us for availability."
+                            )
+                          : t(
+                              "product.out_desc",
+                              "This product is currently out of stock. Please check back later or contact us for availability."
+                            )}
+                      </p>
+                    );
+                  }
+                  return (
+                    <p className="mt-2 whitespace-pre-line break-words text-sm leading-6 text-[#625448]">
+                      {product.description?.trim() ||
+                        t(
+                          "product.description_unavailable",
+                          "No description has been added for this product yet."
+                        )}
+                    </p>
+                  );
+                })()}
               </section>
 
               {/* CTA buttons */}
@@ -759,11 +854,21 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
                 <button
                   type="button"
                   onClick={addToCart}
-                  disabled={product.stock < 1}
-                  className="flex h-14 items-center justify-center gap-2 rounded-2xl border border-[#20283a] bg-[#20283a] px-5 text-base font-bold text-white shadow-lg transition hover:bg-[#30384f] disabled:cursor-not-allowed disabled:opacity-50"
+                  disabled={product.stock < 1 || product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY"}
+                  className={`flex h-14 items-center justify-center gap-2 rounded-2xl border px-5 text-base font-bold shadow-lg transition ${
+                    product.stock < 1 || product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY"
+                      ? product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY"
+                        ? "border-amber-300 bg-amber-100 text-amber-800 cursor-not-allowed"
+                        : "border-slate-300 bg-slate-200 text-slate-500 cursor-not-allowed"
+                      : "border-[#20283a] bg-[#20283a] text-white hover:bg-[#30384f]"
+                  }`}
                 >
                   <ShoppingCart size={18} />
-                  {t("checkout.add_to_order", "Add to order")}
+                  {product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY"
+                    ? t("product.out_of_stock_temp", "Out of stock temporarily")
+                    : product.stock < 1
+                    ? t("product.out_of_stock", "Out of stock")
+                    : t("checkout.add_to_order", "Add to order")}
                 </button>
                 <Link
                   href="/contact"

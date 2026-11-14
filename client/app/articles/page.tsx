@@ -7,6 +7,7 @@ import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowRight, LoaderCircle, Search, Video, X, MessageSquare } from "lucide-react";
 import { api } from "@/lib/api";
 import VideoPlayer from "@/components/VideoPlayer";
+import { LinkifyText } from "@/components/LinkifyText";
 import {
   ArticleDetail,
   ArticleSummary,
@@ -609,7 +610,7 @@ function ArticlesBrowser() {
               ) : preview ? (
                 <>
                   <div className="whitespace-pre-wrap break-words py-5 text-sm leading-7 text-slate-700">
-                    {preview.content}
+                    <LinkifyText text={preview.content} />
                   </div>
                   {(preview.videoUrl || selected.videoUrl) && (
                     <div className="pb-5">

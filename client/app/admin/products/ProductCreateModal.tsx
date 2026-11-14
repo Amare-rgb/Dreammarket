@@ -40,6 +40,7 @@ interface PriceRow {
   id: number;
   currency: string;
   amount: string;
+  discountAmount: string;
 }
 
 const CURRENCIES: CurrencyOption[] = [
@@ -109,10 +110,13 @@ export default function ProductCreateModal({
   const [creatingCategory, setCreatingCategory] = useState(false);
   const [deletingCategory, setDeletingCategory] = useState(false);
   const [priceRows, setPriceRows] = useState<PriceRow[]>([
-    { id: 1, currency: DEFAULT_CURRENCY, amount: "" },
+    { id: 1, currency: DEFAULT_CURRENCY, amount: "", discountAmount: "" },
   ]);
   const [stock, setStock] = useState("0");
-  const [discountPrice, setDiscountPrice] = useState("");
+  const [availabilityStatus, setAvailabilityStatus] = useState<"AVAILABLE" | "OUT_OF_STOCK_TEMPORARY">("AVAILABLE");
+  const [autoRestock, setAutoRestock] = useState(true);
+  const [restockAfterDays, setRestockAfterDays] = useState("2");
+  const [restockQuantity, setRestockQuantity] = useState("10");
   const [images, setImages] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   
@@ -169,7 +173,7 @@ export default function ProductCreateModal({
     priceRowId.current += 1;
     setPriceRows((rows) => [
       ...rows,
-      { id: priceRowId.current, currency: nextCurrency.code, amount: "" },
+      { id: priceRowId.current, currency: nextCurrency.code, amount: "", discountAmount: "" },
     ]);
   };
 
@@ -381,18 +385,19 @@ export default function ProductCreateModal({
 
     const primary = prices[0];
 
-    let discountValue: number | null = null;
-    if (discountPrice.trim() !== "") {
-      discountValue = Number(discountPrice);
-      if (
-        !Number.isFinite(discountValue) ||
-        discountValue <= 0 ||
-        discountValue >= primary.amount
-      ) {
-        setError(
-          `Discount price must be greater than 0 and less than the ${primary.currency} price (${primary.amount}).`
-        );
-        return;
+    // Build per-currency discount prices (direct amounts)
+    const discountPrices: { currency: string; amount: number }[] = [];
+    for (const row of priceRows) {
+      if (row.discountAmount.trim() !== "") {
+        const dAmount = Number(row.discountAmount);
+        const original = Number(row.amount);
+        if (!Number.isFinite(dAmount) || dAmount <= 0 || dAmount >= original) {
+          setError(
+            `Discount for ${row.currency} must be greater than 0 and less than its price (${original}).`
+          );
+          return;
+        }
+        discountPrices.push({ currency: row.currency, amount: dAmount });
       }
     }
 
@@ -406,8 +411,12 @@ export default function ProductCreateModal({
         pricePerUnit: primary.amount,
         currency: primary.currency,
         prices,
-        discountPrice: discountValue,
+        discountPrices,
         stock: Number(stock),
+        availabilityStatus,
+        autoRestock,
+        restockAfterDays: Number(restockAfterDays) || 2,
+        restockQuantity: Number(restockQuantity) || 10,
         images,
         videoUrl: videoUrl || undefined,
         unitOfMeasurement: "pcs",
@@ -625,6 +634,25 @@ export default function ProductCreateModal({
                             className="h-full min-w-0 flex-1 rounded-r-lg border-0 bg-transparent px-3 font-normal outline-none"
                           />
                         </div>
+                        <div className="flex h-11 flex-1 items-stretch rounded-lg border border-slate-300 focus-within:border-[#EB6D3D] focus-within:ring-2 focus-within:ring-[#EB6D3D]/20">
+                          <span className="flex h-full items-center border-0 border-r border-slate-300 bg-slate-50 px-2 text-xs font-semibold text-slate-500">
+                            Disc
+                          </span>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={row.discountAmount}
+                            onChange={(event) =>
+                              updatePriceRow(row.id, {
+                                discountAmount: event.target.value,
+                              })
+                            }
+                            placeholder="0.00"
+                            aria-label={`Discount amount ${index + 1}`}
+                            className="h-full min-w-0 flex-1 rounded-r-lg border-0 bg-transparent px-3 font-normal outline-none"
+                          />
+                        </div>
                         <button
                           type="button"
                           onClick={() => removePriceRow(row.id)}
@@ -638,6 +666,9 @@ export default function ProductCreateModal({
                       <p className="mt-1 text-xs font-normal text-slate-500">
                         {index === 0 ? "Main price" : "Additional price"}
                         {valid ? `: ${formatMoney(amount, row.currency)}` : ""}
+                        {row.discountAmount.trim() !== "" && Number(row.discountAmount) > 0 && Number(row.discountAmount) < amount
+                          ? ` · Disc: ${formatMoney(Number(row.discountAmount), row.currency)} · Save: ${formatMoney(amount - Number(row.discountAmount), row.currency)}`
+                          : ""}
                       </p>
                     </div>
                   );
@@ -654,22 +685,9 @@ export default function ProductCreateModal({
               </button>
             </div>
 
-            <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
-              Discount price ({priceRows[0]?.currency || DEFAULT_CURRENCY}){" "}
-              <span className="font-normal text-slate-400">(optional)</span>
-              <input
-                type="number"
-                min="0"
-                step="0.01"
-                value={discountPrice}
-                onChange={(event) => setDiscountPrice(event.target.value)}
-                placeholder="Sale price shown to customers"
-                className="mt-1.5 h-11 w-full rounded-lg border border-slate-300 px-3 font-normal outline-none transition focus:border-[#EB6D3D] focus:ring-2 focus:ring-[#EB6D3D]/20"
-              />
-              <span className="mt-1 block text-xs font-normal text-slate-500">
-                Must be lower than the main price. Leave empty for no discount.
-              </span>
-            </label>
+            <p className="text-xs font-normal text-slate-500 sm:col-span-2">
+              <strong>Price</strong> = original price (e.g., 688). <strong>Disc</strong> = discount price customers pay (e.g., 89). Customer sees: 89 (was 688, save 599). Leave Disc empty for no discount.
+            </p>
 
             <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
               Stock quantity <span className="text-red-600">*</span>
@@ -683,6 +701,77 @@ export default function ProductCreateModal({
                 className="mt-1.5 h-11 w-full rounded-lg border border-slate-300 px-3 font-normal outline-none transition focus:border-[#EB6D3D] focus:ring-2 focus:ring-[#EB6D3D]/20"
               />
             </label>
+
+            {/* Availability status */}
+            <div className="sm:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <span className="text-sm font-semibold text-slate-700">
+                Availability status
+              </span>
+              <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+                <button
+                  type="button"
+                  onClick={() => setAvailabilityStatus("AVAILABLE")}
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition ${
+                    availabilityStatus === "AVAILABLE"
+                      ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                  }`}
+                >
+                  <span className={`h-2.5 w-2.5 rounded-full ${availabilityStatus === "AVAILABLE" ? "bg-emerald-500" : "bg-slate-300"}`} />
+                  Available now
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setAvailabilityStatus("OUT_OF_STOCK_TEMPORARY")}
+                  className={`flex items-center gap-2 rounded-lg border px-3 py-2.5 text-sm font-medium transition ${
+                    availabilityStatus === "OUT_OF_STOCK_TEMPORARY"
+                      ? "border-amber-500 bg-amber-50 text-amber-700"
+                      : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
+                  }`}
+                >
+                  <span className={`h-2.5 w-2.5 rounded-full ${availabilityStatus === "OUT_OF_STOCK_TEMPORARY" ? "bg-amber-500" : "bg-slate-300"}`} />
+                  Out of stock temporarily
+                </button>
+              </div>
+
+              {availabilityStatus === "OUT_OF_STOCK_TEMPORARY" && (
+                <div className="mt-3 space-y-3">
+                  <label className="flex items-center gap-2 text-sm text-slate-700">
+                    <input
+                      type="checkbox"
+                      checked={autoRestock}
+                      onChange={(e) => setAutoRestock(e.target.checked)}
+                      className="h-4 w-4 rounded border-slate-300 text-[#EB6D3D] focus:ring-[#EB6D3D]"
+                    />
+                    Auto-restock after a set number of days
+                  </label>
+                  {autoRestock && (
+                    <div className="grid grid-cols-2 gap-3">
+                      <label className="text-xs font-medium text-slate-600">
+                        Restock after (days)
+                        <input
+                          type="number"
+                          min="1"
+                          value={restockAfterDays}
+                          onChange={(e) => setRestockAfterDays(e.target.value)}
+                          className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-2 text-sm font-normal outline-none focus:border-[#EB6D3D] focus:ring-1 focus:ring-[#EB6D3D]"
+                        />
+                      </label>
+                      <label className="text-xs font-medium text-slate-600">
+                        Restock quantity
+                        <input
+                          type="number"
+                          min="1"
+                          value={restockQuantity}
+                          onChange={(e) => setRestockQuantity(e.target.value)}
+                          className="mt-1 h-9 w-full rounded-lg border border-slate-300 px-2 text-sm font-normal outline-none focus:border-[#EB6D3D] focus:ring-1 focus:ring-[#EB6D3D]"
+                        />
+                      </label>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
 
             <div className="sm:col-span-2">
               <span className="text-sm font-semibold text-slate-700">

@@ -62,7 +62,7 @@ export default function AdminCommentsPage() {
       // ✅ Corrected route to match backend
       await api.delete(`/api/articles/admin/comments/${id}`);
       setComments((prev) => prev.filter((c) => c.id !== id));
-    } catch (err) {
+    } catch {
       alert("Failed to delete comment. Please try again.");
     } finally {
       setDeletingId(null);

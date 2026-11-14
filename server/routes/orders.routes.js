@@ -185,7 +185,7 @@ router.post('/', requireAuth, async (req, res) => {
     const order = await prisma.$transaction(async (transaction) => {
       const products = await transaction.product.findMany({
         where: { id: { in: [...quantities.keys()] } },
-        select: { id: true, name: true, sku: true, price: true, discountPrice: true },
+        select: { id: true, name: true, sku: true, price: true, discountPrice: true, stock: true },
       });
 
       if (products.length !== quantities.size) {
@@ -197,9 +197,19 @@ router.post('/', requireAuth, async (req, res) => {
       const orderItems = [];
       for (const product of products) {
         const quantity = quantities.get(product.id);
+        const newStock = (product.stock || 0) - quantity;
+        const wentOutOfStock = newStock <= 0;
         const changed = await transaction.product.updateMany({
           where: { id: product.id, stock: { gte: quantity } },
-          data: { stock: { decrement: quantity } },
+          data: {
+            stock: { decrement: quantity },
+            ...(wentOutOfStock
+              ? {
+                  availabilityStatus: 'OUT_OF_STOCK_TEMPORARY',
+                  outOfStockAt: new Date(),
+                }
+              : {}),
+          },
         });
         if (changed.count !== 1) {
           const error = new Error(`${product.name} does not have enough stock for this order.`);
@@ -220,8 +230,9 @@ router.post('/', requireAuth, async (req, res) => {
 
       const total = orderItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
       
-      // ✅ FIX: Generate unique order number without relying on a database sequence
-      const orderNumber = `ORD-${Date.now()}-${Math.floor(1000 + Math.random() * 9000)}`;
+      // Generate sequential order number (1, 2, 3, ...)
+      const orderCount = await transaction.order.count();
+      const orderNumber = String(orderCount + 1);
 
       return transaction.order.create({
         data: {

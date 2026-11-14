@@ -9,6 +9,7 @@ const express = require('express');
 const cors = require('cors');
 const http = require('http');
 const prisma = require('./lib/prisma');
+const { startRestockScheduler } = require('./lib/restock');
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -279,12 +280,22 @@ app.get('/api', rootInfo);
 // 404 HANDLER
 // ═══════════════════════════════════════════════════════════
 app.use((req, res) => {
-  console.log('❌ Route not found:', req.method, req.originalUrl);
+  const url = req.originalUrl || '';
+  // Common internet scanner / bot probes — don't spam the logs for these.
+  const isScannerProbe =
+    /\/(mcp|cgi|\.env|wp-|wordpress|phpmyadmin|vendor\/|\.git|loginMsg|boaform|hudson|solr|actuator|server-status|HNAP1|sdk\/|console\/)/i.test(
+      url
+    ) || /\.(php|asp|aspx|jsp|cgi|env|git|sql|bak|old|swp)$/i.test(url);
+
+  if (!isScannerProbe) {
+    console.log('❌ Route not found:', req.method, url);
+  }
+
   res.status(404).json({
     success: false,
     error: 'Route not found',
-    message: `Route not found: ${req.method} ${req.originalUrl}`,
-    path: req.originalUrl,
+    message: `Route not found: ${req.method} ${url}`,
+    path: url,
     method: req.method,
   });
 });
@@ -441,6 +452,7 @@ if (!isServerless) {
       console.log('💾 Database: ' + (dbConnected ? 'Local PostgreSQL Connected ✅' : 'Not Connected ❌'));
       console.log('🔓 Allowed origins:');
       allowedOrigins.forEach((o) => console.log('   • ' + o));
+      startRestockScheduler();
     });
   })();
 }

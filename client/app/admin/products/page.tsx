@@ -133,8 +133,14 @@ interface Product {
   currency?: string;
   prices?: ProductPrice[] | null;
   discountPrice?: number;
+  discountPrices?: { currency: string; amount: number }[] | null;
   salePrice?: number;
   stock: number;
+  availabilityStatus?: string;
+  outOfStockAt?: string | null;
+  autoRestock?: boolean;
+  restockAfterDays?: number;
+  restockQuantity?: number;
   sku: string;
   images: string[];
   videoUrl?: string | null;
@@ -420,6 +426,7 @@ const ProductsPage: React.FC = () => {
 
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize] = useState(10);
+  const [togglingId, setTogglingId] = useState<string | null>(null);
 
   const isMounted = useRef(true);
   const hasFetchedInitial = useRef(false);
@@ -625,6 +632,39 @@ const ProductsPage: React.FC = () => {
 
   const handleRefresh = () => {
     void fetchProducts({ page: currentPage });
+  };
+
+  const handleToggleAvailability = async (product: Product) => {
+    const isTempOut =
+      product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY" ||
+      (product.stock <= 0 && product.availabilityStatus !== "AVAILABLE");
+    const nextStatus = isTempOut ? "AVAILABLE" : "OUT_OF_STOCK_TEMPORARY";
+
+    setTogglingId(product.id);
+    try {
+      const response = await api.patch(`/api/products/${product.id}/availability`, {
+        availabilityStatus: nextStatus,
+      });
+      if (response.data?.success) {
+        showNotification(
+          "success",
+          nextStatus === "AVAILABLE"
+            ? `"${product.name}" is now Available now.`
+            : `"${product.name}" marked as Out of stock temporarily.`
+        );
+        await fetchProducts({ silent: true, page: currentPage });
+      }
+    } catch (err) {
+      console.error("Error toggling availability:", err);
+      if (axios.isAxiosError(err)) {
+        showNotification(
+          "error",
+          err.response?.data?.error || "Failed to update availability"
+        );
+      }
+    } finally {
+      setTogglingId(null);
+    }
   };
 
   const handleProductCreated = () => {
@@ -863,6 +903,9 @@ const ProductsPage: React.FC = () => {
                     Stock
                   </th>
                   <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
+                    Availability
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
                     Created
                   </th>
                   <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wider whitespace-nowrap">
@@ -921,14 +964,23 @@ const ProductsPage: React.FC = () => {
                               {formatMoney(p.amount, p.currency)}
                             </span>
                           ))}
-                          {product.discountPrice &&
-                            product.discountPrice > 0 && (
+                          {(() => {
+                            const discounts = Array.isArray(product.discountPrices) && product.discountPrices.length > 0
+                              ? product.discountPrices
+                              : product.discountPrice != null && product.discountPrice > 0
+                                ? [{ currency: mainCurrency, amount: product.discountPrice }]
+                                : [];
+                            if (discounts.length === 0) return null;
+                            return (
                               <span className="text-xs text-yellow-600 font-medium">
-                                (Disc:{" "}
-                                {formatMoney(product.discountPrice, mainCurrency)}
-                                )
+                                Discount: {discounts.map((d) => {
+                                  const original = product.prices?.find((p) => p.currency === d.currency)?.amount ?? product.price;
+                                  const saving = original - d.amount;
+                                  return `${d.currency} ${formatMoney(d.amount, d.currency)} (save ${formatMoney(saving, d.currency)})`;
+                                }).join(", ")}
                               </span>
-                            )}
+                            );
+                          })()}
                         </div>
                       </td>
                       <td className="px-4 py-3">
@@ -963,6 +1015,40 @@ const ProductsPage: React.FC = () => {
                         >
                           {product.stock || 0}
                         </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        {(() => {
+                          const isTempOut =
+                            product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY" ||
+                            (product.stock <= 0 && product.availabilityStatus !== "AVAILABLE");
+                          const isAvailable = !isTempOut && product.stock > 0;
+                          return (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleAvailability(product)}
+                              disabled={togglingId === product.id}
+                              title="Click to toggle availability"
+                              className="inline-flex items-center gap-1.5 text-sm font-semibold disabled:opacity-50"
+                            >
+                              {isAvailable ? (
+                                <>
+                                  <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                                  <span className="text-emerald-700">Available now</span>
+                                </>
+                              ) : isTempOut ? (
+                                <>
+                                  <span className="h-2 w-2 rounded-full bg-amber-500" />
+                                  <span className="text-amber-700">Out of stock temporarily</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="h-2 w-2 rounded-full bg-red-500" />
+                                  <span className="text-red-600">Out of stock</span>
+                                </>
+                              )}
+                            </button>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-3">
                         <div className="text-xs text-gray-500 whitespace-nowrap">

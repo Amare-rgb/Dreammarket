@@ -109,7 +109,7 @@ export default function ArticlesNavbar() {
     }`;
 
   return (
-    <header className="relative z-40 border-b border-slate-200 bg-white">
+    <header className="sticky top-0 z-40 border-b border-slate-200 bg-white shadow-sm">
       <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-4 px-4 sm:px-6">
         {/* Logo */}
         <Link
@@ -256,10 +256,10 @@ export default function ArticlesNavbar() {
                       href={`/articles?category=${c.slug}`}
                       onClick={closeAll}
                       aria-current={active ? "page" : undefined}
-                      className={`text-sm transition ${
+                      className={`rounded-full px-3 py-1 text-sm transition ${
                         active
-                          ? "font-bold text-[#cf5427]"
-                          : "font-medium text-slate-600 hover:text-[#cf5427]"
+                          ? "bg-[#20283a] font-bold text-white"
+                          : "font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900"
                       }`}
                     >
                       {c.name}

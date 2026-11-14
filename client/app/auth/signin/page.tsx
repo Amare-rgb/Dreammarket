@@ -58,7 +58,7 @@ export default function SignInPage() {
     process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000";
 
   // Store auth data and redirect based on role (shared by password + Google login)
-  const completeSignIn = (data: {
+  const completeSignIn = useCallback((data: {
     token?: string;
     user?: { role?: string } & Record<string, unknown>;
   }) => {
@@ -99,10 +99,14 @@ export default function SignInPage() {
     const requestedRedirect = new URLSearchParams(
       window.location.search
     ).get("redirectTo");
-    router.replace(
-      requestedRedirect === "/contact" ? requestedRedirect : redirectUrl
-    );
-  };
+    
+    // Use setTimeout to ensure router is fully initialized
+    setTimeout(() => {
+      router.replace(
+        requestedRedirect === "/contact" ? requestedRedirect : redirectUrl
+      );
+    }, 0);
+  }, [router]);
 
   // Google credential callback — receives the ID token from Google
   const handleGoogleCredential = useCallback(
@@ -164,19 +168,20 @@ export default function SignInPage() {
       } finally {
         setIsLoading(false);
       }
-      // eslint-disable-next-line react-hooks/exhaustive-deps
     },
-    [apiBaseUrl, router, t]
+    [apiBaseUrl, t, completeSignIn]
   );
 
   // Load Google Identity Services and render the official button
+  const googleInitialized = useRef(false);
+  
   useEffect(() => {
     const clientId = process.env.NEXT_PUBLIC_GOOGLE_CLIENT_ID;
     console.log(
       "🔐 Google Client ID configured:",
       clientId ? "YES" : "NO — set NEXT_PUBLIC_GOOGLE_CLIENT_ID in client/.env.local"
     );
-    if (!clientId || !googleBtnRef.current) return;
+    if (!clientId || !googleBtnRef.current || googleInitialized.current) return;
 
     const initGoogle = () => {
       const google = (window as unknown as {
@@ -196,18 +201,23 @@ export default function SignInPage() {
         };
       }).google;
 
-      if (!google?.accounts?.id || !googleBtnRef.current) return;
+      if (!google?.accounts?.id || !googleBtnRef.current || googleInitialized.current) return;
 
+      googleInitialized.current = true;
+      
       google.accounts.id.initialize({
         client_id: clientId,
         callback: handleGoogleCredential,
       });
 
+      // Get container width for button
+      const containerWidth = googleBtnRef.current.offsetWidth || 300;
+      
       google.accounts.id.renderButton(googleBtnRef.current, {
         type: "standard",
         theme: "outline",
         size: "large",
-        width: "100%",
+        width: Math.min(containerWidth, 400), // Max 400px, use container width
         text: "continue_with",
         shape: "pill",
       });

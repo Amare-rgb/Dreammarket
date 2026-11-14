@@ -106,6 +106,7 @@ api.interceptors.response.use(
       localStorage.removeItem("user");
       sessionStorage.removeItem("user");
       if (typeof window !== "undefined") {
+        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
         window.location.href = "/auth/signin";
       }
     }
@@ -139,7 +140,13 @@ interface Product {
   currency?: string;
   prices?: ProductPrice[] | null;
   discountPrice?: number;
+  discountPrices?: { currency: string; amount: number }[] | null;
   stock: number;
+  availabilityStatus?: string;
+  outOfStockAt?: string | null;
+  autoRestock?: boolean;
+  restockAfterDays?: number;
+  restockQuantity?: number;
   sku: string;
   images: string[];
   videoUrl?: string | null;
@@ -712,39 +719,38 @@ const ProductDetailPage: React.FC<DetailPageProps> = ({ params }) => {
                 </div>
               ))}
 
-              {product.discountPrice &&
-                product.discountPrice < product.price && (
+              {(() => {
+                const discounts = Array.isArray(product.discountPrices) && product.discountPrices.length > 0
+                  ? product.discountPrices
+                  : product.discountPrice != null
+                    ? [{ currency: mainCurrency, amount: product.discountPrice }]
+                    : [];
+                const validDiscounts = discounts.filter(
+                  (d) => d.amount > 0 && d.amount < (product.prices?.find((p) => p.currency === d.currency)?.amount ?? product.price)
+                );
+                if (validDiscounts.length === 0) return null;
+                return (
                   <>
-                    <div className="flex justify-between items-center border-t border-gray-100 pt-3">
-                      <span className="text-sm text-gray-600">
-                        Discounted Price ({mainCurrency})
-                      </span>
-                      <span className="text-lg font-bold text-yellow-600">
-                        {formatMoney(product.discountPrice, mainCurrency)}
-                      </span>
-                    </div>
-                    <div className="flex justify-between items-center text-sm">
-                      <span className="text-yellow-600">You Save</span>
-                      <span className="text-yellow-600 font-medium">
-                        {formatMoney(
-                          product.price - product.discountPrice,
-                          mainCurrency
-                        )}
-                      </span>
-                    </div>
+                    {validDiscounts.map((d) => {
+                      const original = product.prices?.find((p) => p.currency === d.currency)?.amount ?? product.price;
+                      const saving = original - d.amount;
+                      return (
+                        <div key={d.currency} className="flex justify-between items-center border-t border-gray-100 pt-3">
+                          <span className="text-sm text-gray-600">
+                            Discount ({d.currency})
+                          </span>
+                          <span className="text-lg font-bold text-yellow-600">
+                            {formatMoney(d.amount, d.currency)}
+                            <span className="ml-2 text-xs font-normal text-gray-500">
+                              (was {formatMoney(original, d.currency)}, save {formatMoney(saving, d.currency)})
+                            </span>
+                          </span>
+                        </div>
+                      );
+                    })}
                   </>
-                )}
-              {product.discountPrice &&
-                product.discountPrice >= product.price && (
-                  <div className="flex justify-between items-center border-t border-gray-100 pt-3">
-                    <span className="text-sm text-red-500">
-                      Invalid discount price
-                    </span>
-                    <span className="text-sm text-red-500 line-through">
-                      {formatMoney(product.discountPrice, mainCurrency)}
-                    </span>
-                  </div>
-                )}
+                );
+              })()}
             </div>
           </div>
 
@@ -767,6 +773,18 @@ const ProductDetailPage: React.FC<DetailPageProps> = ({ params }) => {
                 {product.stock || 0}
               </span>
             </div>
+            {(() => {
+              const isTempOut = product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY";
+              const isAvailable = product.stock > 0 && !isTempOut;
+              return (
+                <div className="flex items-center gap-2 mt-2">
+                  <span className={`h-2.5 w-2.5 rounded-full ${isAvailable ? "bg-emerald-500" : isTempOut ? "bg-amber-500" : "bg-red-500"}`} />
+                  <span className={`text-sm font-semibold ${isAvailable ? "text-emerald-700" : isTempOut ? "text-amber-700" : "text-red-600"}`}>
+                    {isAvailable ? "Available now" : isTempOut ? "Out of stock temporarily" : "Out of stock"}
+                  </span>
+                </div>
+              );
+            })()}
             {product.stock === 0 && (
               <p className="text-xs text-red-500 mt-2">Out of Stock</p>
             )}

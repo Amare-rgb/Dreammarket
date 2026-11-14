@@ -66,7 +66,9 @@ interface HomeProductData {
   currency?: string | null;
   prices?: ProductPriceEntry[] | null;
   discountPrice?: number | string | null;
+  discountPrices?: { currency: string; amount: number }[] | null;
   stock?: number | null;
+  availabilityStatus?: string | null;
   unitOfMeasurement?: string | null;
 }
 
@@ -261,13 +263,11 @@ function buildCategoryData(
 // ============================================================
 function CategoryCard({
   product,
-  priceLabel,
   productsLabel,
   fromLabel,
   priority = false,
 }: {
   product: CategoryItem;
-  priceLabel: string;
   productsLabel: string;
   fromLabel: string;
   priority?: boolean;
@@ -469,7 +469,6 @@ function ProductCards() {
 
   const productsLabel = t("home.products_label", "products");
   const fromLabel = t("home.from_label", "From");
-  const priceLabel = t("home.price_label", "Price");
 
   if (loading) {
     return (
@@ -558,7 +557,6 @@ function ProductCards() {
             >
               <CategoryCard
                 product={product}
-                priceLabel={priceLabel}
                 productsLabel={productsLabel}
                 fromLabel={fromLabel}
                 priority={index === 0}
@@ -603,12 +601,20 @@ function HomeProducts() {
 
       const resolvedPrice = resolvePrimaryPrice(product);
       const price = resolvedPrice?.amount ?? 0;
-      const discountPrice =
-        product.discountPrice != null ? Number(product.discountPrice) : null;
-      const unitPrice =
-        discountPrice !== null && discountPrice > 0 && discountPrice < price
-          ? discountPrice
-          : price;
+      const currency = resolvedPrice?.currency ?? "ETB";
+      // Use per-currency discount for the primary currency
+      let unitPrice = price;
+      if (Array.isArray(product.discountPrices)) {
+        const primaryDiscount = product.discountPrices.find(
+          (d) => d.currency.toUpperCase() === currency.toUpperCase()
+        );
+        if (primaryDiscount && primaryDiscount.amount > 0 && primaryDiscount.amount < price) {
+          unitPrice = primaryDiscount.amount;
+        }
+      } else if (product.discountPrice != null) {
+        const dp = Number(product.discountPrice);
+        if (dp > 0 && dp < price) unitPrice = dp;
+      }
       const slug = product.slug || product.id;
 
       writeCart(
@@ -761,14 +767,25 @@ function HomeProducts() {
               const otherPrices = priceEntries.filter(
                 (entry) => entry.currency !== currency
               );
-              const discountPrice =
-                product.discountPrice != null
-                  ? Number(product.discountPrice)
-                  : null;
+              // Build per-currency discount lookup
+              const discountMap = new Map<string, number>();
+              if (Array.isArray(product.discountPrices)) {
+                for (const d of product.discountPrices) {
+                  if (d && typeof d.currency === "string" && Number(d.amount) > 0) {
+                    discountMap.set(d.currency.toUpperCase(), Number(d.amount));
+                  }
+                }
+              }
+              if (discountMap.size === 0 && product.discountPrice != null) {
+                const dp = Number(product.discountPrice);
+                if (dp > 0) discountMap.set(currency.toUpperCase(), dp);
+              }
+              const primaryDiscount = discountMap.get(currency.toUpperCase());
               const hasDiscount =
-                discountPrice !== null &&
-                discountPrice > 0 &&
-                discountPrice < price;
+                primaryDiscount != null &&
+                primaryDiscount > 0 &&
+                primaryDiscount < price;
+              const effectivePrice = hasDiscount ? primaryDiscount : price;
               const image =
                 (Array.isArray(product.images)
                   ? product.images.map(resolveImage).find(Boolean)
@@ -778,7 +795,9 @@ function HomeProducts() {
                   ? product.category
                   : product.category?.name;
 
-              const isAvailable = Number(product.stock) > 0;
+              const isTempOut =
+                product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY";
+              const isAvailable = Number(product.stock) > 0 && !isTempOut;
 
               return (
                 <div
@@ -811,6 +830,15 @@ function HomeProducts() {
                           {category}
                         </span>
                       )}
+                      {!isAvailable && (
+                        <div className="absolute inset-0 flex items-center justify-center bg-[#1a1410]/55 backdrop-blur-[1px]">
+                          <span className="rounded-full bg-white/95 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#1a1410] shadow-lg">
+                            {isTempOut
+                              ? t("shop.out_of_stock_temp", "Out of stock temporarily")
+                              : t("shop.out_of_stock", "Out of stock")}
+                          </span>
+                        </div>
+                      )}
                     </div>
                     <div className="flex flex-1 flex-col p-3">
                       <h3 className="line-clamp-2 min-h-10 text-center text-sm font-semibold text-[#2a1f18] group-hover:text-[#F47822]">
@@ -823,32 +851,56 @@ function HomeProducts() {
                             "Explore product details and discover useful finds for everyday life."
                           )}
                       </p>
-                      <div className="mt-2 flex flex-wrap items-baseline justify-center gap-x-2 gap-y-1 text-center">
+                      <div className="mt-2 flex flex-col items-center gap-1 text-center">
                         <span className="text-sm font-bold text-[#2a1f18]">
-                          {currency}{" "}
-                          {(hasDiscount ? discountPrice : price).toLocaleString()}
+                          {currency} {price.toLocaleString()}
                         </span>
                         {hasDiscount && (
-                          <span className="text-xs text-gray-400 line-through">
-                            {currency} {price.toLocaleString()}
-                          </span>
+                          <div className="flex items-center gap-1.5">
+                            <span className="rounded bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-700">
+                              {currency} {effectivePrice.toLocaleString()} disc
+                            </span>
+                            <span className="text-[10px] font-semibold text-red-600">
+                              Save {currency} {(price - effectivePrice).toLocaleString()}
+                            </span>
+                          </div>
                         )}
                       </div>
                       {otherPrices.length > 0 && (
-                        <div className="mt-1.5 space-y-0.5">
-                          {otherPrices.map((entry) => (
-                            <div
-                              key={entry.currency}
-                              className="flex items-center justify-between text-[10px] text-[#7a6a58]"
-                            >
-                              <span className="font-semibold uppercase tracking-wide">
-                                {entry.currency}
-                              </span>
-                              <span>
-                                {entry.currency} {entry.amount.toLocaleString()}
-                              </span>
-                            </div>
-                          ))}
+                        <div className="mt-1.5 space-y-1">
+                          {otherPrices.map((entry) => {
+                            const entryDiscount = discountMap.get(entry.currency.toUpperCase());
+                            const hasEntryDiscount =
+                              entryDiscount != null &&
+                              entryDiscount > 0 &&
+                              entryDiscount < entry.amount;
+                            const entrySaving = hasEntryDiscount ? entry.amount - entryDiscount : 0;
+                            return (
+                              <div
+                                key={entry.currency}
+                                className="flex flex-col items-center gap-0.5 text-[10px] text-[#7a6a58]"
+                              >
+                                <div className="flex items-center gap-1">
+                                  <span className="font-semibold uppercase tracking-wide">
+                                    {entry.currency}
+                                  </span>
+                                  <span className="font-semibold">
+                                    {entry.currency} {entry.amount.toLocaleString()}
+                                  </span>
+                                </div>
+                                {hasEntryDiscount && (
+                                  <div className="flex items-center gap-1">
+                                    <span className="rounded bg-red-100 px-1 py-0.5 text-[8px] font-bold text-red-700">
+                                      {entry.currency} {entryDiscount.toLocaleString()} disc
+                                    </span>
+                                    <span className="font-semibold text-red-600">
+                                      Save {entry.currency} {entrySaving.toLocaleString()}
+                                    </span>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
                         </div>
                       )}
                     </div>
@@ -858,10 +910,20 @@ function HomeProducts() {
                       type="button"
                       onClick={() => addToCart(product, image)}
                       disabled={!isAvailable}
-                      className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#20283a] px-3 text-xs font-bold text-white transition hover:bg-[#30384f] disabled:cursor-not-allowed disabled:opacity-50"
+                      className={`inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl px-3 text-xs font-bold transition ${
+                        isAvailable
+                          ? "bg-[#20283a] text-white hover:bg-[#30384f]"
+                          : isTempOut
+                          ? "bg-amber-100 text-amber-800 cursor-not-allowed"
+                          : "bg-slate-200 text-slate-500 cursor-not-allowed"
+                      }`}
                     >
                       <ShoppingCart size={15} />
-                      {t("checkout.add_to_order", "Add to cart")}
+                      {isAvailable
+                        ? t("checkout.add_to_order", "Add to cart")
+                        : isTempOut
+                        ? t("shop.out_of_stock_temp", "Out of stock temporarily")
+                        : t("shop.out_of_stock", "Out of stock")}
                     </button>
                     {cartFeedback?.productId === product.id && (
                       <p

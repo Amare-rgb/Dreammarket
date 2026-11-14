@@ -16,7 +16,7 @@ const inputClass =
 
 export default function NewArticleVideoPage() {
   const router = useRouter();
-  const { categories, loading: categoriesLoading } = useArticleCategories();
+  const { categories } = useArticleCategories();
 
   const [category, setCategory] = useState("");
   const [title, setTitle] = useState("");

@@ -1,6 +1,5 @@
 // app/layout.tsx
 import type { Metadata, Viewport } from "next";
-import { Inter, Sora } from "next/font/google";
 import { Toaster } from "react-hot-toast";
 import { Navbar } from "@/components/layout/Navbar";
 import { Footer } from "@/components/layout/Footer";
@@ -9,17 +8,7 @@ import ChatbotToggle from "@/components/ChatbotToggle";
 import InstallPrompt from "@/components/InstallPrompt";
 import "./globals.css";
 
-const inter = Inter({
-  subsets: ["latin"],
-  variable: "--font-inter",
-  display: "swap",
-});
-
-const sora = Sora({
-  subsets: ["latin"],
-  variable: "--font-sora",
-  display: "swap",
-});
+// Using system fonts to avoid Google Fonts SSL issues during build
 
 // ============================================================
 // Site metadata
@@ -76,12 +65,11 @@ export default function RootLayout({
     <html
       lang="en"
       data-scroll-behavior="smooth"
-      className={`${inter.variable} ${sora.variable}`}
       suppressHydrationWarning
     >
       <body
         className="min-h-screen bg-gray-50 text-gray-900 antialiased"
-        style={{ fontFamily: "var(--font-inter), system-ui, sans-serif" }}
+        style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}
       >
         <Providers>
           {/* Navbar is fixed + transparent on /, /about, /shop, /contact

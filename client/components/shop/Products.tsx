@@ -27,8 +27,10 @@ export interface Product {
   currency: string;
   prices: ProductPrice[];
   discountPrice: number | null;
+  discountPrices?: { currency: string; amount: number }[] | null;
   unit: string;
   stock: number;
+  availabilityStatus?: string;
   featured?: boolean;
   badge?: string;
   images: string[];
@@ -62,8 +64,10 @@ interface ApiProduct {
   currency?: string;
   prices?: ApiPrice[] | null;
   discountPrice?: number | string | null;
+  discountPrices?: { currency: string; amount: number }[] | null;
   unitOfMeasurement?: string | null;
   stock?: number | null;
+  availabilityStatus?: string | null;
   isFeatured?: boolean;
   images?: string[] | null;
   videoUrl?: string | null;
@@ -337,7 +341,7 @@ export default function Products() {
   const [error, setError] = useState<string | null>(null);
 
   // ✅ FIX: Initialize state directly reading localStorage, no useEffect needed
-  const [isAdmin, setIsAdmin] = useState<boolean>(() => {
+  const [isAdmin] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
     const userData = localStorage.getItem("user") || sessionStorage.getItem("user");
     if (!userData) return false;
@@ -380,12 +384,22 @@ export default function Products() {
         return;
       }
 
-      const effectivePrice =
+      // Use per-currency discount for the primary currency
+      let effectivePrice = product.price;
+      if (Array.isArray(product.discountPrices)) {
+        const primaryDiscount = product.discountPrices.find(
+          (d) => d.currency.toUpperCase() === product.currency.toUpperCase()
+        );
+        if (primaryDiscount && primaryDiscount.amount > 0 && primaryDiscount.amount < product.price) {
+          effectivePrice = primaryDiscount.amount;
+        }
+      } else if (
         product.discountPrice != null &&
         product.discountPrice > 0 &&
         product.discountPrice < product.price
-          ? product.discountPrice
-          : product.price;
+      ) {
+        effectivePrice = product.discountPrice;
+      }
 
       const nextCart = existing
         ? cart.map((item) =>
@@ -575,8 +589,10 @@ export default function Products() {
               currency,
               prices,
               discountPrice,
+              discountPrices: Array.isArray(p.discountPrices) ? p.discountPrices : null,
               unit: p.unitOfMeasurement || "pcs",
               stock,
+              availabilityStatus: p.availabilityStatus || undefined,
               featured: hasDiscount || Boolean(p.isFeatured),
               badge: hasDiscount ? "Sale" : undefined,
               images: imageList,
@@ -962,27 +978,24 @@ export default function Products() {
                 {filteredProducts.map((product, index) => {
                   const isAboveTheFold = index < 2;
 
-                  const hasDiscount =
-                    product.discountPrice != null &&
-                    product.discountPrice > 0 &&
-                    product.discountPrice < product.price;
+                  // Build per-currency discount lookup
+                  const discountMap = new Map<string, number>();
+                  if (Array.isArray(product.discountPrices)) {
+                    for (const d of product.discountPrices) {
+                      if (d && typeof d.currency === "string" && Number(d.amount) > 0) {
+                        discountMap.set(d.currency.toUpperCase(), Number(d.amount));
+                      }
+                    }
+                  }
+                  // Fallback: single discountPrice applies to primary currency only
+                  if (discountMap.size === 0 && product.discountPrice != null && product.discountPrice > 0) {
+                    discountMap.set(product.currency.toUpperCase(), product.discountPrice);
+                  }
 
-                  const discountPercent = hasDiscount
-                    ? Math.round(
-                        ((product.price - product.discountPrice!) /
-                          product.price) *
-                          100
-                      )
-                    : 0;
-
-                  // Discount ratio so the sale price applies to every currency
-                  const discountRatio = hasDiscount
-                    ? product.discountPrice! / product.price
-                    : 1;
-                  const discountSaving = hasDiscount
-                    ? product.price - product.discountPrice!
-                    : 0;
-                  const isAvailable = product.stock > 0;
+                  const hasDiscount = discountMap.size > 0;
+                  const isTempOut =
+                    product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY";
+                  const isAvailable = product.stock > 0 && !isTempOut;
                   const imageUrl = product.images?.[0] ?? null;
                   const hasVideo = Boolean(product.videoUrl);
 
@@ -1002,6 +1015,16 @@ export default function Products() {
                           priority={isAboveTheFold}
                         />
 
+                        {!isAvailable && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-[#1a1410]/55 backdrop-blur-[1px]">
+                            <span className="rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[#1a1410] shadow-lg">
+                              {isTempOut
+                                ? t("shop.out_of_stock_temp", "Out of stock temporarily")
+                                : t("shop.out_of_stock", "Out of stock")}
+                            </span>
+                          </div>
+                        )}
+
                         <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#1a1410]/55 via-transparent to-transparent" />
 
                         <div className="absolute left-2 top-2 flex flex-wrap gap-1">
@@ -1015,7 +1038,7 @@ export default function Products() {
                           )}
                           {hasDiscount && (
                             <span className="rounded-full bg-red-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm">
-                              -{discountPercent}%
+                              Sale
                             </span>
                           )}
                           {hasVideo && (
@@ -1026,9 +1049,26 @@ export default function Products() {
                           )}
                         </div>
 
-                        <span className="absolute bottom-2 left-2 rounded-full bg-[#1a1410]/85 px-2 py-0.5 text-[9px] font-medium text-white backdrop-blur">
+                        <span
+                          className={`absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-semibold backdrop-blur ${
+                            isAvailable
+                              ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
+                              : "border border-slate-200 bg-slate-100 text-slate-600"
+                          }`}
+                        >
+                          <span
+                            className={`h-1.5 w-1.5 rounded-full ${
+                              isAvailable
+                                ? "bg-emerald-500"
+                                : isTempOut
+                                ? "bg-amber-500"
+                                : "bg-red-500"
+                            }`}
+                          />
                           {isAvailable
-                            ? `${t("shop.in_stock", "In Stock")} (${product.stock})`
+                            ? t("shop.available_now", "Available now")
+                            : isTempOut
+                            ? t("shop.out_of_stock_temp", "Out of stock temporarily")
                             : t("shop.out_of_stock", "Out of stock")}
                         </span>
 
@@ -1048,56 +1088,79 @@ export default function Products() {
                             </h2>
                           </Link>
 
-                          <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-[#7a6a58]">
-                            {product.description ||
-                              t(
-                                "shop.default_card_desc",
-                                "Explore product details and discover useful finds for everyday life."
-                              )}
-                          </p>
+                          {!isAvailable ? (
+                            <p className="mt-1 line-clamp-2 text-[11px] leading-snug font-medium text-amber-700">
+                              {isTempOut
+                                ? t(
+                                    "shop.temp_out_desc",
+                                    "Temporarily unavailable. We'll restock soon — check back later."
+                                  )
+                                : t(
+                                    "shop.out_desc",
+                                    "This product is currently out of stock."
+                                  )}
+                            </p>
+                          ) : (
+                            <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-[#7a6a58]">
+                              {product.description ||
+                                t(
+                                  "shop.default_card_desc",
+                                  "Explore product details and discover useful finds for everyday life."
+                                )}
+                            </p>
+                          )}
                         </div>
 
                         <div className="mt-2.5 space-y-0.5">
                           {product.prices.map((p) => {
                             const isPrimary = p.currency === product.currency;
-                            const effective = isPrimary
-                              ? hasDiscount
-                                ? product.discountPrice!
-                                : p.amount
-                              : Math.round(p.amount * discountRatio * 100) / 100;
+                            const currencyDiscount = discountMap.get(p.currency.toUpperCase());
+                            const hasCurrencyDiscount =
+                              currencyDiscount != null &&
+                              currencyDiscount > 0 &&
+                              currencyDiscount < p.amount;
+                            const saving = hasCurrencyDiscount ? p.amount - currencyDiscount : 0;
                             return (
                               <div
                                 key={p.currency}
-                                className="flex items-baseline gap-1.5"
+                                className="space-y-0.5"
                               >
-                                <span className="text-[11px] font-bold text-[#1a1410]">
-                                  {formatMoney(effective, p.currency)}
-                                </span>
-                                {isPrimary && (
-                                  <span className="text-[9px] text-[#7a6a58]">
-                                    /{product.unit}
+                                <div className="flex items-baseline gap-1.5">
+                                  <span className="text-[11px] font-bold text-[#1a1410]">
+                                    {formatMoney(p.amount, p.currency)}
                                   </span>
+                                  {isPrimary && (
+                                    <span className="text-[9px] text-[#7a6a58]">
+                                      /{product.unit}
+                                    </span>
+                                  )}
+                                </div>
+                                {hasCurrencyDiscount && (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="rounded bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-700">
+                                      {formatMoney(currencyDiscount, p.currency)} disc
+                                    </span>
+                                    <span className="text-[9px] font-semibold text-red-600">
+                                      Save {formatMoney(saving, p.currency)}
+                                    </span>
+                                  </div>
                                 )}
                               </div>
                             );
                           })}
-                          {hasDiscount && (
-                            <p className="text-[10px] font-semibold text-red-600">
-                              (Disc:{" "}
-                              {formatMoney(
-                                discountSaving,
-                                product.currency
-                              )}
-                              )
-                            </p>
-                          )}
                         </div>
 
                         <button
                           type="button"
                           onClick={() => addToCart(product, imageUrl)}
                           disabled={!isAvailable}
-                          className="mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl bg-[#20283a] px-3 text-xs font-bold text-white transition hover:bg-[#30384f] disabled:cursor-not-allowed disabled:opacity-50"
+                          className={`mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl px-3 text-xs font-bold transition ${
+                            isAvailable
+                              ? "bg-[#20283a] text-white hover:bg-[#30384f]"
+                              : isTempOut
+                              ? "bg-amber-100 text-amber-800 cursor-not-allowed"
+                              : "bg-slate-200 text-slate-500 cursor-not-allowed"
+                          }`}
                         >
                           <ShoppingCart size={15} />
                           {t("checkout.add_to_order", "Add to cart")}

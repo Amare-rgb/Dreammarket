@@ -20,7 +20,9 @@ interface Product {
   id: string;
   name: string;
   price: number;
+  currency?: string;
   discountPrice?: number | null;
+  discountPrices?: { currency: string; amount: number }[] | null;
   stock?: number;
   sku?: string;
   images?: string[];
@@ -151,6 +153,15 @@ const getCategoryName = (product: Product): string => {
 };
 
 const getDisplayPrice = (product: Product): number => {
+  // Use per-currency discount for the primary currency
+  if (Array.isArray(product.discountPrices) && product.discountPrices.length > 0) {
+    const primaryDiscount = product.discountPrices.find(
+      (d) => d.currency.toUpperCase() === (product.currency || "ETB").toUpperCase()
+    );
+    if (primaryDiscount && primaryDiscount.amount > 0) {
+      return primaryDiscount.amount;
+    }
+  }
   if (
     typeof product.discountPrice === "number" &&
     product.discountPrice > 0
@@ -453,7 +464,29 @@ export default function DashboardPage() {
                         {getCategoryName(product)}
                       </td>
                       <td className="px-4 py-3 text-sm font-medium text-gray-900">
-                        {formatCurrency(getDisplayPrice(product))}
+                        {(() => {
+                          const originalPrice = product.price;
+                          const discountAmount = getDisplayPrice(product);
+                          const hasDiscount = discountAmount > 0 && discountAmount < originalPrice;
+                          const saving = hasDiscount ? originalPrice - discountAmount : 0;
+                          return (
+                            <div className="flex flex-col gap-0.5">
+                              <span className="font-bold">
+                                {formatCurrency(originalPrice)}
+                              </span>
+                              {hasDiscount && (
+                                <div className="flex items-center gap-1.5">
+                                  <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] font-bold text-red-700">
+                                    {formatCurrency(discountAmount)} disc
+                                  </span>
+                                  <span className="text-[10px] font-semibold text-red-600">
+                                    Save {formatCurrency(saving)}
+                                  </span>
+                                </div>
+                              )}
+                            </div>
+                          );
+                        })()}
                       </td>
                       <td className="px-4 py-3 text-sm text-gray-700">
                         {typeof product.stock === "number"

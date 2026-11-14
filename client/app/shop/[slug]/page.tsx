@@ -17,8 +17,10 @@ export interface Product {
   currency: string;
   prices: ProductPrice[];
   discountPrice: number | null;
+  discountPrices?: { currency: string; amount: number }[] | null;
   unit: string;
   stock: number;
+  availabilityStatus?: string;
   featured: boolean;
   badge?: string;
   images: string[];
@@ -64,8 +66,10 @@ interface RawProduct {
   currency?: string;
   prices?: RawPrice[] | null;
   discountPrice?: number | string | null;
+  discountPrices?: { currency: string; amount: number }[] | null;
   unitOfMeasurement?: string;
   stock?: number;
+  availabilityStatus?: string | null;
   isFeatured?: boolean;
   category?: { name?: string } | null;
   categoryName?: string;
@@ -172,11 +176,13 @@ export default async function ProductDetailsPage({
           currency,
           prices,
           discountPrice,
+          discountPrices: Array.isArray(rawObj.discountPrices) ? rawObj.discountPrices : null,
           unit: rawObj.unitOfMeasurement || "pcs",
           stock:
             typeof rawObj.stock === "number" && rawObj.stock >= 0
               ? rawObj.stock
               : 0,
+          availabilityStatus: rawObj.availabilityStatus || undefined,
           featured: hasDiscount || Boolean(rawObj.isFeatured),
           badge: hasDiscount ? "Sale" : undefined,
           images: imageList,

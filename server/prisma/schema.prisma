@@ -144,7 +144,15 @@ model Product {
   // ✅ Multi-currency prices: [{ "currency": "ETB", "amount": 1500 }, ...]
   prices            Json?
   discountPrice     Decimal? @db.Decimal(10, 2)
+  // ✅ Multi-currency discount prices: [{ "currency": "ETB", "amount": 1200 }, ...]
+  discountPrices    Json?
   stock             Int      @default(0)
+  // ✅ Inventory availability status
+  availabilityStatus String   @default("AVAILABLE") // AVAILABLE | OUT_OF_STOCK_TEMPORARY
+  outOfStockAt      DateTime?
+  autoRestock       Boolean  @default(true)
+  restockAfterDays  Int      @default(2)
+  restockQuantity   Int      @default(10)
   sku               String   @unique
   images            String[]
   categoryId        String

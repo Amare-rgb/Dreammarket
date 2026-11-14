@@ -132,6 +132,7 @@ export interface Product {
   currency?: string;
   prices?: ProductPrice[] | null;
   discountPrice?: number | null;
+  discountPrices?: { currency: string; amount: number }[] | null;
   images: string[];
   videoUrl?: string | null;
   stock: number;

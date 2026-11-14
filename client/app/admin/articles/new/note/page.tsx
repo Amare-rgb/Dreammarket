@@ -15,7 +15,7 @@ const inputClass =
 
 export default function NewArticleNotePage() {
   const router = useRouter();
-  const { categories, loading: categoriesLoading, create: createCategory } = useArticleCategories();
+  const { categories, create: createCategory } = useArticleCategories();
   const fileRef = useRef<HTMLInputElement>(null);
   const pdfRef = useRef<HTMLInputElement>(null);
 

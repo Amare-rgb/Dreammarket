@@ -66,6 +66,7 @@ api.interceptors.response.use(
   (error) => {
     if (error.response?.status === 401) {
       clearAuthStorage();
+      // eslint-disable-next-line @next/next/no-location-assign-relative-destination
       if (typeof window !== "undefined") window.location.href = "/auth/signin";
     }
     return Promise.reject(error);
@@ -91,13 +92,12 @@ function resolveMedia(raw: unknown, kind: MediaKind): string | null {
 // Types
 // ============================================================
 interface ProductPrice { currency: string; amount: number; }
-interface PriceRow { id: number; currency: string; amount: string; }
+interface PriceRow { id: number; currency: string; amount: string; discountAmount: string; }
 interface CurrencyOption { code: string; label: string; symbol: string; }
 
 interface ProductFormData {
   name: string;
   description: string;
-  discountPrice: string;
   sku: string;
   categoryId: string;
   subCategoryId: string;
@@ -107,6 +107,11 @@ interface ProductFormData {
   weight: string;
   unitOfMeasurement: string;
   durationTime: string;
+  stock: string;
+  availabilityStatus: "AVAILABLE" | "OUT_OF_STOCK_TEMPORARY";
+  autoRestock: boolean;
+  restockAfterDays: string;
+  restockQuantity: string;
 }
 
 interface Category {
@@ -124,6 +129,7 @@ interface ApiProduct {
   currency?: string;
   prices?: ProductPrice[] | null;
   discountPrice?: number | null;
+  discountPrices?: { currency: string; amount: number }[] | null;
   sku?: string;
   categoryId?: string;
   category?: { id: string } | null;
@@ -135,6 +141,11 @@ interface ApiProduct {
   weight?: number | null;
   unitOfMeasurement?: string;
   durationTime?: string;
+  stock?: number;
+  availabilityStatus?: string;
+  autoRestock?: boolean;
+  restockAfterDays?: number;
+  restockQuantity?: number;
 }
 
 interface EditProductPageProps { params: Promise<{ id: string }>; }
@@ -235,10 +246,25 @@ const buildPriceRows = (product: ApiProduct, nextId: () => number): PriceRow[] =
   const source: ProductPrice[] = saved.length > 0
     ? saved
     : [{ currency: product.currency || DEFAULT_CURRENCY, amount: Number(product.price) || 0 }];
+  const discountMap = new Map<string, number>();
+  if (Array.isArray(product.discountPrices)) {
+    for (const d of product.discountPrices) {
+      if (d && typeof d.currency === "string" && Number(d.amount) > 0) {
+        discountMap.set(d.currency.toUpperCase(), Number(d.amount));
+      }
+    }
+  }
+  // Fallback: if no discountPrices but discountPrice exists, apply to primary currency
+  if (discountMap.size === 0 && product.discountPrice && product.discountPrice > 0) {
+    discountMap.set((product.currency || DEFAULT_CURRENCY).toUpperCase(), Number(product.discountPrice));
+  }
   return source.map((p) => ({
     id: nextId(),
     currency: p.currency,
     amount: p.amount > 0 ? String(p.amount) : "",
+    discountAmount: discountMap.has(p.currency.toUpperCase())
+      ? String(discountMap.get(p.currency.toUpperCase()))
+      : "",
   }));
 };
 
@@ -558,6 +584,19 @@ const PriceRowInput: React.FC<{
             className="min-w-0 flex-1 border-0 px-4 py-2.5 text-sm focus:outline-none"
           />
         </div>
+        <div className="flex flex-1 items-stretch overflow-hidden rounded-lg border border-gray-200 focus-within:ring-2 focus-within:ring-yellow-500">
+          <span className="flex items-center border-0 border-r border-gray-200 bg-gray-50 px-2 py-2.5 text-xs font-semibold text-gray-500">
+            Disc
+          </span>
+          <input
+            type="number" min="0" step="0.01"
+            value={row.discountAmount}
+            onChange={(e) => onUpdate(row.id, { discountAmount: e.target.value })}
+            placeholder="0.00"
+            aria-label={`Discount amount ${index + 1}`}
+            className="min-w-0 flex-1 border-0 px-4 py-2.5 text-sm focus:outline-none"
+          />
+        </div>
         <button
           type="button"
           onClick={() => onRemove(row.id)}
@@ -571,6 +610,9 @@ const PriceRowInput: React.FC<{
       <p className="mt-1 text-xs text-gray-500">
         {index === 0 ? "Main price" : "Additional price"}
         {valid ? `: ${formatMoney(amount, row.currency)}` : ""}
+        {row.discountAmount.trim() !== "" && Number(row.discountAmount) > 0 && Number(row.discountAmount) < amount
+          ? ` · Disc: ${formatMoney(Number(row.discountAmount), row.currency)} · Save: ${formatMoney(amount - Number(row.discountAmount), row.currency)}`
+          : ""}
       </p>
     </div>
   );
@@ -616,13 +658,15 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
   const [deletingCategory, setDeletingCategory] = useState(false);
 
   const [priceRows, setPriceRows] = useState<PriceRow[]>([
-    { id: 0, currency: DEFAULT_CURRENCY, amount: "" },
+    { id: 0, currency: DEFAULT_CURRENCY, amount: "", discountAmount: "" },
   ]);
 
   const [formData, setFormData] = useState<ProductFormData>({
-    name: "", description: "", discountPrice: "", sku: "",
+    name: "", description: "", sku: "",
     categoryId: "", subCategoryId: "", tags: [], images: [], videoUrl: "",
     weight: "", unitOfMeasurement: "pcs", durationTime: "1h",
+    stock: "0", availabilityStatus: "AVAILABLE", autoRestock: true,
+    restockAfterDays: "2", restockQuantity: "10",
   });
 
   const busy = saving || uploadingImage || uploadingVideo || deletingCategory;
@@ -631,8 +675,6 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
     () => CURRENCIES.some((c) => !usedCurrencies.includes(c.code)),
     [usedCurrencies]
   );
-  const primaryPrice = priceRows[0];
-  const mainCurrency = primaryPrice?.currency || DEFAULT_CURRENCY;
   const previewVideo = useMemo(() => resolveMedia(formData.videoUrl, "video"), [formData.videoUrl]);
 
   const notify = useCallback(
@@ -712,7 +754,6 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
         setFormData({
           name: product.name || "",
           description: product.description || "",
-          discountPrice: product.discountPrice?.toString() || "",
           sku: product.sku || generateSKU(),
           categoryId,
           subCategoryId,
@@ -722,6 +763,14 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
           weight: product.weight?.toString() || "",
           unitOfMeasurement: product.unitOfMeasurement || "pcs",
           durationTime: product.durationTime || "1h",
+          stock: product.stock?.toString() || "0",
+          availabilityStatus:
+            product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY"
+              ? "OUT_OF_STOCK_TEMPORARY"
+              : "AVAILABLE",
+          autoRestock: product.autoRestock !== false,
+          restockAfterDays: product.restockAfterDays?.toString() || "2",
+          restockQuantity: product.restockQuantity?.toString() || "10",
         });
         setPriceRows(buildPriceRows(product, nextRowId));
         if (categoryId) void fetchSubCategories(categoryId);
@@ -747,7 +796,7 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
   const addPriceRow = useCallback(() => {
     const next = CURRENCIES.find((c) => !usedCurrencies.includes(c.code));
     if (!next) return;
-    setPriceRows((rows) => [...rows, { id: nextRowId(), currency: next.code, amount: "" }]);
+    setPriceRows((rows) => [...rows, { id: nextRowId(), currency: next.code, amount: "", discountAmount: "" }]);
   }, [usedCurrencies, nextRowId]);
 
   const updatePriceRow = useCallback((id: number, changes: Partial<PriceRow>) => {
@@ -902,10 +951,19 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
     }
 
     const primary = prices[0];
-    const discount = formData.discountPrice ? Number(formData.discountPrice) : null;
-    if (discount !== null && (!Number.isFinite(discount) || discount <= 0 || discount >= primary.amount)) {
-      notify("error", "Discount price must be greater than 0 and lower than the main price.");
-      return;
+
+    // Build per-currency discount prices (direct amounts)
+    const discountPrices: { currency: string; amount: number }[] = [];
+    for (const row of priceRows) {
+      if (row.discountAmount.trim() !== "") {
+        const dAmount = Number(row.discountAmount);
+        const original = Number(row.amount);
+        if (!Number.isFinite(dAmount) || dAmount <= 0 || dAmount >= original) {
+          notify("error", `Discount for ${row.currency} must be greater than 0 and less than its price (${original}).`);
+          return;
+        }
+        discountPrices.push({ currency: row.currency, amount: dAmount });
+      }
     }
 
     setSaving(true);
@@ -917,7 +975,7 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
         pricePerUnit: primary.amount,
         currency: primary.currency,
         prices,
-        discountPrice: discount,
+        discountPrices,
         sku: formData.sku,
         categoryId: formData.categoryId,
         subCategoryId: formData.subCategoryId || undefined,
@@ -927,6 +985,11 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
         weight: formData.weight ? parseFloat(formData.weight) : null,
         unitOfMeasurement: formData.unitOfMeasurement || "pcs",
         durationTime: formData.durationTime || "1h",
+        stock: Number(formData.stock) || 0,
+        availabilityStatus: formData.availabilityStatus,
+        autoRestock: formData.autoRestock,
+        restockAfterDays: Number(formData.restockAfterDays) || 2,
+        restockQuantity: Number(formData.restockQuantity) || 10,
       };
 
       const { data } = await api.put(`/api/products/${productId}`, submitData);
@@ -1189,16 +1252,84 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
                   </button>
                 </div>
 
-                <div className="md:w-1/2">
-                  <label className={LABEL_CLS}>Discount Price ({mainCurrency})</label>
-                  <div className="relative">
-                    <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500 text-sm">{mainCurrency}</span>
+                <p className="text-xs text-gray-500 md:w-1/2">
+                  <strong>Price</strong> = original price (e.g., 688). <strong>Disc</strong> = discount price customers pay (e.g., 89). Customer sees: 89 (was 688, save 599). Leave Disc empty for no discount.
+                </p>
+
+                {/* Stock & Availability */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <label className={LABEL_CLS}>Stock quantity <span className="text-red-500">*</span></label>
                     <input
-                      type="number" name="discountPrice" value={formData.discountPrice} onChange={handleChange}
-                      step="0.01" placeholder="Optional" className={`${INPUT_CLS} pl-14`}
+                      type="number" name="stock" value={formData.stock}
+                      onChange={(e) => setFormData((prev) => ({ ...prev, stock: e.target.value }))}
+                      min="0" step="1" required className={INPUT_CLS}
                     />
                   </div>
+                  <div>
+                    <label className={LABEL_CLS}>Availability status</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      <button
+                        type="button"
+                        onClick={() => setFormData((prev) => ({ ...prev, availabilityStatus: "AVAILABLE" }))}
+                        className={`flex items-center gap-1.5 rounded-lg border px-2 py-2 text-xs font-medium transition ${
+                          formData.availabilityStatus === "AVAILABLE"
+                            ? "border-emerald-500 bg-emerald-50 text-emerald-700"
+                            : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                        }`}
+                      >
+                        <span className={`h-2 w-2 rounded-full ${formData.availabilityStatus === "AVAILABLE" ? "bg-emerald-500" : "bg-gray-300"}`} />
+                        Available now
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setFormData((prev) => ({ ...prev, availabilityStatus: "OUT_OF_STOCK_TEMPORARY" }))}
+                        className={`flex items-center gap-1.5 rounded-lg border px-2 py-2 text-xs font-medium transition ${
+                          formData.availabilityStatus === "OUT_OF_STOCK_TEMPORARY"
+                            ? "border-amber-500 bg-amber-50 text-amber-700"
+                            : "border-gray-200 bg-white text-gray-600 hover:border-gray-300"
+                        }`}
+                      >
+                        <span className={`h-2 w-2 rounded-full ${formData.availabilityStatus === "OUT_OF_STOCK_TEMPORARY" ? "bg-amber-500" : "bg-gray-300"}`} />
+                        Out of stock temporarily
+                      </button>
+                    </div>
+                  </div>
                 </div>
+
+                {formData.availabilityStatus === "OUT_OF_STOCK_TEMPORARY" && (
+                  <div className="rounded-lg border border-amber-200 bg-amber-50 p-4 space-y-3">
+                    <label className="flex items-center gap-2 text-sm text-amber-800">
+                      <input
+                        type="checkbox"
+                        checked={formData.autoRestock}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, autoRestock: e.target.checked }))}
+                        className="h-4 w-4 rounded border-amber-300 text-amber-600 focus:ring-amber-500"
+                      />
+                      Auto-restock after a set number of days
+                    </label>
+                    {formData.autoRestock && (
+                      <div className="grid grid-cols-2 gap-3">
+                        <div>
+                          <label className="text-xs font-medium text-amber-700">Restock after (days)</label>
+                          <input
+                            type="number" min="1" value={formData.restockAfterDays}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, restockAfterDays: e.target.value }))}
+                            className="mt-1 h-9 w-full rounded-lg border border-amber-200 bg-white px-2 text-sm outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+                          />
+                        </div>
+                        <div>
+                          <label className="text-xs font-medium text-amber-700">Restock quantity</label>
+                          <input
+                            type="number" min="1" value={formData.restockQuantity}
+                            onChange={(e) => setFormData((prev) => ({ ...prev, restockQuantity: e.target.value }))}
+                            className="mt-1 h-9 w-full rounded-lg border border-amber-200 bg-white px-2 text-sm outline-none focus:border-amber-400 focus:ring-1 focus:ring-amber-400"
+                          />
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
 
                 {/* Tags */}
                 <div>
@@ -1378,9 +1509,22 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
                   ) : "Not set"}
                 </SummaryRow>
                 <SummaryRow label="Discount">
-                  {formData.discountPrice
-                    ? formatMoney(parseFloat(formData.discountPrice), mainCurrency)
-                    : "Not set"}
+                  {priceRows.some((r) => r.discountAmount.trim() !== "" && Number(r.discountAmount) > 0) ? (
+                    <span className="flex flex-col items-end">
+                      {priceRows
+                        .filter((r) => r.discountAmount.trim() !== "" && Number(r.discountAmount) > 0)
+                        .map((r) => {
+                          const original = Number(r.amount);
+                          const discount = Number(r.discountAmount);
+                          const saving = original - discount;
+                          return (
+                            <span key={r.id}>
+                              {formatMoney(discount, r.currency)} (save {formatMoney(saving, r.currency)})
+                            </span>
+                          );
+                        })}
+                    </span>
+                  ) : "Not set"}
                 </SummaryRow>
                 <SummaryRow label="Category">
                   {categories.find((c) => c.id === formData.categoryId)?.name || "Not set"}

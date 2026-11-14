@@ -7,6 +7,7 @@ import { useParams } from "next/navigation";
 import { ArrowLeft, Clock, Eye, FileText, LoaderCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import VideoPlayer from "@/components/VideoPlayer";
+import { LinkifyText } from "@/components/LinkifyText";
 import {
   ArticleDetail,
   ArticleSummary,
@@ -211,8 +212,20 @@ export default function ArticlePage() {
 
             {/* Content */}
             <div className="whitespace-pre-wrap break-words py-6 text-base leading-8 text-slate-700">
-              {article.content}
+              <LinkifyText text={article.content} />
             </div>
+
+            {/* Note */}
+            {article.note && (
+              <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
+                <p className="mb-1 text-xs font-bold uppercase tracking-wide text-amber-700">
+                  Note
+                </p>
+                <p className="whitespace-pre-wrap break-words text-sm leading-6 text-amber-900">
+                  {article.note}
+                </p>
+              </div>
+            )}
 
             {/* Video */}
             {article.videoUrl && (

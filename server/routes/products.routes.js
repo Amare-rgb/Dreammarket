@@ -46,6 +46,32 @@ function normalizePrices(rawPrices, fallbackPrice, fallbackCurrency = 'ETB') {
   return deduped;
 }
 
+// Normalize per-currency discount prices: [{ currency, amount }]
+// Amounts must be > 0 and < the corresponding price. Returns [] if none valid.
+function normalizeDiscountPrices(rawDiscounts, prices) {
+  if (!Array.isArray(rawDiscounts) || rawDiscounts.length === 0) return [];
+  const priceMap = new Map((prices || []).map((p) => [p.currency, p.amount]));
+  const seen = new Set();
+  const result = [];
+  for (const d of rawDiscounts) {
+    const currency = typeof d?.currency === 'string' ? d.currency.toUpperCase() : null;
+    const amount = Number(d?.amount);
+    const original = priceMap.get(currency);
+    if (
+      currency &&
+      !seen.has(currency) &&
+      Number.isFinite(amount) &&
+      amount > 0 &&
+      original !== undefined &&
+      amount < original
+    ) {
+      seen.add(currency);
+      result.push({ currency, amount });
+    }
+  }
+  return result;
+}
+
 function serializeProduct(product) {
   if (!product) return product;
   const price = Number(product.price) || 0;
@@ -60,6 +86,7 @@ function serializeProduct(product) {
     currency: product.currency || 'ETB',
     prices: prices,
     discountPrice: product.discountPrice ? Number(product.discountPrice) : null,
+    discountPrices: Array.isArray(product.discountPrices) ? product.discountPrices : [],
     pricePerUnit: product.pricePerUnit ? Number(product.pricePerUnit) : null,
     salePrice: product.discountPrice ? Number(product.discountPrice) : null,
   };
@@ -384,9 +411,51 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
         typeof body.stock === 'string' ? parseInt(body.stock, 10) : body.stock;
     }
 
+    // ── Availability status ─────────────────────────────────
+    const VALID_STATUSES = ['AVAILABLE', 'OUT_OF_STOCK_TEMPORARY'];
+    let availabilityStatus =
+      typeof body.availabilityStatus === 'string' &&
+      VALID_STATUSES.includes(body.availabilityStatus.toUpperCase())
+        ? body.availabilityStatus.toUpperCase()
+        : stockValue > 0
+          ? 'AVAILABLE'
+          : 'OUT_OF_STOCK_TEMPORARY';
+
+    // If admin explicitly set OUT_OF_STOCK_TEMPORARY, respect it even with stock
+    if (availabilityStatus === 'OUT_OF_STOCK_TEMPORARY' && stockValue > 0) {
+      // Keep stock but mark as temporarily out of stock (admin override)
+    }
+
+    const outOfStockAt =
+      availabilityStatus === 'OUT_OF_STOCK_TEMPORARY'
+        ? new Date()
+        : null;
+
+    const autoRestock =
+      body.autoRestock !== undefined ? Boolean(body.autoRestock) : true;
+
+    const restockAfterDays =
+      body.restockAfterDays !== undefined && body.restockAfterDays !== null && body.restockAfterDays !== ''
+        ? Math.max(1, parseInt(body.restockAfterDays, 10) || 2)
+        : 2;
+
+    const restockQuantity =
+      body.restockQuantity !== undefined && body.restockQuantity !== null && body.restockQuantity !== ''
+        ? Math.max(1, parseInt(body.restockQuantity, 10) || 10)
+        : 10;
+
     // ── Normalize Prices ────────────────────────────────────
     const normalizedPrices = normalizePrices(body.prices, body.price, body.currency);
     const primaryPrice = normalizedPrices[0];
+
+    // ── Per-currency discount prices ─────────────────────────
+    const normalizedDiscountPrices = normalizeDiscountPrices(body.discountPrices, normalizedPrices);
+    // Always derive discountPrice from the primary currency's discount
+    // Set to null when no primary discount exists — never leave stale
+    const primaryDiscount = normalizedDiscountPrices.find(
+      (d) => d.currency === (primaryPrice?.currency || 'ETB')
+    );
+    const effectiveDiscountPrice = primaryDiscount ? primaryDiscount.amount : null;
 
     const productData = {
       name: body.name,
@@ -394,8 +463,14 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
       price: primaryPrice ? primaryPrice.amount : (parseFloat(body.price) || 0),
       currency: primaryPrice ? primaryPrice.currency : 'ETB',
       prices: normalizedPrices, // Save JSON array
-      discountPrice: discountPriceValue,
+      discountPrice: effectiveDiscountPrice,
+      discountPrices: normalizedDiscountPrices.length > 0 ? normalizedDiscountPrices : null,
       stock: stockValue,
+      availabilityStatus,
+      outOfStockAt,
+      autoRestock,
+      restockAfterDays,
+      restockQuantity,
       sku: body.sku || `SKU-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       images: cleanImages,
       tags: Array.isArray(body.tags) ? body.tags : [],
@@ -527,22 +602,37 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
     if (body.description !== undefined) updateData.description = body.description;
     
     // ── Update Prices ───────────────────────────────────────
+    let effectivePrices = null;
     if (body.prices !== undefined) {
-      const normalizedPrices = normalizePrices(
+      effectivePrices = normalizePrices(
         body.prices, 
         body.price || existingProduct.price, 
         body.currency || existingProduct.currency
       );
-      updateData.prices = normalizedPrices;
-      if (normalizedPrices[0]) {
-        updateData.price = normalizedPrices[0].amount;
-        updateData.currency = normalizedPrices[0].currency;
+      updateData.prices = effectivePrices;
+      if (effectivePrices[0]) {
+        updateData.price = effectivePrices[0].amount;
+        updateData.currency = effectivePrices[0].currency;
       }
     } else if (body.price !== undefined) {
       updateData.price = parseFloat(body.price);
     }
 
-    if (body.discountPrice !== undefined) {
+    // ── Per-currency discount prices ─────────────────────────
+    if (body.discountPrices !== undefined) {
+      // Use the prices being saved, or fall back to existing product prices
+      const pricesForValidation = effectivePrices ||
+        (Array.isArray(existingProduct.prices) && existingProduct.prices.length > 0
+          ? existingProduct.prices
+          : [{ currency: existingProduct.currency || 'ETB', amount: Number(existingProduct.price) }]);
+      const normalizedDiscountPrices = normalizeDiscountPrices(body.discountPrices, pricesForValidation);
+      updateData.discountPrices = normalizedDiscountPrices.length > 0 ? normalizedDiscountPrices : null;
+      // Always derive discountPrice from the primary currency's discount
+      // Set to null when no primary discount exists — never leave stale
+      const primaryCurrency = updateData.currency || existingProduct.currency || 'ETB';
+      const primaryDiscount = normalizedDiscountPrices.find((d) => d.currency === primaryCurrency);
+      updateData.discountPrice = primaryDiscount ? primaryDiscount.amount : null;
+    } else if (body.discountPrice !== undefined) {
       updateData.discountPrice = body.discountPrice
         ? parseFloat(body.discountPrice)
         : null;
@@ -558,6 +648,58 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
           ? parseInt(body.stock, 10)
           : body.stock;
     }
+
+    // ── Availability status ─────────────────────────────────
+    const VALID_STATUSES = ['AVAILABLE', 'OUT_OF_STOCK_TEMPORARY'];
+
+    // Explicit admin override of availability status
+    if (
+      body.availabilityStatus !== undefined &&
+      typeof body.availabilityStatus === 'string' &&
+      VALID_STATUSES.includes(body.availabilityStatus.toUpperCase())
+    ) {
+      updateData.availabilityStatus = body.availabilityStatus.toUpperCase();
+      if (updateData.availabilityStatus === 'OUT_OF_STOCK_TEMPORARY') {
+        updateData.outOfStockAt = new Date();
+      } else {
+        updateData.outOfStockAt = null;
+      }
+    } else if (body.stock !== undefined) {
+      // Auto-derive from stock change
+      const newStock = updateData.stock;
+      if (newStock <= 0) {
+        updateData.availabilityStatus = 'OUT_OF_STOCK_TEMPORARY';
+        updateData.outOfStockAt = new Date();
+      } else {
+        updateData.availabilityStatus = 'AVAILABLE';
+        updateData.outOfStockAt = null;
+      }
+    }
+
+    if (body.autoRestock !== undefined) {
+      updateData.autoRestock = Boolean(body.autoRestock);
+    }
+    if (
+      body.restockAfterDays !== undefined &&
+      body.restockAfterDays !== null &&
+      body.restockAfterDays !== ''
+    ) {
+      updateData.restockAfterDays = Math.max(
+        1,
+        parseInt(body.restockAfterDays, 10) || 2
+      );
+    }
+    if (
+      body.restockQuantity !== undefined &&
+      body.restockQuantity !== null &&
+      body.restockQuantity !== ''
+    ) {
+      updateData.restockQuantity = Math.max(
+        1,
+        parseInt(body.restockQuantity, 10) || 10
+      );
+    }
+
     if (body.images !== undefined) {
       const incoming = Array.isArray(body.images) ? body.images : [];
       updateData.images = incoming.filter(
@@ -641,6 +783,76 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
   } catch (error) {
     console.error('Error updating product:', error);
     res.status(500).json({ error: 'Failed to update product' });
+  }
+});
+
+// ============================================================
+// PATCH /api/products/:id/availability — Quick availability toggle (ADMIN ONLY)
+// ============================================================
+router.patch('/:id/availability', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { availabilityStatus, autoRestock, restockAfterDays, restockQuantity, stock } = req.body;
+
+    const VALID_STATUSES = ['AVAILABLE', 'OUT_OF_STOCK_TEMPORARY'];
+    const updateData = {};
+
+    if (
+      availabilityStatus !== undefined &&
+      typeof availabilityStatus === 'string' &&
+      VALID_STATUSES.includes(availabilityStatus.toUpperCase())
+    ) {
+      updateData.availabilityStatus = availabilityStatus.toUpperCase();
+      if (updateData.availabilityStatus === 'OUT_OF_STOCK_TEMPORARY') {
+        updateData.outOfStockAt = new Date();
+      } else {
+        updateData.outOfStockAt = null;
+      }
+    }
+
+    if (stock !== undefined) {
+      updateData.stock = typeof stock === 'string' ? parseInt(stock, 10) : stock;
+      // Auto-derive status from stock if no explicit status given
+      if (updateData.availabilityStatus === undefined) {
+        if (updateData.stock <= 0) {
+          updateData.availabilityStatus = 'OUT_OF_STOCK_TEMPORARY';
+          updateData.outOfStockAt = new Date();
+        } else {
+          updateData.availabilityStatus = 'AVAILABLE';
+          updateData.outOfStockAt = null;
+        }
+      }
+    }
+
+    if (autoRestock !== undefined) updateData.autoRestock = Boolean(autoRestock);
+    if (restockAfterDays !== undefined && restockAfterDays !== null && restockAfterDays !== '') {
+      updateData.restockAfterDays = Math.max(1, parseInt(restockAfterDays, 10) || 2);
+    }
+    if (restockQuantity !== undefined && restockQuantity !== null && restockQuantity !== '') {
+      updateData.restockQuantity = Math.max(1, parseInt(restockQuantity, 10) || 10);
+    }
+
+    if (Object.keys(updateData).length === 0) {
+      return res.status(400).json({ error: 'No valid fields to update' });
+    }
+
+    const updated = await prisma.product.update({
+      where: { id },
+      data: updateData,
+      include: { category: true, subCategory: true },
+    });
+
+    res.json({
+      success: true,
+      product: serializeProduct(updated),
+      message: 'Availability updated successfully',
+    });
+  } catch (error) {
+    console.error('Error updating product availability:', error);
+    if (error.code === 'P2025') {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+    res.status(500).json({ error: 'Failed to update availability' });
   }
 });
 
