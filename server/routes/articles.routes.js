@@ -1,6 +1,6 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
-const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { requireAuth, requireAdmin, optionalAuth } = require('../middleware/auth');
 const { sendArticleAnnouncement } = require('../lib/telegram');
 
 const router = express.Router();
@@ -267,10 +267,27 @@ router.get('/admin/comments', requireAuth, requireAdmin, async (req, res) => {
       include: {
         article: {
           select: { title: true, slug: true }
+        },
+        user: {
+          select: { id: true, name: true, email: true, avatar: true }
         }
       }
     });
-    return res.json({ success: true, comments });
+    return res.json({
+      success: true,
+      comments: comments.map((c) => ({
+        id: c.id,
+        name: c.name,
+        message: c.message,
+        imageUrl: c.imageUrl,
+        status: c.status,
+        reply: c.reply,
+        repliedAt: c.repliedAt,
+        createdAt: c.createdAt,
+        article: c.article,
+        user: c.user,
+      })),
+    });
   } catch (error) {
     console.error('Failed to fetch admin comments:', error);
     return res.status(500).json({ success: false, error: 'Failed to fetch comments' });
@@ -508,7 +525,7 @@ router.get('/', async (req, res) => {
 /* Comments (Public)                                                   */
 /* ------------------------------------------------------------------ */
 
-router.get('/:slug/comments', async (req, res) => {
+router.get('/:slug/comments', optionalAuth, async (req, res) => {
   try {
     const article = await prisma.article.findFirst({
       where: { slug: req.params.slug, published: true },
@@ -518,19 +535,42 @@ router.get('/:slug/comments', async (req, res) => {
       return res.status(404).json({ success: false, error: 'Article not found' });
     }
 
+    // Show only approved comments to public, or all if admin
+    const where = { articleId: article.id };
+    if (!req.user || req.user.role !== 'ADMIN') {
+      where.status = 'APPROVED';
+    }
+
     const comments = await prisma.articleComment.findMany({
-      where: { articleId: article.id },
+      where,
       orderBy: { createdAt: 'desc' },
+      include: {
+        user: {
+          select: { id: true, name: true, avatar: true },
+        },
+      },
     });
 
-    return res.json({ success: true, comments });
+    return res.json({
+      success: true,
+      comments: comments.map((c) => ({
+        id: c.id,
+        name: c.name,
+        message: c.message,
+        imageUrl: c.imageUrl,
+        reply: c.reply,
+        repliedAt: c.repliedAt,
+        createdAt: c.createdAt,
+        user: c.user ? { name: c.user.name, avatar: c.user.avatar } : null,
+      })),
+    });
   } catch (error) {
     console.error('Failed to fetch comments:', error);
     return res.status(500).json({ success: false, error: 'Failed to fetch comments' });
   }
 });
 
-router.post('/:slug/comments', async (req, res) => {
+router.post('/:slug/comments', optionalAuth, async (req, res) => {
   try {
     const article = await prisma.article.findFirst({
       where: { slug: req.params.slug, published: true },
@@ -542,23 +582,74 @@ router.post('/:slug/comments', async (req, res) => {
 
     const name = text(req.body?.name);
     const message = text(req.body?.message);
+    const imageUrl = text(req.body?.imageUrl);
 
     if (!name || !message) {
       return res.status(400).json({ success: false, error: 'Name and message are required.' });
     }
-    if (name.length > 80 || message.length > 1000) {
+    if (name.length > 80 || message.length > 2000) {
       return res.status(400).json({ success: false, error: 'Name or message is too long.' });
+    }
+
+    // Validate image URL if provided
+    let validatedImageUrl = null;
+    if (imageUrl) {
+      try {
+        const imgUrl = new URL(imageUrl);
+        const requestOrigin = `${req.protocol}://${req.get('host')}`;
+        if (
+          imageUrl.length > 2048 ||
+          imgUrl.origin !== requestOrigin ||
+          !imgUrl.pathname.startsWith('/uploads/')
+        ) {
+          throw new Error('Invalid image URL');
+        }
+        validatedImageUrl = imageUrl;
+      } catch {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid image URL. Please upload the image first.',
+        });
+      }
+    }
+
+    // If user is authenticated, use their name and link userId
+    let userId = null;
+    let displayName = name;
+    if (req.user) {
+      userId = req.user.id;
+      displayName = req.user.name || name;
     }
 
     const comment = await prisma.articleComment.create({
       data: {
         articleId: article.id,
-        name,
+        userId,
+        name: displayName,
         message,
+        imageUrl: validatedImageUrl,
+        status: 'PENDING', // New comments start as pending for moderation
+      },
+      include: {
+        user: {
+          select: { id: true, name: true, avatar: true },
+        },
       },
     });
 
-    return res.status(201).json({ success: true, comment });
+    return res.status(201).json({
+      success: true,
+      comment: {
+        id: comment.id,
+        name: comment.name,
+        message: comment.message,
+        imageUrl: comment.imageUrl,
+        reply: comment.reply,
+        repliedAt: comment.repliedAt,
+        createdAt: comment.createdAt,
+        user: comment.user ? { name: comment.user.name, avatar: comment.user.avatar } : null,
+      },
+    });
   } catch (error) {
     console.error('Failed to create comment:', error);
     return res.status(500).json({ success: false, error: 'Failed to create comment' });

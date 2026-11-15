@@ -8,6 +8,7 @@ import { ArrowLeft, Clock, Eye, FileText, LoaderCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import VideoPlayer from "@/components/VideoPlayer";
 import { LinkifyText } from "@/components/LinkifyText";
+import ArticleComments from "@/components/articles/ArticleComments";
 import {
   ArticleDetail,
   ArticleSummary,
@@ -269,13 +270,10 @@ export default function ArticlePage() {
 
             {/* Comment Section */}
             <div id="comments" className="mt-8 border-t border-slate-100 pt-6">
-              <h3 className="text-lg font-bold text-slate-900 mb-4">Comments</h3>
-              <p className="text-sm text-slate-500 mb-6">
-                Your articles comment section goes here. If you have a dedicated comment component, place it inside this `div`.
-              </p>
+              <ArticleComments slug={slug} />
               <Link
                 href="/articles"
-                className="inline-flex items-center gap-2 text-sm font-semibold text-[#cf5427]"
+                className="inline-flex items-center gap-2 text-sm font-semibold text-[#cf5427] mt-6"
               >
                 <ArrowLeft size={16} /> Back to all articles
               </Link>

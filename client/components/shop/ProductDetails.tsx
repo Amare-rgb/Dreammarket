@@ -8,6 +8,7 @@ import { ShoppingCart, Play, ChevronLeft, ChevronRight } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { readCart, writeCart } from "@/app/lib/cart";
 import { getVideoSource } from "@/lib/video";
+import ProductFeedback from "./ProductFeedback";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types — must match app/shop/[slug]/page.tsx
@@ -932,6 +933,11 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
           </div>
         </div>
       </section>
+
+      {/* Customer Feedback Section */}
+      <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+        <ProductFeedback productId={product.id} />
+      </div>
 
       {lightboxOpen && images.length > 0 && (
         <ImageLightbox

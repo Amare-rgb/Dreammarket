@@ -182,6 +182,12 @@ router.post('/', requireAuth, async (req, res) => {
       quantities.set(productId, nextQuantity);
     }
 
+    // Generate unique order number before transaction to avoid race conditions
+    // Using timestamp + random component for uniqueness while maintaining readability
+    const timestamp = Date.now();
+    const randomSuffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
+    const orderNumber = `${timestamp}${randomSuffix}`;
+
     const order = await prisma.$transaction(async (transaction) => {
       const products = await transaction.product.findMany({
         where: { id: { in: [...quantities.keys()] } },
@@ -229,10 +235,6 @@ router.post('/', requireAuth, async (req, res) => {
       }
 
       const total = orderItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-      
-      // Generate sequential order number (1, 2, 3, ...)
-      const orderCount = await transaction.order.count();
-      const orderNumber = String(orderCount + 1);
 
       return transaction.order.create({
         data: {

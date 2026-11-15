@@ -644,6 +644,51 @@ function makeFolderRoute(folder) {
 
 router.post('/settings', requireAuth, requireAdmin, makeFolderRoute('settings'));
 router.post('/category', requireAuth, requireAdmin, makeFolderRoute('categories'));
+
+/* ────────────────────────────────────────────────────────────────
+   FEEDBACK IMAGE — any authenticated user
+   POST /api/upload/feedback
+   field: "image" | "file"
+   ──────────────────────────────────────────────────────────────── */
+router.post('/feedback', requireAuth, (req, res) => {
+  const uploader = buildUploader({
+    subfolder: 'feedback',
+    maxSizeMB: 10,
+    maxFiles: 1,
+    images: true,
+  });
+  const mw = uploader.fields([
+    { name: 'image', maxCount: 1 },
+    { name: 'file', maxCount: 1 },
+  ]);
+
+  mw(req, res, (err) => {
+    const mErr = handleMulterErrors(err, res);
+    if (mErr) return;
+
+    const file = pickSingleFile(req);
+    if (!file) {
+      return res.status(400).json({
+        success: false,
+        error: 'No image uploaded (field "image" or "file").',
+        code: 'NO_FILE',
+      });
+    }
+
+    const url = fileToUrl(req, file);
+    const publicId = fileToPublicId(file);
+    return res.json({
+      success: true,
+      url,
+      secure_url: url,
+      publicId,
+      public_id: publicId,
+      fileName: file.originalname,
+      fileSize: file.size,
+      fileType: file.mimetype,
+    });
+  });
+});
 router.post('/blog', requireAuth, requireAdmin, makeFolderRoute('blog'));
 router.post('/profile', requireAuth, makeFolderRoute('profiles'));
 

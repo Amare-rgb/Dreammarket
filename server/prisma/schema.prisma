@@ -37,13 +37,14 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relationships
-  adminProfile AdminProfile?
-  profile      Profile?
-  reviews      Review[]
-  addresses    Address[]
-  categories   Category[]    @relation("CategoryCreator")
-  chatMessages ChatMessage[]
-  articles     Article[]
+  adminProfile    AdminProfile?
+  profile         Profile?
+  reviews         Review[]
+  addresses       Address[]
+  categories      Category[]         @relation("CategoryCreator")
+  chatMessages    ChatMessage[]
+  articles        Article[]
+  articleComments ArticleComment[]
 
   @@index([role])
   @@index([createdAt])
@@ -259,30 +260,47 @@ model ArticleCategory {
 }
 
 model ArticleComment {
-  id        String   @id @default(cuid())
-  articleId String
-  name      String
-  message   String   @db.Text
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  articleId   String
+  userId      String?
+  name        String
+  message     String   @db.Text
+  imageUrl    String?
+  status      String   @default("PENDING") // PENDING | APPROVED | HIDDEN
+  reply       String?  @db.Text
+  repliedAt   DateTime?
+  repliedBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
+  user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
 
-  @@index([articleId, createdAt])
+  @@index([articleId, status, createdAt])
+  @@index([status, createdAt])
   @@map("article_comments")
 }
 
 model Review {
-  id        String   @id @default(cuid())
-  userId    String
-  productId String
-  rating    Int
-  comment   String?
-  createdAt DateTime @default(now())
+  id          String   @id @default(cuid())
+  userId      String
+  productId   String
+  rating      Int      @default(5)
+  comment     String?  @db.Text
+  imageUrl    String?
+  status      String   @default("PENDING") // PENDING | APPROVED | HIDDEN
+  reply       String?  @db.Text
+  repliedAt   DateTime?
+  repliedBy   String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
 
   user    User    @relation(fields: [userId], references: [id])
   product Product @relation(fields: [productId], references: [id])
 
   @@unique([userId, productId])
+  @@index([productId, status])
+  @@index([status, createdAt])
   @@map("reviews")
 }
 

@@ -185,6 +185,7 @@ const ordersRoutes = require('./routes/orders.routes');
 // Article categories live inside this router (/api/articles/admin/categories)
 const articlesRoutes = require('./routes/articles.routes');
 const chatbotRoutes = require('./routes/chatbot.routes');
+const feedbackRoutes = require('./routes/feedback.routes');
 
 // ═══════════════════════════════════════════════════════════
 // API ROUTER
@@ -204,6 +205,7 @@ apiRouter.use('/admin/orders', adminOrdersRoutes);
 apiRouter.use('/orders', ordersRoutes);
 apiRouter.use('/articles', articlesRoutes);
 apiRouter.use('/chatbot', chatbotRoutes);
+apiRouter.use('/feedback', feedbackRoutes);
 
 // ═══════════════════════════════════════════════════════════
 // HEALTH CHECK
