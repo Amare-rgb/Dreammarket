@@ -117,6 +117,9 @@ export default function ProductCreateModal({
   const [autoRestock, setAutoRestock] = useState(true);
   const [restockAfterDays, setRestockAfterDays] = useState("2");
   const [restockQuantity, setRestockQuantity] = useState("10");
+  const [availableAt, setAvailableAt] = useState("");
+  const [restockDate, setRestockDate] = useState("");
+  const [saleEndDate, setSaleEndDate] = useState("");
   const [images, setImages] = useState<string[]>([]);
   const [uploading, setUploading] = useState(false);
   
@@ -417,6 +420,9 @@ export default function ProductCreateModal({
         autoRestock,
         restockAfterDays: Number(restockAfterDays) || 2,
         restockQuantity: Number(restockQuantity) || 10,
+        availableAt: availableAt || undefined,
+        restockDate: restockDate || undefined,
+        saleEndDate: saleEndDate || undefined,
         images,
         videoUrl: videoUrl || undefined,
         unitOfMeasurement: "pcs",
@@ -771,6 +777,44 @@ export default function ProductCreateModal({
                   )}
                 </div>
               )}
+            </div>
+
+            <div className="sm:col-span-2 rounded-xl border border-slate-200 bg-slate-50 p-4">
+              <p className="text-sm font-semibold text-slate-700">
+                Stock &amp; countdown dates{" "}
+                <span className="font-normal text-slate-400">
+                  (optional — powers live countdowns on the shop)
+                </span>
+              </p>
+              <div className="mt-3 grid gap-3 sm:grid-cols-3">
+                <label className="text-xs font-medium text-slate-600">
+                  Available / arrival date
+                  <input
+                    type="datetime-local"
+                    value={availableAt}
+                    onChange={(e) => setAvailableAt(e.target.value)}
+                    className="mt-1 h-10 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm font-normal outline-none focus:border-[#EB6D3D] focus:ring-1 focus:ring-[#EB6D3D]"
+                  />
+                </label>
+                <label className="text-xs font-medium text-slate-600">
+                  Restock date
+                  <input
+                    type="datetime-local"
+                    value={restockDate}
+                    onChange={(e) => setRestockDate(e.target.value)}
+                    className="mt-1 h-10 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm font-normal outline-none focus:border-[#EB6D3D] focus:ring-1 focus:ring-[#EB6D3D]"
+                  />
+                </label>
+                <label className="text-xs font-medium text-slate-600">
+                  Sale / offer ends
+                  <input
+                    type="datetime-local"
+                    value={saleEndDate}
+                    onChange={(e) => setSaleEndDate(e.target.value)}
+                    className="mt-1 h-10 w-full rounded-lg border border-slate-300 bg-white px-2 text-sm font-normal outline-none focus:border-[#EB6D3D] focus:ring-1 focus:ring-[#EB6D3D]"
+                  />
+                </label>
+              </div>
             </div>
 
             <div className="sm:col-span-2">

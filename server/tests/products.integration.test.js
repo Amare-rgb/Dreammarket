@@ -45,6 +45,7 @@ const sampleProduct = {
   category: { id: 'cat-1', name: 'Plastics', slug: 'plastics' },
   subCategory: null,
   reviews: [],
+  status: 'PUBLISHED',
 };
 
 beforeEach(() => {

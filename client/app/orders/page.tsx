@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/providers";
 import { useLanguage } from "@/context/LanguageContext";
 import { api } from "@/lib/api";
+import OrderTracking from "@/components/orders/OrderTracking";
 
 type OrderStatus =
   | "PENDING"
@@ -33,6 +34,7 @@ interface Order {
   paymentProofUrl: string | null;
   total: number;
   createdAt: string;
+  updatedAt?: string;
   shippingAddress: string;
   items: OrderItem[];
 }
@@ -189,6 +191,11 @@ export default function OrdersPage() {
                     </span>
                   </div>
                 </div>
+                <OrderTracking
+                  status={order.status}
+                  createdAt={order.createdAt}
+                  updatedAt={order.updatedAt}
+                />
                 <ul className="divide-y divide-slate-100">
                   {order.items.map((item) => (
                     <li

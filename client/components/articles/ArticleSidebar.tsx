@@ -22,10 +22,16 @@ export default function ArticleSidebar({ activeCategory = "all", onCategorySelec
       .get("/api/articles/categories")
       .then((res) => {
         if (active) {
-          setCategories(res.data?.categories || []);
-          // Auto-expand the active category
+          const list: PublicCategory[] = res.data?.categories || [];
+          setCategories(list);
+          // Auto-expand the active category (or the parent of an active subcategory)
           if (activeCategory !== "all") {
-            setExpandedCategories(new Set([activeCategory]));
+            const parent = list.find((c) =>
+              c.subcategories?.some((s) => s.slug === activeCategory)
+            );
+            setExpandedCategories(
+              new Set([activeCategory, parent?.slug].filter(Boolean) as string[])
+            );
           }
         }
       })

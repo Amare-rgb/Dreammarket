@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useMemo, useRef, useState } from "react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import { X, UploadCloud, Check, Plus, LoaderCircle, FileText } from "lucide-react";
@@ -38,9 +38,31 @@ export default function NewArticleNotePage() {
   // New category state
   const [newCategoryOpen, setNewCategoryOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryParent, setNewCategoryParent] = useState("");
   const [creatingCategory, setCreatingCategory] = useState(false);
 
-  const effectiveCategory = category || categories[0]?.slug || "";
+  const effectiveCategory =
+    category ||
+    categories.find((c) => !c.parentId)?.slug ||
+    categories[0]?.slug ||
+    "";
+
+  // Group categories: top-level options + subcategories under optgroup
+  const categoryOptions = useMemo(() => {
+    const tops = categories.filter((c) => !c.parentId);
+    const childrenOf = new Map<string, typeof categories>();
+    for (const c of categories) {
+      if (c.parentId) {
+        const list = childrenOf.get(c.parentId) || [];
+        list.push(c);
+        childrenOf.set(c.parentId, list);
+      }
+    }
+    return tops.map((c) => ({
+      ...c,
+      children: childrenOf.get(c.id) || [],
+    }));
+  }, [categories]);
 
   // Handle image upload
   const handleImage = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -109,9 +131,13 @@ export default function NewArticleNotePage() {
     setError("");
     setCreatingCategory(true);
     try {
-      const created = await createCategory(name);
+      const created = await createCategory(
+        name,
+        newCategoryParent || null
+      );
       setCategory(created.slug);
       setNewCategoryName("");
+      setNewCategoryParent("");
       setNewCategoryOpen(false);
     } catch (e) {
       setError(errorText(e, "Could not create the category."));
@@ -237,11 +263,22 @@ export default function NewArticleNotePage() {
                   className={inputClass}
                 >
                   <option value="" disabled>Select a category</option>
-                  {categories.map((c) => (
-                    <option key={c.id} value={c.slug}>
-                      {c.name}
-                    </option>
-                  ))}
+                  {categoryOptions.map((c) =>
+                    c.children.length > 0 ? (
+                      <optgroup key={c.id} label={c.name}>
+                        <option value={c.slug}>{c.name}</option>
+                        {c.children.map((sub) => (
+                          <option key={sub.id} value={sub.slug}>
+                            {"\u00A0\u00A0\u00A0\u00A0"}{sub.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    ) : (
+                      <option key={c.id} value={c.slug}>
+                        {c.name}
+                      </option>
+                    )
+                  )}
                 </select>
                 
                 {/* Add Category Button */}
@@ -256,40 +293,73 @@ export default function NewArticleNotePage() {
                 )}
               </div>
 
-              {/* Inline New Category Form */}
+              {/* Inline New Category / Subcategory Form */}
               {newCategoryOpen && (
-                <div className="mt-2 flex gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2">
-                  <input
-                    value={newCategoryName}
-                    onChange={(e) => setNewCategoryName(e.target.value)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") {
-                        e.preventDefault();
-                        void handleCreateCategory();
-                      }
-                    }}
-                    placeholder="New category name"
-                    autoFocus
-                    className="w-full rounded border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-[#EB6D3D]"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => void handleCreateCategory()}
-                    disabled={creatingCategory || !newCategoryName.trim()}
-                    className="rounded bg-[#EB6D3D] px-3 py-1.5 text-sm font-bold text-white disabled:opacity-50"
-                  >
-                    {creatingCategory ? "..." : "Add"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setNewCategoryOpen(false);
-                      setNewCategoryName("");
-                    }}
-                    className="rounded bg-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700"
-                  >
-                    Cancel
-                  </button>
+                <div className="mt-2 space-y-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-600">
+                      Create as
+                    </label>
+                    <select
+                      value={newCategoryParent}
+                      onChange={(e) => setNewCategoryParent(e.target.value)}
+                      className="w-full rounded border border-slate-300 bg-white px-3 py-1.5 text-sm outline-none focus:border-[#EB6D3D]"
+                    >
+                      <option value="">Top-level category</option>
+                      {categories
+                        .filter((c) => !c.parentId)
+                        .map((c) => (
+                          <option key={c.id} value={c.id}>
+                            Subcategory of: {c.name}
+                          </option>
+                        ))}
+                    </select>
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-xs font-semibold text-slate-600">
+                      {newCategoryParent
+                        ? "Subcategory name"
+                        : "Category name"}
+                    </label>
+                    <div className="flex gap-2">
+                      <input
+                        value={newCategoryName}
+                        onChange={(e) => setNewCategoryName(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void handleCreateCategory();
+                          }
+                        }}
+                        placeholder={
+                          newCategoryParent
+                            ? "e.g. Tips & Tricks"
+                            : "e.g. General"
+                        }
+                        autoFocus
+                        className="w-full rounded border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-[#EB6D3D]"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void handleCreateCategory()}
+                        disabled={creatingCategory || !newCategoryName.trim()}
+                        className="rounded bg-[#EB6D3D] px-3 py-1.5 text-sm font-bold text-white disabled:opacity-50"
+                      >
+                        {creatingCategory ? "..." : "Add"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setNewCategoryOpen(false);
+                          setNewCategoryName("");
+                          setNewCategoryParent("");
+                        }}
+                        className="rounded bg-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700"
+                      >
+                        Cancel
+                      </button>
+                    </div>
+                  </div>
                 </div>
               )}
             </div>

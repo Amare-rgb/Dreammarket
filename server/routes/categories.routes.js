@@ -130,6 +130,7 @@ router.get('/', async (req, res) => {
           ...(includeProducts === 'true'
             ? {
                 products: {
+                  where: { status: 'PUBLISHED' },
                   orderBy: { createdAt: 'desc' },
                   take: 4,
                   select: {
@@ -180,6 +181,7 @@ router.get('/:id', async (req, res) => {
       include: {
         children: { orderBy: { name: 'asc' } },
         products: {
+          where: { status: 'PUBLISHED' },
           select: {
             id: true,
             name: true,

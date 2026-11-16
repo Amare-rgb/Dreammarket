@@ -1,8 +1,16 @@
+export interface PublicSubcategory {
+  id: string;
+  name: string;
+  slug: string;
+  count: number;
+}
+
 export interface PublicCategory {
   id: string;
   name: string;
   slug: string;
   count: number;
+  subcategories?: PublicSubcategory[];
 }
 
 export interface ArticleSummary {
@@ -36,4 +44,11 @@ export const readingMinutes = (text: string) =>
 export const categoryName = (
   categories: PublicCategory[],
   slug?: string | null
-) => categories.find((c) => c.slug === slug)?.name ?? "General";
+) => {
+  for (const c of categories) {
+    if (c.slug === slug) return c.name;
+    const sub = c.subcategories?.find((s) => s.slug === slug);
+    if (sub) return sub.name;
+  }
+  return "General";
+};

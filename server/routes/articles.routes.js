@@ -179,6 +179,7 @@ router.get('/admin/categories', requireAuth, requireAdmin, async (req, res) => {
         id: c.id,
         name: c.name,
         slug: c.slug,
+        parentId: c.parentId,
         count: counts.get(c.slug) || 0,
       })),
     });
@@ -198,6 +199,24 @@ router.post('/admin/categories', requireAuth, requireAdmin, async (req, res) => 
       });
     }
 
+    const parentId = text(req.body?.parentId) || null;
+    let parent = null;
+    if (parentId) {
+      parent = await prisma.articleCategory.findUnique({
+        where: { id: parentId },
+        select: { id: true, parentId: true },
+      });
+      if (!parent) {
+        return res.status(400).json({ success: false, error: 'Parent category not found.' });
+      }
+      if (parent.parentId) {
+        return res.status(400).json({
+          success: false,
+          error: 'Subcategories cannot have their own subcategories.',
+        });
+      }
+    }
+
     await ensureDefaultCategories();
 
     const duplicate = await prisma.articleCategory.findFirst({
@@ -212,12 +231,18 @@ router.post('/admin/categories', requireAuth, requireAdmin, async (req, res) => 
 
     const slug = await uniqueCategorySlug(name);
     const category = await prisma.articleCategory.create({
-      data: { name, slug },
+      data: { name, slug, parentId: parent?.id || null },
     });
 
     return res.status(201).json({
       success: true,
-      category: { id: category.id, name: category.name, slug: category.slug, count: 0 },
+      category: {
+        id: category.id,
+        name: category.name,
+        slug: category.slug,
+        parentId: category.parentId,
+        count: 0,
+      },
     });
   } catch (error) {
     if (error.code === 'P2002') {
@@ -237,6 +262,16 @@ router.delete('/admin/categories/:id', requireAuth, requireAdmin, async (req, re
     });
     if (!category) {
       return res.status(404).json({ success: false, error: 'Category not found.' });
+    }
+
+    const childCount = await prisma.articleCategory.count({
+      where: { parentId: category.id },
+    });
+    if (childCount > 0) {
+      return res.status(400).json({
+        success: false,
+        error: `This category has ${childCount} subcategor${childCount === 1 ? 'y' : 'ies'}. Delete them first.`,
+      });
     }
 
     const inUse = await prisma.article.count({ where: { category: category.slug } });
@@ -479,18 +514,33 @@ router.get('/categories', async (req, res) => {
       }),
     ]);
     const counts = new Map(grouped.map((g) => [g.category, g._count._all]));
+    const countOf = (slug) => counts.get(slug) || 0;
 
-    return res.json({
-      success: true,
-      categories: categories
-        .map((c) => ({
+    const parents = categories.filter((c) => !c.parentId);
+    const childrenOf = (id) => categories.filter((c) => c.parentId === id);
+
+    const result = parents
+      .map((c) => {
+        const subs = childrenOf(c.id).map((s) => ({
+          id: s.id,
+          name: s.name,
+          slug: s.slug,
+          count: countOf(s.slug),
+        }));
+        // Parent count includes its own articles plus all subcategory articles
+        const total =
+          countOf(c.slug) + subs.reduce((sum, s) => sum + s.count, 0);
+        return {
           id: c.id,
           name: c.name,
           slug: c.slug,
-          count: counts.get(c.slug) || 0,
-        }))
-        .filter((c) => c.count > 0),
-    });
+          count: total,
+          subcategories: subs,
+        };
+      })
+      .filter((c) => c.count > 0 || c.subcategories.length > 0);
+
+    return res.json({ success: true, categories: result });
   } catch (error) {
     console.error('Failed to fetch public article categories:', error);
     return res.status(500).json({ success: false, error: 'Failed to fetch categories' });
@@ -500,8 +550,33 @@ router.get('/categories', async (req, res) => {
 router.get('/', async (req, res) => {
   try {
     const category = text(req.query?.category).toLowerCase();
+
+    // When a parent category is selected, include articles from its subcategories too
+    let categoryFilter = null;
+    if (category) {
+      const cat = await prisma.articleCategory.findUnique({
+        where: { slug: category },
+        select: { id: true, parentId: true },
+      });
+      if (cat && !cat.parentId) {
+        const children = await prisma.articleCategory.findMany({
+          where: { parentId: cat.id },
+          select: { slug: true },
+        });
+        const slugs = [category, ...children.map((c) => c.slug)];
+        categoryFilter = { in: slugs };
+      } else {
+        categoryFilter = category;
+      }
+    }
+
     const articles = await prisma.article.findMany({
-      where: { published: true, ...(category ? { category } : {}) },
+      where: {
+        published: true,
+        ...(categoryFilter
+          ? { category: categoryFilter }
+          : {}),
+      },
       orderBy: { createdAt: 'desc' },
       select: {
         id: true,

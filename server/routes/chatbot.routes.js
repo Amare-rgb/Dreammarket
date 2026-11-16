@@ -173,6 +173,7 @@ Generate helpful, friendly, and accurate responses to user queries.`;
         },
         where: {
           stock: { gt: 0 },
+          status: 'PUBLISHED',
         },
       });
       this.products = products;
@@ -988,6 +989,7 @@ router.get("/products", optionalAuth, async (req, res) => {
       },
       where: {
         stock: { gt: 0 },
+        status: 'PUBLISHED',
       },
     });
 

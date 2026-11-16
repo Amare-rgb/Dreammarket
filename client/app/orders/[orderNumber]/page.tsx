@@ -6,7 +6,6 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
-  CheckCircle2,
   LoaderCircle,
   PackageCheck,
   ShoppingBag,
@@ -14,6 +13,7 @@ import {
 import { useAuth } from "@/app/providers";
 import { useLanguage } from "@/context/LanguageContext";
 import { api } from "@/lib/api";
+import OrderTracking from "@/components/orders/OrderTracking";
 
 type OrderStatus =
   | "PENDING"
@@ -41,6 +41,7 @@ interface Order {
   paymentProofUrl: string | null;
   total: number;
   createdAt: string;
+  updatedAt?: string;
   shippingAddress: string;
   customerName: string;
   customerPhone: string;
@@ -54,14 +55,6 @@ const money = (amount: number) =>
     currency: "ETB",
     maximumFractionDigits: 2,
   }).format(amount);
-
-const STATUS_STEPS: OrderStatus[] = ["PENDING", "CONFIRMED"];
-
-function statusIndex(status: OrderStatus): number {
-  if (status === "PENDING") return 0;
-  if (status === "CANCELLED") return -1;
-  return 1;
-}
 
 export default function OrderDetailPage() {
   const { orderNumber } = useParams<{ orderNumber: string }>();
@@ -147,7 +140,6 @@ export default function OrderDetailPage() {
     );
   }
 
-  const currentStep = statusIndex(order.status);
   const isCancelled = order.status === "CANCELLED";
   const subtotal = order.items.reduce(
     (sum, item) => sum + item.unitPrice * item.quantity,
@@ -193,53 +185,16 @@ export default function OrderDetailPage() {
         </header>
 
         {/* Status tracker */}
-        {!isCancelled && (
-          <section className="mt-6 rounded-2xl border border-[#f0e8d8] bg-white p-5 shadow-sm sm:p-6">
-            <h2 className="text-sm font-bold uppercase tracking-[0.14em] text-[#b98a3e]">
-              {t("orders.tracking_title", "Order progress")}
-            </h2>
-            <div className="mt-4 flex items-center">
-              {STATUS_STEPS.map((step, index) => {
-                const done = index <= currentStep;
-                const isLast = index === STATUS_STEPS.length - 1;
-                return (
-                  <div key={step} className="flex flex-1 items-center">
-                    <div className="flex flex-col items-center">
-                      <span
-                        className={`flex h-8 w-8 items-center justify-center rounded-full text-xs font-bold ${
-                          done
-                            ? "bg-[#EB6D3D] text-white"
-                            : "bg-slate-100 text-slate-400"
-                        }`}
-                      >
-                        {done ? <CheckCircle2 className="h-4 w-4" /> : index + 1}
-                      </span>
-                      <span
-                        className={`mt-1.5 text-center text-[10px] font-semibold uppercase tracking-wide ${
-                          done ? "text-[#20283a]" : "text-slate-400"
-                        }`}
-                      >
-                        {step === "CONFIRMED"
-                          ? t("orders.status_approved", "Approved")
-                          : t(
-                              `orders.status_${step.toLowerCase()}`,
-                              step.replaceAll("_", " ")
-                            )}
-                      </span>
-                    </div>
-                    {!isLast && (
-                      <div
-                        className={`mx-1 mb-5 h-0.5 flex-1 rounded ${
-                          index < currentStep ? "bg-[#EB6D3D]" : "bg-slate-200"
-                        }`}
-                      />
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </section>
-        )}
+        <section className="mt-6 rounded-2xl border border-[#f0e8d8] bg-white p-5 shadow-sm sm:p-6">
+          <h2 className="text-sm font-bold uppercase tracking-[0.14em] text-[#b98a3e]">
+            {t("orders.tracking_title", "Order progress")}
+          </h2>
+          <OrderTracking
+            status={order.status}
+            createdAt={order.createdAt}
+            updatedAt={order.updatedAt}
+          />
+        </section>
 
         {isCancelled && (
           <section className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-5 text-sm text-red-700">

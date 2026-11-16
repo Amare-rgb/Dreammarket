@@ -218,7 +218,7 @@ describe('POST /api/orders', () => {
     expect(mockPrisma.product.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({
         where: { id: 'prod-1', stock: { gte: 2 } },
-        data: { stock: { decrement: 2 } },
+        data: expect.objectContaining({ stock: { decrement: 2 } }),
       })
     );
   });

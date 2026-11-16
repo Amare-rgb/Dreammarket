@@ -8,6 +8,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUpRight, Search, ShoppingCart, Video, X, Trash2 } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { readCart, writeCart } from "@/app/lib/cart";
+import ProductCountdown from "./ProductCountdown";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types
@@ -31,6 +32,9 @@ export interface Product {
   unit: string;
   stock: number;
   availabilityStatus?: string;
+  availableAt?: string | null;
+  restockDate?: string | null;
+  saleEndDate?: string | null;
   featured?: boolean;
   badge?: string;
   images: string[];
@@ -68,6 +72,9 @@ interface ApiProduct {
   unitOfMeasurement?: string | null;
   stock?: number | null;
   availabilityStatus?: string | null;
+  availableAt?: string | null;
+  restockDate?: string | null;
+  saleEndDate?: string | null;
   isFeatured?: boolean;
   images?: string[] | null;
   videoUrl?: string | null;
@@ -593,6 +600,9 @@ export default function Products() {
               unit: p.unitOfMeasurement || "pcs",
               stock,
               availabilityStatus: p.availabilityStatus || undefined,
+              availableAt: p.availableAt || null,
+              restockDate: p.restockDate || null,
+              saleEndDate: p.saleEndDate || null,
               featured: hasDiscount || Boolean(p.isFeatured),
               badge: hasDiscount ? "Sale" : undefined,
               images: imageList,
@@ -1109,6 +1119,16 @@ export default function Products() {
                                 )}
                             </p>
                           )}
+                        </div>
+
+                        <div className="mt-2">
+                          <ProductCountdown
+                            stock={product.stock}
+                            availableAt={product.availableAt}
+                            restockDate={product.restockDate}
+                            saleEndDate={product.saleEndDate}
+                            variant="card"
+                          />
                         </div>
 
                         <div className="mt-2.5 space-y-0.5">

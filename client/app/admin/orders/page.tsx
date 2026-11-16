@@ -108,22 +108,10 @@ export default function AdminOrdersPage() {
         )
       );
       if (status === "CONFIRMED") {
-        if (response.data.notificationSent === true) {
-          setNotice({
-            type: "success",
-            message: `Order ${order.orderNumber} confirmed and customer approval email sent.`,
-          });
-        } else if (response.data.notificationSent === false) {
-          setNotice({
-            type: "warning",
-            message: `Order ${order.orderNumber} was confirmed, but the customer approval email could not be sent. Check the email provider configuration and server logs.`,
-          });
-        } else {
-          setNotice({
-            type: "success",
-            message: `Order ${order.orderNumber} was already confirmed; no duplicate email was sent.`,
-          });
-        }
+        setNotice({
+          type: "success",
+          message: `Order ${order.orderNumber} confirmed — approval email & SMS are being sent.`,
+        });
       } else {
         setNotice({
           type: "success",
@@ -268,9 +256,15 @@ export default function AdminOrdersPage() {
                     <span className={`rounded-full px-3 py-1 text-xs font-bold ${
                       order.status === "CONFIRMED"
                         ? "bg-green-50 text-green-800"
-                        : order.status === "CANCELLED"
-                          ? "bg-red-50 text-red-700"
-                          : "bg-slate-100 text-slate-700"
+                        : order.status === "PROCESSING"
+                          ? "bg-blue-50 text-blue-800"
+                          : order.status === "SHIPPED"
+                            ? "bg-indigo-50 text-indigo-800"
+                            : order.status === "DELIVERED"
+                              ? "bg-emerald-50 text-emerald-800"
+                              : order.status === "CANCELLED"
+                                ? "bg-red-50 text-red-700"
+                                : "bg-slate-100 text-slate-700"
                     }`}>
                       {statusLabel}
                     </span>
@@ -299,6 +293,73 @@ export default function AdminOrdersPage() {
                           {t("orders.reject", "Reject")}
                         </button>
                       </div>
+                    )}
+                    {order.status === "CONFIRMED" && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={updatingId === order.id}
+                          onClick={() => void updateStatus(order, "PROCESSING")}
+                          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-blue-600 px-3 text-xs font-bold text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {updatingId === order.id ? (
+                            <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Check className="h-3.5 w-3.5" />
+                          )}
+                          {t("orders.start_processing", "Start processing")}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={updatingId === order.id}
+                          onClick={() => void updateStatus(order, "CANCELLED")}
+                          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 text-xs font-bold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                          {t("orders.cancel", "Cancel")}
+                        </button>
+                      </div>
+                    )}
+                    {order.status === "PROCESSING" && (
+                      <div className="flex items-center gap-2">
+                        <button
+                          type="button"
+                          disabled={updatingId === order.id}
+                          onClick={() => void updateStatus(order, "SHIPPED")}
+                          className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-indigo-600 px-3 text-xs font-bold text-white hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          {updatingId === order.id ? (
+                            <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                          ) : (
+                            <Check className="h-3.5 w-3.5" />
+                          )}
+                          {t("orders.mark_shipped", "Mark as shipped")}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={updatingId === order.id}
+                          onClick={() => void updateStatus(order, "CANCELLED")}
+                          className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 text-xs font-bold text-red-700 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-60"
+                        >
+                          <X className="h-3.5 w-3.5" />
+                          {t("orders.cancel", "Cancel")}
+                        </button>
+                      </div>
+                    )}
+                    {order.status === "SHIPPED" && (
+                      <button
+                        type="button"
+                        disabled={updatingId === order.id}
+                        onClick={() => void updateStatus(order, "DELIVERED")}
+                        className="inline-flex h-9 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {updatingId === order.id ? (
+                          <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Check className="h-3.5 w-3.5" />
+                        )}
+                        {t("orders.mark_delivered", "Mark as delivered")}
+                      </button>
                     )}
                     <button
                       type="button"

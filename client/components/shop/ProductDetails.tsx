@@ -9,6 +9,7 @@ import { useLanguage } from "@/context/LanguageContext";
 import { readCart, writeCart } from "@/app/lib/cart";
 import { getVideoSource } from "@/lib/video";
 import ProductFeedback from "./ProductFeedback";
+import ProductCountdown from "./ProductCountdown";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Types — must match app/shop/[slug]/page.tsx
@@ -32,6 +33,9 @@ export interface Product {
   unit: string;
   stock: number;
   availabilityStatus?: string;
+  availableAt?: string | null;
+  restockDate?: string | null;
+  saleEndDate?: string | null;
   featured?: boolean;
   badge?: string;
   images: string[];
@@ -803,6 +807,17 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
                   </div>
                 );
               })()}
+
+              {/* Live stock & countdown badges */}
+              <div className="mt-3">
+                <ProductCountdown
+                  stock={product.stock}
+                  availableAt={product.availableAt}
+                  restockDate={product.restockDate}
+                  saleEndDate={product.saleEndDate}
+                  variant="detail"
+                />
+              </div>
 
               {/* Description */}
               <section

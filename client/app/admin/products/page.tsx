@@ -150,6 +150,7 @@ interface Product {
   unitOfMeasurement?: string;
   pricePerUnit?: number;
   durationTime?: string;
+  status?: string;
   createdAt: string;
   updatedAt: string;
 }
@@ -417,6 +418,8 @@ const ProductsPage: React.FC = () => {
 
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [statusUpdatingId, setStatusUpdatingId] = useState<string | null>(null);
   const [showFilters, setShowFilters] = useState(false);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [videoPreview, setVideoPreview] = useState<{
@@ -436,6 +439,7 @@ const ProductsPage: React.FC = () => {
   const currentPageRef = useRef(currentPage);
   const searchQueryRef = useRef(searchQuery);
   const selectedCategoryRef = useRef(selectedCategory);
+  const statusFilterRef = useRef(statusFilter);
   const pageSizeRef = useRef(pageSize);
 
   useEffect(() => {
@@ -447,6 +451,9 @@ const ProductsPage: React.FC = () => {
   useEffect(() => {
     selectedCategoryRef.current = selectedCategory;
   }, [selectedCategory]);
+  useEffect(() => {
+    statusFilterRef.current = statusFilter;
+  }, [statusFilter]);
   useEffect(() => {
     pageSizeRef.current = pageSize;
   }, [pageSize]);
@@ -489,11 +496,13 @@ const ProductsPage: React.FC = () => {
       page?: number;
       search?: string;
       category?: string;
+      status?: string;
     }) => {
       const silent = opts?.silent ?? false;
       const page = opts?.page ?? currentPageRef.current;
       const search = opts?.search ?? searchQueryRef.current;
       const category = opts?.category ?? selectedCategoryRef.current;
+      const status = opts?.status ?? statusFilterRef.current;
 
       try {
         if (!silent) setRefreshing(true);
@@ -513,6 +522,9 @@ const ProductsPage: React.FC = () => {
         params.append("limit", String(pageSizeRef.current));
         if (search) params.append("search", search);
         if (category) params.append("categoryId", category);
+        if (status === "PENDING" || status === "PUBLISHED") {
+          params.append("status", status);
+        }
 
         const url = `/api/products/admin/all?${params.toString()}`;
 
@@ -620,6 +632,21 @@ const ProductsPage: React.FC = () => {
     return () => clearTimeout(t);
   }, [selectedCategory, fetchProducts]);
 
+  useEffect(() => {
+    const t = setTimeout(() => {
+      if (currentPageRef.current !== 1) {
+        setCurrentPage(1);
+      }
+      fetchProducts({
+        silent: true,
+        page: 1,
+        status: statusFilter,
+      });
+    }, 0);
+
+    return () => clearTimeout(t);
+  }, [statusFilter, fetchProducts]);
+
   const goToPage = (page: number) => {
     if (page < 1 || page > pages || page === currentPage || refreshing) return;
     setCurrentPage(page);
@@ -676,9 +703,44 @@ const ProductsPage: React.FC = () => {
 
   const handleClearFilters = () => {
     setSelectedCategory("");
+    setStatusFilter("");
     setSearchQuery("");
     setCurrentPage(1);
-    void fetchProducts({ silent: true, page: 1, search: "", category: "" });
+    void fetchProducts({
+      silent: true,
+      page: 1,
+      search: "",
+      category: "",
+      status: "",
+    });
+  };
+
+  const handleToggleStatus = async (product: Product) => {
+    const nextStatus =
+      product.status === "PUBLISHED" ? "PENDING" : "PUBLISHED";
+    setStatusUpdatingId(product.id);
+    try {
+      const response = await api.patch(`/api/products/${product.id}/status`, {
+        status: nextStatus,
+      });
+      if (response.data?.success) {
+        showNotification(
+          "success",
+          nextStatus === "PUBLISHED"
+            ? `"${product.name}" published — now live in the shop.`
+            : `"${product.name}" moved back to pending.`
+        );
+        await fetchProducts({ silent: true, page: currentPage });
+      }
+    } catch (err) {
+      console.error("Error updating product status:", err);
+      showNotification(
+        "error",
+        "Could not update the product status. Please try again."
+      );
+    } finally {
+      setStatusUpdatingId(null);
+    }
   };
 
   const handleDelete = async (id: string) => {
@@ -860,6 +922,20 @@ const ProductsPage: React.FC = () => {
                 ))}
             </select>
           </div>
+          <div>
+            <label className="text-sm font-medium text-gray-700">
+              Status
+            </label>
+            <select
+              value={statusFilter}
+              onChange={(e) => setStatusFilter(e.target.value)}
+              className="w-full mt-1 px-3 py-2 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 text-sm"
+            >
+              <option value="">All Statuses</option>
+              <option value="PENDING">Pending approval</option>
+              <option value="PUBLISHED">Published</option>
+            </select>
+          </div>
           <div className="flex items-end">
             <button
               onClick={handleClearFilters}
@@ -940,6 +1016,17 @@ const ProductsPage: React.FC = () => {
                             <div className="flex items-center space-x-1 text-xs text-gray-500">
                               <span>SKU: {product.sku || "N/A"}</span>
                             </div>
+                            <span
+                              className={`mt-1 inline-flex w-fit items-center rounded-full px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide ${
+                                product.status === "PUBLISHED"
+                                  ? "bg-green-50 text-green-700"
+                                  : "bg-amber-50 text-amber-700"
+                              }`}
+                            >
+                              {product.status === "PUBLISHED"
+                                ? "Published"
+                                : "Pending"}
+                            </span>
                           </div>
                         </div>
                       </td>
@@ -1057,6 +1144,28 @@ const ProductsPage: React.FC = () => {
                       </td>
                       <td className="px-4 py-3">
                         <div className="flex items-center justify-end space-x-1">
+                          <button
+                            onClick={() => void handleToggleStatus(product)}
+                            disabled={statusUpdatingId === product.id}
+                            className={`inline-flex items-center gap-1 rounded-lg px-2 py-1.5 text-xs font-bold transition-colors disabled:opacity-60 ${
+                              product.status === "PUBLISHED"
+                                ? "text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                                : "bg-green-600 text-white hover:bg-green-700"
+                            }`}
+                            title={
+                              product.status === "PUBLISHED"
+                                ? "Unpublish product"
+                                : "Approve & publish product"
+                            }
+                          >
+                            {statusUpdatingId === product.id ? (
+                              <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : product.status === "PUBLISHED" ? (
+                              "Unpublish"
+                            ) : (
+                              "Approve"
+                            )}
+                          </button>
                           <Link
                             href={`/admin/products/${product.id}`}
                             className="p-1.5 text-gray-400 hover:text-gray-600 hover:bg-gray-100 rounded-lg transition-colors"

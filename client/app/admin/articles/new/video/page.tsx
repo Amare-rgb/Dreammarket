@@ -1,6 +1,6 @@
 "use client";
 
-import { ChangeEvent, FormEvent, useRef, useState } from "react";
+import { ChangeEvent, FormEvent, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { LoaderCircle, Upload, Video, X, FileText } from "lucide-react";
 import { api, uploadApi } from "@/lib/api";
@@ -33,7 +33,28 @@ export default function NewArticleVideoPage() {
   const fileRef = useRef<HTMLInputElement>(null);
   const pdfRef = useRef<HTMLInputElement>(null);
 
-  const effectiveCategory = category || categories[0]?.slug || "";
+  const effectiveCategory =
+    category ||
+    categories.find((c) => !c.parentId)?.slug ||
+    categories[0]?.slug ||
+    "";
+
+  // Group categories: top-level options + subcategories under optgroup
+  const categoryOptions = useMemo(() => {
+    const tops = categories.filter((c) => !c.parentId);
+    const childrenOf = new Map<string, typeof categories>();
+    for (const c of categories) {
+      if (c.parentId) {
+        const list = childrenOf.get(c.parentId) || [];
+        list.push(c);
+        childrenOf.set(c.parentId, list);
+      }
+    }
+    return tops.map((c) => ({
+      ...c,
+      children: childrenOf.get(c.id) || [],
+    }));
+  }, [categories]);
   const videoSource = videoUrl.trim() ? getVideoSource(videoUrl) : null;
 
   const handleVideoFile = async (event: ChangeEvent<HTMLInputElement>) => {
@@ -216,11 +237,22 @@ export default function NewArticleVideoPage() {
                 className={inputClass}
               >
                 <option value="" disabled>Select a category</option>
-                {categories.map((c) => (
-                  <option key={c.id} value={c.slug}>
-                    {c.name}
-                  </option>
-                ))}
+                {categoryOptions.map((c) =>
+                  c.children.length > 0 ? (
+                    <optgroup key={c.id} label={c.name}>
+                      <option value={c.slug}>{c.name}</option>
+                      {c.children.map((sub) => (
+                        <option key={sub.id} value={sub.slug}>
+                          {"\u00A0\u00A0\u00A0\u00A0"}{sub.name}
+                        </option>
+                      ))}
+                    </optgroup>
+                  ) : (
+                    <option key={c.id} value={c.slug}>
+                      {c.name}
+                    </option>
+                  )
+                )}
               </select>
             </div>
 

@@ -15,6 +15,7 @@ import {
 import { useSettings } from "@/hooks/useSettings";
 import { useLanguage } from "@/context/LanguageContext";
 import { readCart, writeCart } from "@/app/lib/cart";
+import ProductCountdown from "@/components/shop/ProductCountdown";
 
 // ============================================================
 // Types
@@ -69,6 +70,9 @@ interface HomeProductData {
   discountPrices?: { currency: string; amount: number }[] | null;
   stock?: number | null;
   availabilityStatus?: string | null;
+  availableAt?: string | null;
+  restockDate?: string | null;
+  saleEndDate?: string | null;
   unitOfMeasurement?: string | null;
 }
 
@@ -906,6 +910,13 @@ function HomeProducts() {
                     </div>
                   </Link>
                   <div className="px-3 pb-3">
+                    <ProductCountdown
+                      stock={Number(product.stock) || 0}
+                      availableAt={product.availableAt}
+                      restockDate={product.restockDate}
+                      saleEndDate={product.saleEndDate}
+                      variant="card"
+                    />
                     <button
                       type="button"
                       onClick={() => addToCart(product, image)}

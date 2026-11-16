@@ -440,177 +440,179 @@ function ArticlesBrowser() {
                 )}
               </div>
 
-        {loading ? (
-          <div className="flex min-h-64 items-center justify-center">
-            <LoaderCircle className="h-8 w-8 animate-spin text-[#F47822]" />
-          </div>
-        ) : error ? (
-          <p
-            role="alert"
-            className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
-          >
-            {error}
-          </p>
-        ) : filtered.length === 0 ? (
-          <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-20 text-center">
-            <Image
-              src={LOGO_SRC}
-              alt="Dream More"
-              width={160}
-              height={160}
-              unoptimized
-              className="mx-auto h-20 w-20 object-contain opacity-80"
-            />
-            <h3 className="mt-3 font-semibold text-slate-800">No articles found</h3>
-            <p className="mt-1 text-sm text-slate-500">
-              {urlSearch
-                ? "Try a different search word."
-                : "Please check back soon for marketplace updates and guides."}
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-8">
-            {/* Featured */}
-            {featured && (
-              <article className="grid overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-xl lg:grid-cols-2">
-                {/* Featured Media: Shows Video if exists, else Image */}
-                <div className="relative block h-64 lg:h-full min-h-[300px] bg-slate-900">
-                  {featured.videoUrl ? (
-                    <VideoPlayer url={featured.videoUrl} title={featured.title} />
-                  ) : featured.image ? (
-                    <Link href={`/articles/${featured.slug}`} className="block h-full w-full">
-                      <Image
-                        src={featured.image}
-                        alt=""
-                        width={1000}
-                        height={620}
-                        unoptimized
-                        className="h-full w-full object-cover"
-                      />
-                    </Link>
-                  ) : (
-                    <Link href={`/articles/${featured.slug}`} className="block h-full w-full">
-                      <LogoPlaceholder className="h-full w-full" size={96} />
-                    </Link>
+              {loading ? (
+                <div className="flex min-h-64 items-center justify-center">
+                  <LoaderCircle className="h-8 w-8 animate-spin text-[#F47822]" />
+                </div>
+              ) : error ? (
+                <p
+                  role="alert"
+                  className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+                >
+                  {error}
+                </p>
+              ) : filtered.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-20 text-center">
+                  <Image
+                    src={LOGO_SRC}
+                    alt="Dream More"
+                    width={160}
+                    height={160}
+                    unoptimized
+                    className="mx-auto h-20 w-20 object-contain opacity-80"
+                  />
+                  <h3 className="mt-3 font-semibold text-slate-800">No articles found</h3>
+                  <p className="mt-1 text-sm text-slate-500">
+                    {urlSearch
+                      ? "Try a different search word."
+                      : "Please check back soon for marketplace updates and guides."}
+                  </p>
+                </div>
+              ) : (
+                <div className="space-y-8">
+                  {/* Featured */}
+                  {featured && (
+                    <article className="grid overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-xl lg:grid-cols-2">
+                      {/* Featured Media: Shows Video if exists, else Image */}
+                      <div className="relative block h-64 lg:h-full min-h-[300px] bg-slate-900">
+                        {featured.videoUrl ? (
+                          <VideoPlayer url={featured.videoUrl} title={featured.title} />
+                        ) : featured.image ? (
+                          <Link href={`/articles/${featured.slug}`} className="block h-full w-full">
+                            <Image
+                              src={featured.image}
+                              alt=""
+                              width={1000}
+                              height={620}
+                              unoptimized
+                              className="h-full w-full object-cover"
+                            />
+                          </Link>
+                        ) : (
+                          <Link href={`/articles/${featured.slug}`} className="block h-full w-full">
+                            <LogoPlaceholder className="h-full w-full" size={96} />
+                          </Link>
+                        )}
+                      </div>
+
+                      <div className="flex flex-col justify-center p-6 sm:p-10">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded-full bg-[#EB6D3D]/15 px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#9c3d1a]">
+                            {categoryName(categories, featured.category)}
+                          </span>
+                          <span className="text-xs text-slate-400">
+                            {formatDate(featured.createdAt)}
+                          </span>
+                        </div>
+                        <h3 className="mt-3 text-2xl font-bold leading-tight text-slate-900 sm:text-3xl">
+                          <Link href={`/articles/${featured.slug}`} className="hover:text-[#cf5427]">
+                            {featured.title}
+                          </Link>
+                        </h3>
+                        <p className="mt-3 line-clamp-4 text-base leading-7 text-slate-600">
+                          {featured.description}
+                        </p>
+                        <div className="mt-6 flex flex-wrap items-center gap-3">
+                          <Link
+                            href={`/articles/${featured.slug}`}
+                            className="inline-flex items-center gap-2 rounded-lg bg-[#EB6D3D] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#cf5427]"
+                          >
+                            Read article <ArrowRight size={16} />
+                          </Link>
+
+                          <button
+                            type="button"
+                            onClick={() => openPreview(featured)}
+                            className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                          >
+                            Quick preview
+                          </button>
+
+                          {/* Comment Button (Featured) - Opens Full Screen Page */}
+                          <Link
+                            href={`/articles/${featured.slug}#comments`}
+                            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
+                          >
+                            <MessageSquare size={16} /> Comment
+                          </Link>
+                        </div>
+                      </div>
+                    </article>
+                  )}
+
+                  {/* Grid */}
+                  {rest.length > 0 && (
+                    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                      {rest.map((article) => (
+                        <article
+                          key={article.id}
+                          className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition duration-200 hover:-translate-y-1 hover:border-[#EB6D3D]/50 hover:shadow-xl"
+                        >
+                          {/* Media: Shows Video if exists, else Image */}
+                          <div className="relative block bg-slate-900 h-44">
+                            {article.videoUrl ? (
+                              <VideoPlayer url={article.videoUrl} title={article.title} />
+                            ) : article.image ? (
+                              <Link href={`/articles/${article.slug}`} className="block h-full w-full">
+                                <Image
+                                  src={article.image}
+                                  alt=""
+                                  width={700}
+                                  height={420}
+                                  unoptimized
+                                  className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
+                                />
+                              </Link>
+                            ) : (
+                              <Link href={`/articles/${article.slug}`} className="block h-full w-full">
+                                <LogoPlaceholder className="h-full w-full" size={72} />
+                              </Link>
+                            )}
+
+                            <span className="absolute left-3 top-3 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#cf5427] shadow-sm z-10">
+                              {categoryName(categories, article.category)}
+                            </span>
+                            {article.videoUrl && (
+                              <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-[#20283a]/85 px-2 py-1 text-[11px] font-bold text-white shadow-sm z-10">
+                                <Video size={12} /> Video
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="flex flex-1 flex-col p-4">
+                            <p className="text-xs text-slate-400">{formatDate(article.createdAt)}</p>
+                            <h3 className="mt-1.5 text-lg font-bold leading-snug text-slate-900">
+                              <Link href={`/articles/${article.slug}`} className="hover:text-[#cf5427]">
+                                {article.title}
+                              </Link>
+                            </h3>
+                            <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">
+                              {article.description}
+                            </p>
+
+                            <div className="mt-auto flex items-center justify-between gap-2 pt-4 border-t border-slate-100 mt-4">
+                              {/* Comment Button (Grid) - Opens Full Screen Page */}
+                              <Link
+                                href={`/articles/${article.slug}#comments`}
+                                className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 transition hover:text-[#cf5427]"
+                              >
+                                <MessageSquare size={15} /> Comment
+                              </Link>
+
+                              <Link
+                                href={`/articles/${article.slug}`}
+                                className="inline-flex items-center gap-1 text-sm font-bold text-[#cf5427] transition hover:text-[#9c3d1a]"
+                              >
+                                Read <ArrowRight size={15} />
+                              </Link>
+                            </div>
+                          </div>
+                        </article>
+                      ))}
+                    </div>
                   )}
                 </div>
-
-                <div className="flex flex-col justify-center p-6 sm:p-10">
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className="rounded-full bg-[#EB6D3D]/15 px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#9c3d1a]">
-                      {categoryName(categories, featured.category)}
-                    </span>
-                    <span className="text-xs text-slate-400">
-                      {formatDate(featured.createdAt)}
-                    </span>
-                  </div>
-                  <h3 className="mt-3 text-2xl font-bold leading-tight text-slate-900 sm:text-3xl">
-                    <Link href={`/articles/${featured.slug}`} className="hover:text-[#cf5427]">
-                      {featured.title}
-                    </Link>
-                  </h3>
-                  <p className="mt-3 line-clamp-4 text-base leading-7 text-slate-600">
-                    {featured.description}
-                  </p>
-                  <div className="mt-6 flex flex-wrap items-center gap-3">
-                    <Link
-                      href={`/articles/${featured.slug}`}
-                      className="inline-flex items-center gap-2 rounded-lg bg-[#EB6D3D] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#cf5427]"
-                    >
-                      Read article <ArrowRight size={16} />
-                    </Link>
-
-                    <button
-                      type="button"
-                      onClick={() => openPreview(featured)}
-                      className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                    >
-                      Quick preview
-                    </button>
-
-                    {/* Comment Button (Featured) - Opens Full Screen Page */}
-                    <Link
-                      href={`/articles/${featured.slug}#comments`}
-                      className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                    >
-                      <MessageSquare size={16} /> Comment
-                    </Link>
-                  </div>
-                </div>
-              </article>
-            )}
-
-            {/* Grid */}
-            {rest.length > 0 && (
-              <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                {rest.map((article) => (
-                  <article
-                    key={article.id}
-                    className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition duration-200 hover:-translate-y-1 hover:border-[#EB6D3D]/50 hover:shadow-xl"
-                  >
-                    {/* Media: Shows Video if exists, else Image */}
-                    <div className="relative block bg-slate-900 h-44">
-                      {article.videoUrl ? (
-                        <VideoPlayer url={article.videoUrl} title={article.title} />
-                      ) : article.image ? (
-                        <Link href={`/articles/${article.slug}`} className="block h-full w-full">
-                          <Image
-                            src={article.image}
-                            alt=""
-                            width={700}
-                            height={420}
-                            unoptimized
-                            className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
-                          />
-                        </Link>
-                      ) : (
-                        <Link href={`/articles/${article.slug}`} className="block h-full w-full">
-                          <LogoPlaceholder className="h-full w-full" size={72} />
-                        </Link>
-                      )}
-                      
-                      <span className="absolute left-3 top-3 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#cf5427] shadow-sm z-10">
-                        {categoryName(categories, article.category)}
-                      </span>
-                      {article.videoUrl && (
-                        <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-[#20283a]/85 px-2 py-1 text-[11px] font-bold text-white shadow-sm z-10">
-                          <Video size={12} /> Video
-                        </span>
-                      )}
-                    </div>
-                    
-                    <div className="flex flex-1 flex-col p-4">
-                      <p className="text-xs text-slate-400">{formatDate(article.createdAt)}</p>
-                      <h3 className="mt-1.5 text-lg font-bold leading-snug text-slate-900">
-                        <Link href={`/articles/${article.slug}`} className="hover:text-[#cf5427]">
-                          {article.title}
-                        </Link>
-                      </h3>
-                      <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">
-                        {article.description}
-                      </p>
-                      
-                      <div className="mt-auto flex items-center justify-between gap-2 pt-4 border-t border-slate-100 mt-4">
-                        {/* Comment Button (Grid) - Opens Full Screen Page */}
-                        <Link
-                          href={`/articles/${article.slug}#comments`}
-                          className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 transition hover:text-[#cf5427]"
-                        >
-                          <MessageSquare size={15} /> Comment
-                        </Link>
-
-                        <Link
-                          href={`/articles/${article.slug}`}
-                          className="inline-flex items-center gap-1 text-sm font-bold text-[#cf5427] transition hover:text-[#9c3d1a]"
-                        >
-                          Read <ArrowRight size={15} />
-                        </Link>
-                      </div>
-                    </div>
-                  </article>
-                ))}
-              </div>
-            )}
+              )}
             </section>
           </div>
         </div>

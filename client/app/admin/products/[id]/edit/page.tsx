@@ -112,6 +112,9 @@ interface ProductFormData {
   autoRestock: boolean;
   restockAfterDays: string;
   restockQuantity: string;
+  availableAt: string;
+  restockDate: string;
+  saleEndDate: string;
 }
 
 interface Category {
@@ -146,6 +149,9 @@ interface ApiProduct {
   autoRestock?: boolean;
   restockAfterDays?: number;
   restockQuantity?: number;
+  availableAt?: string | null;
+  restockDate?: string | null;
+  saleEndDate?: string | null;
 }
 
 interface EditProductPageProps { params: Promise<{ id: string }>; }
@@ -238,6 +244,15 @@ const generateSKU = () => {
 
 const generateSlug = (v: string) =>
   v.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+
+// Convert an ISO date string to the value format expected by <input type="datetime-local">
+const toDateTimeLocal = (iso?: string | null): string => {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
 
 const buildPriceRows = (product: ApiProduct, nextId: () => number): PriceRow[] => {
   const saved = Array.isArray(product.prices)
@@ -667,6 +682,7 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
     weight: "", unitOfMeasurement: "pcs", durationTime: "1h",
     stock: "0", availabilityStatus: "AVAILABLE", autoRestock: true,
     restockAfterDays: "2", restockQuantity: "10",
+    availableAt: "", restockDate: "", saleEndDate: "",
   });
 
   const busy = saving || uploadingImage || uploadingVideo || deletingCategory;
@@ -771,6 +787,9 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
           autoRestock: product.autoRestock !== false,
           restockAfterDays: product.restockAfterDays?.toString() || "2",
           restockQuantity: product.restockQuantity?.toString() || "10",
+          availableAt: toDateTimeLocal(product.availableAt),
+          restockDate: toDateTimeLocal(product.restockDate),
+          saleEndDate: toDateTimeLocal(product.saleEndDate),
         });
         setPriceRows(buildPriceRows(product, nextRowId));
         if (categoryId) void fetchSubCategories(categoryId);
@@ -990,6 +1009,9 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
         autoRestock: formData.autoRestock,
         restockAfterDays: Number(formData.restockAfterDays) || 2,
         restockQuantity: Number(formData.restockQuantity) || 10,
+        availableAt: formData.availableAt || null,
+        restockDate: formData.restockDate || null,
+        saleEndDate: formData.saleEndDate || null,
       };
 
       const { data } = await api.put(`/api/products/${productId}`, submitData);
@@ -1330,6 +1352,42 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
                     )}
                   </div>
                 )}
+
+                {/* Stock & countdown dates */}
+                <div className="rounded-lg border border-gray-200 bg-gray-50 p-4">
+                  <p className="text-sm font-semibold text-gray-700">
+                    Stock &amp; countdown dates{" "}
+                    <span className="font-normal text-gray-400">
+                      (optional — powers live countdowns on the shop)
+                    </span>
+                  </p>
+                  <div className="mt-3 grid grid-cols-1 md:grid-cols-3 gap-4">
+                    <div>
+                      <label className={LABEL_CLS}>Available / arrival date</label>
+                      <input
+                        type="datetime-local" value={formData.availableAt}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, availableAt: e.target.value }))}
+                        className={INPUT_CLS}
+                      />
+                    </div>
+                    <div>
+                      <label className={LABEL_CLS}>Restock date</label>
+                      <input
+                        type="datetime-local" value={formData.restockDate}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, restockDate: e.target.value }))}
+                        className={INPUT_CLS}
+                      />
+                    </div>
+                    <div>
+                      <label className={LABEL_CLS}>Sale / offer ends</label>
+                      <input
+                        type="datetime-local" value={formData.saleEndDate}
+                        onChange={(e) => setFormData((prev) => ({ ...prev, saleEndDate: e.target.value }))}
+                        className={INPUT_CLS}
+                      />
+                    </div>
+                  </div>
+                </div>
 
                 {/* Tags */}
                 <div>

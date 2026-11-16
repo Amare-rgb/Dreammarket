@@ -55,7 +55,17 @@ async function sendSms({ to, message }) {
     options.from = process.env.AT_SENDER_ID;
   }
 
-  const result = await at.SMS.send(options);
+  // Fail fast if the SMS provider is unreachable — never hang the caller
+  const SMS_TIMEOUT_MS = Number(process.env.AT_SMS_TIMEOUT_MS) || 15000;
+  const result = await Promise.race([
+    at.SMS.send(options),
+    new Promise((_, reject) =>
+      setTimeout(
+        () => reject(new Error(`Africa's Talking SMS timed out after ${SMS_TIMEOUT_MS}ms`)),
+        SMS_TIMEOUT_MS
+      )
+    ),
+  ]);
   console.log(`✅ SMS sent via Africa's Talking to: ${phone}`);
   return result;
 }

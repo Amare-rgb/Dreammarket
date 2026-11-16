@@ -5,10 +5,21 @@ const { sendOrderApprovalEmail } = require('../lib/email');
 const { sendOrderApprovalSms } = require('../lib/sms');
 
 const router = express.Router();
-const ORDER_STATUSES = ['CONFIRMED', 'CANCELLED'];
+const ORDER_STATUSES = [
+  'CONFIRMED',
+  'PROCESSING',
+  'SHIPPED',
+  'DELIVERED',
+  'CANCELLED',
+];
 
 const allowedTransitions = {
   PENDING: ['CONFIRMED', 'CANCELLED'],
+  CONFIRMED: ['PROCESSING', 'CANCELLED'],
+  PROCESSING: ['SHIPPED', 'CANCELLED'],
+  SHIPPED: ['DELIVERED'],
+  DELIVERED: [],
+  CANCELLED: [],
 };
 
 const normalizeText = (value) =>
@@ -126,39 +137,32 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
     });
 
     const updatedOrder = result.order;
-    let notificationSent = null;
-    let smsSent = null;
 
-    // ✅ SEND EMAIL IF CONFIRMED
+    // ✅ SEND EMAIL + SMS IF CONFIRMED — fire-and-forget so a slow or
+    // unreachable provider (e.g. Africa's Talking timeout) never blocks
+    // the order status update response.
     if (result.statusChanged && nextStatus === 'CONFIRMED') {
-      try {
-        await sendOrderApprovalEmail(updatedOrder);
-        notificationSent = true;
-      } catch (notificationError) {
-        notificationSent = false;
-        console.error(
-          `Order ${updatedOrder.orderNumber} was confirmed, but the customer approval email failed:`,
-          notificationError
+      sendOrderApprovalEmail(updatedOrder)
+        .then(() => console.log(`Order ${updatedOrder.orderNumber} approval email sent.`))
+        .catch((notificationError) =>
+          console.error(
+            `Order ${updatedOrder.orderNumber} was confirmed, but the customer approval email failed:`,
+            notificationError
+          )
         );
-      }
 
-      // ✅ SEND SMS IF CONFIRMED
-      try {
-        await sendOrderApprovalSms(updatedOrder);
-        smsSent = true;
-      } catch (smsError) {
-        smsSent = false;
-        console.error(
-          `Order ${updatedOrder.orderNumber} was confirmed, but the customer approval SMS failed:`,
-          smsError
+      sendOrderApprovalSms(updatedOrder)
+        .then(() => console.log(`Order ${updatedOrder.orderNumber} approval SMS sent.`))
+        .catch((smsError) =>
+          console.error(
+            `Order ${updatedOrder.orderNumber} was confirmed, but the customer approval SMS failed:`,
+            smsError
+          )
         );
-      }
     }
 
     return res.json({
       success: true,
-      notificationSent,
-      smsSent,
       order: {
         ...updatedOrder,
         total: Number(updatedOrder.total),

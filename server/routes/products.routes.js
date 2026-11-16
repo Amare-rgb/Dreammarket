@@ -5,7 +5,7 @@ const slugify = require('slugify');
 const fs = require('fs');
 const path = require('path');
 const prisma = require('../lib/prisma');
-const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { requireAuth, requireAdmin, optionalAuth } = require('../middleware/auth');
 const UPLOAD_ROOT = path.resolve(__dirname, '..', 'uploads');
 
 // ═══════════════════════════════════════════════════════════
@@ -141,7 +141,7 @@ async function deleteLocalImages(urls) {
 // ============================================================
 router.get('/admin/all', requireAuth, requireAdmin, async (req, res) => {
   try {
-    const { page = 1, limit = 12, search, categoryId, subCategoryId } = req.query;
+    const { page = 1, limit = 12, search, categoryId, subCategoryId, status } = req.query;
 
     const pageNum = Math.max(1, parseInt(page, 10) || 1);
     const limitNum = Math.max(1, parseInt(limit, 10) || 12);
@@ -149,6 +149,11 @@ router.get('/admin/all', requireAuth, requireAdmin, async (req, res) => {
     const take = limitNum;
 
     const where = {};
+
+    // Optional approval-status filter (PENDING / PUBLISHED)
+    if (status === 'PENDING' || status === 'PUBLISHED') {
+      where.status = status;
+    }
 
     if (search) {
       where.OR = [
@@ -204,7 +209,8 @@ router.get('/public', async (req, res) => {
     const skip = (pageNum - 1) * limitNum;
     const take = limitNum;
 
-    const where = {};
+    // Public storefront only shows approved products
+    const where = { status: 'PUBLISHED' };
 
     if (categoryId) where.categoryId = categoryId;
     if (subCategoryId) where.subCategoryId = subCategoryId;
@@ -275,7 +281,8 @@ router.get('/', async (req, res) => {
     const skip = (pageNum - 1) * limitNum;
     const take = limitNum;
 
-    const where = {};
+    // Public storefront only shows approved products
+    const where = { status: 'PUBLISHED' };
 
     if (category) where.category = { slug: category };
 
@@ -343,7 +350,7 @@ router.get('/', async (req, res) => {
 // ============================================================
 // GET /api/products/:id — Single product
 // ============================================================
-router.get('/:id', async (req, res) => {
+router.get('/:id', optionalAuth, async (req, res) => {
   try {
     const { id } = req.params;
 
@@ -359,6 +366,12 @@ router.get('/:id', async (req, res) => {
     });
 
     if (!product) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    // Pending products are hidden from the public; admins can still preview them
+    const isAdmin = req.user?.role?.toUpperCase() === 'ADMIN';
+    if (product.status !== 'PUBLISHED' && !isAdmin) {
       return res.status(404).json({ error: 'Product not found' });
     }
 
@@ -492,6 +505,12 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
           ? parseFloat(body.pricePerUnit)
           : body.pricePerUnit
         : null,
+      // Stock & arrival countdown dates (optional)
+      availableAt: body.availableAt ? new Date(body.availableAt) : null,
+      restockDate: body.restockDate ? new Date(body.restockDate) : null,
+      saleEndDate: body.saleEndDate ? new Date(body.saleEndDate) : null,
+      // New products always start as PENDING until an admin approves them
+      status: 'PENDING',
     };
 
     // ── Resolve category ────────────────────────────────────
@@ -700,6 +719,19 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       );
     }
 
+    // ── Stock & arrival countdown dates (optional; empty string clears) ──
+    for (const field of ['availableAt', 'restockDate', 'saleEndDate']) {
+      if (body[field] !== undefined) {
+        updateData[field] =
+          body[field] && String(body[field]).trim() !== ''
+            ? new Date(body[field])
+            : null;
+      }
+    }
+    if (body.estimatedDelivery !== undefined) {
+      updateData.estimatedDelivery = body.estimatedDelivery || null;
+    }
+
     if (body.images !== undefined) {
       const incoming = Array.isArray(body.images) ? body.images : [];
       updateData.images = incoming.filter(
@@ -853,6 +885,48 @@ router.patch('/:id/availability', requireAuth, requireAdmin, async (req, res) =>
       return res.status(404).json({ error: 'Product not found' });
     }
     res.status(500).json({ error: 'Failed to update availability' });
+  }
+});
+
+// ============================================================
+// PATCH /api/products/:id/status — Approve / publish toggle (ADMIN ONLY)
+// ============================================================
+router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const { id } = req.params;
+    const nextStatus = String(req.body?.status || '').toUpperCase();
+
+    if (!['PENDING', 'PUBLISHED'].includes(nextStatus)) {
+      return res.status(400).json({
+        error: 'Status must be PENDING or PUBLISHED',
+      });
+    }
+
+    const existing = await prisma.product.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+
+    const updated = await prisma.product.update({
+      where: { id },
+      data: { status: nextStatus },
+      include: { category: true, subCategory: true },
+    });
+
+    res.json({
+      success: true,
+      product: serializeProduct(updated),
+      message:
+        nextStatus === 'PUBLISHED'
+          ? 'Product published successfully.'
+          : 'Product moved back to pending.',
+    });
+  } catch (error) {
+    console.error('Error updating product status:', error);
+    if (error.code === 'P2025') {
+      return res.status(404).json({ error: 'Product not found' });
+    }
+    res.status(500).json({ error: 'Failed to update product status' });
   }
 });
 

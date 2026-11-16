@@ -23,6 +23,11 @@ enum OrderStatus {
   CANCELLED
 }
 
+enum ProductStatus {
+  PENDING
+  PUBLISHED
+}
+
 model User {
   id        String   @id @default(cuid())
   name      String
@@ -169,6 +174,12 @@ model Product {
   estimatedDelivery String?
   durationTime      String?  @default("1h")
   pricePerUnit      Decimal? @db.Decimal(10, 2)
+  // ✅ Stock & arrival countdown: upcoming availability, restock, and sale end
+  availableAt       DateTime?
+  restockDate       DateTime?
+  saleEndDate       DateTime?
+  // ✅ Approval workflow: new products start PENDING until an admin publishes them
+  status            ProductStatus @default(PUBLISHED)
   createdAt         DateTime @default(now())
   updatedAt         DateTime @updatedAt
 
@@ -254,8 +265,13 @@ model ArticleCategory {
   id        String   @id @default(cuid())
   name      String   @unique
   slug      String   @unique
+  parentId  String?
   createdAt DateTime @default(now())
 
+  parent   ArticleCategory?  @relation("CategoryChildren", fields: [parentId], references: [id], onDelete: Cascade)
+  children ArticleCategory[] @relation("CategoryChildren")
+
+  @@index([parentId])
   @@map("article_categories")
 }
 

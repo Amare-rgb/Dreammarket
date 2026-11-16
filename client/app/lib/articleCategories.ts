@@ -7,7 +7,9 @@ export interface ArticleCategory {
   id: string;
   name: string;
   slug: string;
+  parentId?: string | null;
   count: number;
+  subcategories?: ArticleCategory[];
 }
 
 type ApiError = { response?: { data?: { error?: string } } };
@@ -45,8 +47,11 @@ export function useArticleCategories() {
     return () => window.clearTimeout(timer);
   }, [reload]);
 
-  const create = useCallback(async (name: string) => {
-    const res = await api.post("/api/articles/admin/categories", { name });
+  const create = useCallback(async (name: string, parentId?: string | null) => {
+    const res = await api.post("/api/articles/admin/categories", {
+      name,
+      ...(parentId ? { parentId } : {}),
+    });
     const category = res.data?.category as ArticleCategory;
     setCategories((list) => [...list, category]);
     return category;

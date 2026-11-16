@@ -21,6 +21,9 @@ export interface Product {
   unit: string;
   stock: number;
   availabilityStatus?: string;
+  availableAt?: string | null;
+  restockDate?: string | null;
+  saleEndDate?: string | null;
   featured: boolean;
   badge?: string;
   images: string[];
@@ -70,6 +73,9 @@ interface RawProduct {
   unitOfMeasurement?: string;
   stock?: number;
   availabilityStatus?: string | null;
+  availableAt?: string | null;
+  restockDate?: string | null;
+  saleEndDate?: string | null;
   isFeatured?: boolean;
   category?: { name?: string } | null;
   categoryName?: string;
@@ -183,6 +189,9 @@ export default async function ProductDetailsPage({
               ? rawObj.stock
               : 0,
           availabilityStatus: rawObj.availabilityStatus || undefined,
+          availableAt: rawObj.availableAt || null,
+          restockDate: rawObj.restockDate || null,
+          saleEndDate: rawObj.saleEndDate || null,
           featured: hasDiscount || Boolean(rawObj.isFeatured),
           badge: hasDiscount ? "Sale" : undefined,
           images: imageList,

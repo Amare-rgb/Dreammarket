@@ -183,6 +183,22 @@ export default function ArticlesNavbar() {
                           <span>{c.name}</span>
                           <span className="text-xs text-slate-400">{c.count}</span>
                         </Link>
+                        {c.subcategories && c.subcategories.length > 0 && (
+                          <ul className="ml-3 border-l border-slate-200 pl-2">
+                            {c.subcategories.map((sub) => (
+                              <li key={sub.id}>
+                                <Link
+                                  href={`/articles?category=${sub.slug}`}
+                                  onClick={closeAll}
+                                  className="flex items-center justify-between rounded-lg px-3 py-1.5 text-sm text-slate-600 transition hover:bg-[#EB6D3D]/10 hover:text-[#9c3d1a]"
+                                >
+                                  <span>{sub.name}</span>
+                                  <span className="text-xs text-slate-400">{sub.count}</span>
+                                </Link>
+                              </li>
+                            ))}
+                          </ul>
+                        )}
                       </li>
                     ))}
                   </ul>
@@ -330,7 +346,7 @@ export default function ArticlesNavbar() {
               </p>
               <ul className="mt-2 flex flex-wrap gap-2 px-2">
                 {categories.map((c) => (
-                  <li key={c.id}>
+                  <li key={c.id} className="flex flex-wrap items-center gap-2">
                     <Link
                       href={`/articles?category=${c.slug}`}
                       onClick={closeAll}
@@ -339,6 +355,17 @@ export default function ArticlesNavbar() {
                       {c.name}
                       <span className="text-xs text-slate-400">{c.count}</span>
                     </Link>
+                    {c.subcategories?.map((sub) => (
+                      <Link
+                        key={sub.id}
+                        href={`/articles?category=${sub.slug}`}
+                        onClick={closeAll}
+                        className="inline-flex items-center gap-1.5 rounded-full bg-slate-50 px-3 py-1.5 text-sm font-medium text-slate-600 transition hover:bg-[#EB6D3D]/15 hover:text-[#9c3d1a]"
+                      >
+                        {sub.name}
+                        <span className="text-xs text-slate-400">{sub.count}</span>
+                      </Link>
+                    ))}
                   </li>
                 ))}
               </ul>

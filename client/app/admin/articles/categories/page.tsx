@@ -1,17 +1,57 @@
 "use client";
 
-import { FormEvent, useState } from "react";
+import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
-import { ArrowLeft, LoaderCircle, Plus, Trash2 } from "lucide-react";
-import { apiErrorText, useArticleCategories } from "@/lib/articleCategories";
+import {
+  ArrowLeft,
+  ChevronDown,
+  ChevronRight,
+  Folder,
+  LoaderCircle,
+  Plus,
+  Trash2,
+} from "lucide-react";
+import {
+  apiErrorText,
+  useArticleCategories,
+  type ArticleCategory,
+} from "@/lib/articleCategories";
 
 export default function ArticleCategoriesPage() {
   const { categories, loading, error: loadError, create, remove } =
     useArticleCategories();
   const [name, setName] = useState("");
+  const [parentId, setParentId] = useState("");
   const [adding, setAdding] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState("");
+  const [expanded, setExpanded] = useState<Set<string>>(new Set());
+
+  // Only top-level categories can be parents
+  const parents = useMemo(
+    () => categories.filter((c) => !c.parentId),
+    [categories]
+  );
+  const childrenOf = useMemo(() => {
+    const map = new Map<string, ArticleCategory[]>();
+    for (const c of categories) {
+      if (c.parentId) {
+        const list = map.get(c.parentId) || [];
+        list.push(c);
+        map.set(c.parentId, list);
+      }
+    }
+    return map;
+  }, [categories]);
+
+  const toggleExpand = (id: string) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  };
 
   const handleAdd = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -20,8 +60,12 @@ export default function ArticleCategoriesPage() {
     setError("");
     setAdding(true);
     try {
-      await create(value);
+      const created = await create(value, parentId || null);
       setName("");
+      setParentId("");
+      if (created.parentId) {
+        setExpanded((prev) => new Set(prev).add(created.parentId as string));
+      }
     } catch (e) {
       setError(apiErrorText(e, "Could not create the category."));
     } finally {
@@ -30,7 +74,7 @@ export default function ArticleCategoriesPage() {
   };
 
   const handleDelete = async (id: string, label: string) => {
-    if (!window.confirm(`Delete the category "${label}"?`)) return;
+    if (!window.confirm(`Delete "${label}"?`)) return;
     setError("");
     setDeletingId(id);
     try {
@@ -40,6 +84,29 @@ export default function ArticleCategoriesPage() {
     } finally {
       setDeletingId(null);
     }
+  };
+
+  const renderDeleteButton = (c: ArticleCategory) => {
+    const children = childrenOf.get(c.id) || [];
+    const blocked = children.length > 0 || c.count > 0;
+    const reason =
+      children.length > 0
+        ? "Delete its subcategories first"
+        : c.count > 0
+          ? "In use by articles"
+          : "Delete category";
+    return (
+      <button
+        type="button"
+        onClick={() => void handleDelete(c.id, c.name)}
+        disabled={blocked || deletingId === c.id}
+        title={reason}
+        aria-label={`Delete ${c.name}`}
+        className="rounded-lg border border-slate-200 p-2 text-red-600 transition hover:border-red-200 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
+      >
+        <Trash2 size={16} />
+      </button>
+    );
   };
 
   return (
@@ -53,8 +120,8 @@ export default function ArticleCategoriesPage() {
         </Link>
         <h1 className="mt-2 text-2xl font-bold text-slate-900">Article categories</h1>
         <p className="mt-1 text-sm text-slate-500">
-          Create categories for your articles. A category can be deleted only when
-          no article uses it.
+          Create categories and subcategories for your articles. A category can be
+          deleted only when it has no subcategories and no articles use it.
         </p>
       </header>
 
@@ -70,6 +137,19 @@ export default function ArticleCategoriesPage() {
           aria-label="New category name"
           className="h-11 min-w-0 flex-1 rounded-xl border border-slate-300 px-3 outline-none focus:border-[#EB6D3D] focus:ring-2 focus:ring-[#EB6D3D]/20"
         />
+        <select
+          value={parentId}
+          onChange={(e) => setParentId(e.target.value)}
+          aria-label="Parent category (optional)"
+          className="h-11 rounded-xl border border-slate-300 bg-white px-3 text-sm text-slate-700 outline-none focus:border-[#EB6D3D] focus:ring-2 focus:ring-[#EB6D3D]/20"
+        >
+          <option value="">Top-level category</option>
+          {parents.map((p) => (
+            <option key={p.id} value={p.id}>
+              Subcategory of: {p.name}
+            </option>
+          ))}
+        </select>
         <button
           type="submit"
           disabled={adding || !name.trim()}
@@ -95,32 +175,69 @@ export default function ArticleCategoriesPage() {
           <div className="flex min-h-40 items-center justify-center">
             <LoaderCircle className="h-7 w-7 animate-spin text-[#F47822]" />
           </div>
-        ) : categories.length === 0 ? (
+        ) : parents.length === 0 ? (
           <p className="px-6 py-12 text-center text-sm text-slate-500">
             No categories yet. Add your first one above.
           </p>
         ) : (
           <ul className="divide-y divide-slate-100">
-            {categories.map((c) => (
-              <li key={c.id} className="flex items-center gap-4 px-4 py-3 sm:px-5">
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-slate-900">{c.name}</p>
-                  <p className="text-xs text-slate-400">
-                    {c.slug} · {c.count} article{c.count === 1 ? "" : "s"}
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => void handleDelete(c.id, c.name)}
-                  disabled={c.count > 0 || deletingId === c.id}
-                  title={c.count > 0 ? "In use by articles" : "Delete category"}
-                  aria-label={`Delete ${c.name}`}
-                  className="rounded-lg border border-slate-200 p-2 text-red-600 transition hover:border-red-200 hover:bg-red-50 disabled:cursor-not-allowed disabled:opacity-40"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </li>
-            ))}
+            {parents.map((c) => {
+              const children = childrenOf.get(c.id) || [];
+              const isOpen = expanded.has(c.id) || children.length > 0;
+              return (
+                <li key={c.id}>
+                  <div className="flex items-center gap-3 px-4 py-3 sm:px-5">
+                    {children.length > 0 ? (
+                      <button
+                        type="button"
+                        onClick={() => toggleExpand(c.id)}
+                        aria-label={isOpen ? "Collapse subcategories" : "Expand subcategories"}
+                        className="rounded p-1 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+                      >
+                        {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                      </button>
+                    ) : (
+                      <span className="w-6" />
+                    )}
+                    <Folder size={16} className="shrink-0 text-[#EB6D3D]" />
+                    <div className="min-w-0 flex-1">
+                      <p className="font-semibold text-slate-900">{c.name}</p>
+                      <p className="text-xs text-slate-400">
+                        {c.slug} · {c.count} article{c.count === 1 ? "" : "s"}
+                        {children.length > 0 &&
+                          ` · ${children.length} subcategor${children.length === 1 ? "y" : "ies"}`}
+                      </p>
+                    </div>
+                    {renderDeleteButton(c)}
+                  </div>
+
+                  {isOpen && children.length > 0 && (
+                    <ul className="border-t border-slate-100 bg-slate-50/60">
+                      {children.map((sub) => (
+                        <li
+                          key={sub.id}
+                          className="flex items-center gap-3 py-2.5 pl-14 pr-4 sm:pl-16 sm:pr-5"
+                        >
+                          <span className="text-slate-300">└</span>
+                          <div className="min-w-0 flex-1">
+                            <p className="text-sm font-medium text-slate-800">
+                              {sub.name}
+                              <span className="ml-2 rounded-full bg-[#EB6D3D]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#9c3d1a]">
+                                Subcategory
+                              </span>
+                            </p>
+                            <p className="text-xs text-slate-400">
+                              {sub.slug} · {sub.count} article{sub.count === 1 ? "" : "s"}
+                            </p>
+                          </div>
+                          {renderDeleteButton(sub)}
+                        </li>
+                      ))}
+                    </ul>
+                  )}
+                </li>
+              );
+            })}
           </ul>
         )}
       </div>
