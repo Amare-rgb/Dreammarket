@@ -237,17 +237,21 @@ model OrderItem {
 // ARTICLE MODELS
 // ============================================
 model Article {
-  id          String   @id @default(cuid())
-  title       String
-  slug        String   @unique
-  description String   @db.Text
-  content     String   @db.Text
-  category    String   @default("general")
-  image       String?
-  videoUrl    String?
-  pdfUrl      String?
-  note        String?  @db.Text
-  published   Boolean  @default(false)
+  id            String   @id @default(cuid())
+  title         String
+  titleAm       String?
+  slug          String   @unique
+  description   String   @db.Text
+  descriptionAm String?  @db.Text
+  content       String   @db.Text
+  contentAm     String?  @db.Text
+  category      String   @default("general")
+  image         String?
+  videoUrl      String?
+  pdfUrl        String?
+  note          String?  @db.Text
+  noteAm        String?  @db.Text
+  published     Boolean  @default(false)
   views       Int      @default(0)
   authorId    String?
   createdAt   DateTime @default(now())
@@ -264,6 +268,7 @@ model Article {
 model ArticleCategory {
   id        String   @id @default(cuid())
   name      String   @unique
+  nameAm    String?
   slug      String   @unique
   parentId  String?
   createdAt DateTime @default(now())

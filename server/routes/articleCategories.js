@@ -43,6 +43,7 @@ router.get("/", async (_req, res) => {
       categories: categories.map((c) => ({
         id: c.id,
         name: c.name,
+        nameAm: c.nameAm || null,
         slug: c.slug,
         count: counts.get(c.slug) || 0,
       })),
@@ -59,6 +60,9 @@ router.post("/", async (req, res) => {
     const name = String((req.body && req.body.name) || "")
       .trim()
       .replace(/\s+/g, " ");
+    const nameAm =
+      String((req.body && req.body.nameAm) || "").trim().replace(/\s+/g, " ") ||
+      null;
     if (name.length < 2 || name.length > 40) {
       return res
         .status(400)
@@ -76,11 +80,11 @@ router.post("/", async (req, res) => {
     }
 
     const category = await prisma.articleCategory.create({
-      data: { name, slug },
+      data: { name, nameAm, slug },
     });
 
     res.status(201).json({
-      category: { id: category.id, name: category.name, slug: category.slug, count: 0 },
+      category: { id: category.id, name: category.name, nameAm: category.nameAm || null, slug: category.slug, count: 0 },
     });
   } catch (error) {
     console.error("Create article category failed:", error);

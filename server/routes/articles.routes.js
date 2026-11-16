@@ -85,6 +85,16 @@ function articleInput(body) {
   const note = text(body?.note);
   const published = body?.published === true || body?.published === 'true';
 
+  // Optional Amharic translations (empty string clears them)
+  const optText = (v) => {
+    const s = text(v);
+    return s || null;
+  };
+  const titleAm = optText(body?.titleAm);
+  const descriptionAm = optText(body?.descriptionAm);
+  const contentAm = optText(body?.contentAm);
+  const noteAm = optText(body?.noteAm);
+
   if (!title || !description || !content) {
     return { error: 'Title, description, and article content are required.' };
   }
@@ -127,6 +137,10 @@ function articleInput(body) {
       videoUrl: videoUrl || null,
       pdfUrl: pdfUrl || null,
       note: note || null,
+      titleAm,
+      descriptionAm,
+      contentAm,
+      noteAm,
       published,
     },
   };
@@ -178,6 +192,7 @@ router.get('/admin/categories', requireAuth, requireAdmin, async (req, res) => {
       categories: categories.map((c) => ({
         id: c.id,
         name: c.name,
+        nameAm: c.nameAm || null,
         slug: c.slug,
         parentId: c.parentId,
         count: counts.get(c.slug) || 0,
@@ -192,6 +207,7 @@ router.get('/admin/categories', requireAuth, requireAdmin, async (req, res) => {
 router.post('/admin/categories', requireAuth, requireAdmin, async (req, res) => {
   try {
     const name = text(req.body?.name).replace(/\s+/g, ' ');
+    const nameAm = text(req.body?.nameAm).replace(/\s+/g, ' ') || null;
     if (name.length < 2 || name.length > 40) {
       return res.status(400).json({
         success: false,
@@ -231,7 +247,7 @@ router.post('/admin/categories', requireAuth, requireAdmin, async (req, res) => 
 
     const slug = await uniqueCategorySlug(name);
     const category = await prisma.articleCategory.create({
-      data: { name, slug, parentId: parent?.id || null },
+      data: { name, nameAm, slug, parentId: parent?.id || null },
     });
 
     return res.status(201).json({
@@ -239,6 +255,7 @@ router.post('/admin/categories', requireAuth, requireAdmin, async (req, res) => 
       category: {
         id: category.id,
         name: category.name,
+        nameAm: category.nameAm || null,
         slug: category.slug,
         parentId: category.parentId,
         count: 0,
@@ -524,6 +541,7 @@ router.get('/categories', async (req, res) => {
         const subs = childrenOf(c.id).map((s) => ({
           id: s.id,
           name: s.name,
+          nameAm: s.nameAm || null,
           slug: s.slug,
           count: countOf(s.slug),
         }));
@@ -533,6 +551,7 @@ router.get('/categories', async (req, res) => {
         return {
           id: c.id,
           name: c.name,
+          nameAm: c.nameAm || null,
           slug: c.slug,
           count: total,
           subcategories: subs,
@@ -581,8 +600,10 @@ router.get('/', async (req, res) => {
       select: {
         id: true,
         title: true,
+        titleAm: true,
         slug: true,
         description: true,
+        descriptionAm: true,
         category: true,
         image: true,
         videoUrl: true,
@@ -738,14 +759,18 @@ router.get('/:slug', async (req, res) => {
       select: {
         id: true,
         title: true,
+        titleAm: true,
         slug: true,
         description: true,
+        descriptionAm: true,
         content: true,
+        contentAm: true,
         category: true,
         image: true,
         videoUrl: true,
         pdfUrl: true,
         note: true,
+        noteAm: true,
         views: true,
         createdAt: true,
       },
