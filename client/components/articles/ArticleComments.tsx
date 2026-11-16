@@ -5,6 +5,7 @@ import Image from "next/image";
 import { LoaderCircle, MessageSquare, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { formatDate } from "@/lib/publicArticles";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface ArticleComment {
   id: string | number;
@@ -25,6 +26,7 @@ interface ArticleCommentsProps {
 }
 
 export default function ArticleComments({ slug }: ArticleCommentsProps) {
+  const { t } = useLanguage();
   const [comments, setComments] = useState<ArticleComment[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -46,7 +48,7 @@ export default function ArticleComments({ slug }: ArticleCommentsProps) {
         const res = await api.get(`/api/articles/${encodeURIComponent(slug)}/comments`);
         setComments(res.data?.comments || []);
       } catch {
-        setError("Comments could not be loaded.");
+        setError(t("articles.comments_load_failed", "Comments could not be loaded."));
       } finally {
         setLoading(false);
       }
@@ -55,18 +57,18 @@ export default function ArticleComments({ slug }: ArticleCommentsProps) {
       void fetchComments();
     }, 0);
     return () => clearTimeout(timer);
-  }, [slug]);
+  }, [slug, t]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      setSubmitError("Please upload an image file");
+      setSubmitError(t("articles.upload_image_error", "Please upload an image file"));
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
-      setSubmitError("Image must be less than 10MB");
+      setSubmitError(t("articles.upload_image_size", "Image must be less than 10MB"));
       return;
     }
 
@@ -82,11 +84,11 @@ export default function ArticleComments({ slug }: ArticleCommentsProps) {
         setCommentImage(res.data.url);
         setCommentImagePreview(res.data.url);
       } else {
-        setSubmitError(res.data?.error || "Failed to upload image");
+        setSubmitError(res.data?.error || t("articles.upload_failed", "Failed to upload image"));
       }
     } catch (err) {
       const error = err as { response?: { data?: { error?: string } } };
-      setSubmitError(error.response?.data?.error || "Failed to upload image");
+      setSubmitError(error.response?.data?.error || t("articles.upload_failed", "Failed to upload image"));
     } finally {
       setUploadingImage(false);
       if (commentFileRef.current) commentFileRef.current.value = "";
@@ -101,7 +103,7 @@ export default function ArticleComments({ slug }: ArticleCommentsProps) {
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!commentName.trim() || !commentMessage.trim()) {
-      setSubmitError("Please enter your name and a comment.");
+      setSubmitError(t("articles.comment_required", "Please enter your name and a comment."));
       return;
     }
 
@@ -116,15 +118,15 @@ export default function ArticleComments({ slug }: ArticleCommentsProps) {
       const created: ArticleComment | undefined = res.data?.comment;
       if (created) {
         setComments((prev) => [created, ...prev]);
-        setSubmitNotice("Thank you! Your comment has been submitted for review.");
+        setSubmitNotice(t("articles.comment_sent_review", "Thank you! Your comment has been submitted for review."));
       } else {
-        setSubmitNotice("Thank you! Your comment was submitted and will appear after review.");
+        setSubmitNotice(t("articles.comment_sent_pending", "Thank you! Your comment was submitted and will appear after review."));
       }
       setCommentMessage("");
       setCommentImage(null);
       setCommentImagePreview(null);
     } catch {
-      setSubmitError("Your comment could not be sent. Please try again.");
+      setSubmitError(t("articles.comment_failed", "Your comment could not be sent. Please try again."));
     } finally {
       setSubmitting(false);
     }
@@ -142,14 +144,14 @@ export default function ArticleComments({ slug }: ArticleCommentsProps) {
     <div className="mt-8 border-t border-slate-100 pt-6">
       <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
         <MessageSquare size={20} className="text-[#EB6D3D]" />
-        Comments ({comments.length})
+        {t("articles.comments", "Comments")} ({comments.length})
       </h3>
 
       {/* Comment Form */}
       <form onSubmit={handleSubmit} className="mb-8 space-y-4">
         <div>
           <label htmlFor="comment-name" className="mb-1 block text-sm font-semibold text-slate-700">
-            Your name
+            {t("articles.your_name", "Your name")}
           </label>
           <input
             id="comment-name"
@@ -162,7 +164,7 @@ export default function ArticleComments({ slug }: ArticleCommentsProps) {
         </div>
         <div>
           <label htmlFor="comment-message" className="mb-1 block text-sm font-semibold text-slate-700">
-            Your comment
+            {t("articles.your_comment", "Your comment")}
           </label>
           <textarea
             id="comment-message"
@@ -180,7 +182,7 @@ export default function ArticleComments({ slug }: ArticleCommentsProps) {
         {/* Image upload */}
         <div>
           <label className="mb-1 block text-sm font-semibold text-slate-700">
-            Attach image <span className="text-slate-400">(optional)</span>
+            {t("articles.attach_image", "Attach image")} <span className="text-slate-400">{t("articles.optional", "(optional)")}</span>
           </label>
           {commentImagePreview ? (
             <div className="relative inline-block">
@@ -208,8 +210,8 @@ export default function ArticleComments({ slug }: ArticleCommentsProps) {
                 <LoaderCircle className="h-6 w-6 animate-spin text-[#EB6D3D] mx-auto" />
               ) : (
                 <>
-                  <p className="text-sm text-slate-600">Click to upload image</p>
-                  <p className="text-xs text-slate-400 mt-1">PNG, JPG up to 10MB</p>
+                  <p className="text-sm text-slate-600">{t("articles.click_upload", "Click to upload image")}</p>
+                  <p className="text-xs text-slate-400 mt-1">{t("articles.upload_hint", "PNG, JPG up to 10MB")}</p>
                 </>
               )}
             </div>
@@ -240,7 +242,7 @@ export default function ArticleComments({ slug }: ArticleCommentsProps) {
           className="inline-flex items-center gap-2 rounded-lg bg-[#EB6D3D] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#cf5427] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {submitting && <LoaderCircle size={16} className="animate-spin" />}
-          {submitting ? "Posting..." : "Post comment"}
+          {submitting ? t("articles.posting", "Posting...") : t("articles.post_comment", "Post comment")}
         </button>
       </form>
 
@@ -251,7 +253,7 @@ export default function ArticleComments({ slug }: ArticleCommentsProps) {
         </p>
       ) : comments.length === 0 ? (
         <p className="text-sm text-slate-500">
-          No comments yet. Be the first to comment.
+          {t("articles.no_comments", "No comments yet. Be the first to comment.")}
         </p>
       ) : (
         <ul className="space-y-4">
@@ -298,7 +300,7 @@ export default function ArticleComments({ slug }: ArticleCommentsProps) {
               )}
               {c.reply && (
                 <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-xs font-semibold text-blue-900 mb-1">Admin Reply:</p>
+                  <p className="text-xs font-semibold text-blue-900 mb-1">{t("articles.admin_reply", "Admin Reply:")}</p>
                   <p className="text-sm text-blue-800 whitespace-pre-wrap">{c.reply}</p>
                 </div>
               )}

@@ -14,7 +14,8 @@ import {
 import { api } from "@/lib/api";
 import { getVideoSource } from "@/lib/video";
 import VideoPlayer from "@/components/VideoPlayer";
-import { ArticleSummary, formatDate } from "@/lib/publicArticles";
+import { ArticleSummary, formatDate, localizedDescription, localizedTitle } from "@/lib/publicArticles";
+import { useLanguage } from "@/context/LanguageContext";
 
 // YouTube videos get an automatic thumbnail when the article has no image.
 function youtubeThumbnail(videoUrl: string) {
@@ -25,6 +26,7 @@ function youtubeThumbnail(videoUrl: string) {
 }
 
 export default function VideosPage() {
+  const { language, t } = useLanguage();
   const [articles, setArticles] = useState<ArticleSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -71,7 +73,9 @@ export default function VideosPage() {
     return articles.filter(
       (a) =>
         a.title.toLowerCase().includes(q) ||
-        a.description.toLowerCase().includes(q)
+        a.description.toLowerCase().includes(q) ||
+        (a.titleAm || "").toLowerCase().includes(q) ||
+        (a.descriptionAm || "").toLowerCase().includes(q)
     );
   }, [articles, query]);
 
@@ -80,11 +84,13 @@ export default function VideosPage() {
       <section className="bg-[#20283a] px-5 py-14 text-white sm:px-8 sm:py-20">
         <div className="mx-auto max-w-7xl">
           <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#F47822]">
-            Dream More Affiliate Market
+            {t("articles.hero_eyebrow", "Dream More Affiliate Market")}
           </p>
-          <h1 className="mt-3 text-4xl font-semibold sm:text-5xl">Videos</h1>
+          <h1 className="mt-3 text-4xl font-semibold sm:text-5xl">
+            {t("articles.videos_title", "Videos")}
+          </h1>
           <p className="mt-3 max-w-2xl text-sm leading-6 text-white/70 sm:text-base">
-            Watch product guides and marketplace updates.
+            {t("articles.videos_subtitle", "Watch product guides and marketplace updates.")}
           </p>
 
           <div className="relative mt-8 max-w-xl">
@@ -95,8 +101,8 @@ export default function VideosPage() {
             <input
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search videos"
-              aria-label="Search videos"
+              placeholder={t("articles.search_videos", "Search videos")}
+              aria-label={t("articles.search_videos", "Search videos")}
               className="h-12 w-full rounded-xl border-0 bg-white pl-11 pr-4 text-sm text-slate-900 outline-none ring-2 ring-transparent focus:ring-[#EB6D3D]"
             />
           </div>
@@ -106,7 +112,10 @@ export default function VideosPage() {
       <section className="mx-auto max-w-7xl px-4 pt-8 sm:px-6">
         {!loading && !error && (
           <p className="mb-6 text-sm text-slate-500">
-            {filtered.length} video{filtered.length === 1 ? "" : "s"}
+            {filtered.length}{" "}
+            {filtered.length === 1
+              ? t("articles.video_singular", "video")
+              : t("articles.video_plural", "videos")}
           </p>
         )}
 
@@ -121,11 +130,13 @@ export default function VideosPage() {
         ) : filtered.length === 0 ? (
           <div className="rounded-2xl border border-dashed border-slate-300 bg-white px-5 py-20 text-center">
             <Video className="mx-auto h-10 w-10 text-slate-300" />
-            <h2 className="mt-3 font-semibold text-slate-800">No videos found</h2>
+            <h2 className="mt-3 font-semibold text-slate-800">
+              {t("articles.no_videos_title", "No videos found")}
+            </h2>
             <p className="mt-1 text-sm text-slate-500">
               {query
-                ? "Try a different search word."
-                : "Articles with a video will appear here."}
+                ? t("articles.no_articles_search", "Try a different search word.")
+                : t("articles.no_videos_desc", "Articles with a video will appear here.")}
             </p>
           </div>
         ) : (
@@ -140,7 +151,7 @@ export default function VideosPage() {
                   <button
                     type="button"
                     onClick={() => setPlaying(article)}
-                    aria-label={`Play ${article.title}`}
+                    aria-label={`${t("articles.play", "Play")} ${localizedTitle(article, language)}`}
                     className="relative block text-left"
                   >
                     {thumbnail ? (
@@ -162,10 +173,10 @@ export default function VideosPage() {
                   <div className="flex flex-1 flex-col p-4 sm:p-5">
                     <p className="text-xs text-slate-400">{formatDate(article.createdAt)}</p>
                     <h2 className="mt-1.5 text-lg font-bold leading-snug text-slate-900">
-                      {article.title}
+                      {localizedTitle(article, language)}
                     </h2>
                     <p className="mt-2 line-clamp-2 text-sm leading-6 text-slate-600">
-                      {article.description}
+                      {localizedDescription(article, language)}
                     </p>
                     <div className="mt-auto flex items-center justify-between gap-2 pt-4">
                       <button
@@ -173,7 +184,7 @@ export default function VideosPage() {
                         onClick={() => setPlaying(article)}
                         className="text-sm font-semibold text-slate-600 transition hover:text-[#cf5427]"
                       >
-                        Watch now
+                        {t("articles.watch_now", "Watch now")}
                       </button>
                       <Link
                         href={`/articles/${article.slug}`}
@@ -206,16 +217,16 @@ export default function VideosPage() {
             <button
               type="button"
               onClick={() => setPlaying(null)}
-              aria-label="Close video"
+              aria-label={t("articles.close_video", "Close video")}
               className="absolute right-3 top-3 z-10 rounded-full bg-white p-2 text-slate-700 shadow transition hover:text-slate-950"
             >
               <X size={20} />
             </button>
             <h2 id="video-title" className="pr-10 text-xl font-bold text-slate-900">
-              {playing.title}
+              {localizedTitle(playing, language)}
             </h2>
             <div className="mt-4">
-              <VideoPlayer url={playing.videoUrl as string} title={playing.title} />
+              <VideoPlayer url={playing.videoUrl as string} title={localizedTitle(playing, language)} />
             </div>
             <div className="mt-4 flex justify-end">
               <Link

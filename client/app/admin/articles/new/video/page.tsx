@@ -22,6 +22,9 @@ export default function NewArticleVideoPage() {
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [content, setContent] = useState("");
+  const [titleAm, setTitleAm] = useState("");
+  const [descriptionAm, setDescriptionAm] = useState("");
+  const [contentAm, setContentAm] = useState("");
   const [videoUrl, setVideoUrl] = useState("");
   const [pdfUrl, setPdfUrl] = useState("");
   const [published, setPublished] = useState(false);
@@ -139,6 +142,9 @@ export default function NewArticleVideoPage() {
         description: description.trim(),
         content: content.trim(),
         note: "",
+        titleAm: titleAm.trim(),
+        descriptionAm: descriptionAm.trim(),
+        contentAm: contentAm.trim(),
         image: "",
         videoUrl: url,
         pdfUrl: pdfUrl,
@@ -370,6 +376,50 @@ export default function NewArticleVideoPage() {
                 placeholder="Write the full article content here..."
                 className={`${inputClass} resize-none`}
               />
+            </div>
+
+            {/* Amharic translation (optional) */}
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
+              <p className="text-sm font-bold text-slate-700">
+                አማርኛ ትርጉም <span className="font-normal text-slate-400">(optional)</span>
+              </p>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                  የጽሑፉ ርዕስ
+                </label>
+                <input
+                  value={titleAm}
+                  onChange={(e) => setTitleAm(e.target.value)}
+                  maxLength={180}
+                  placeholder="Enter Amharic title"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                  ማጠቃለያ
+                </label>
+                <textarea
+                  value={descriptionAm}
+                  onChange={(e) => setDescriptionAm(e.target.value)}
+                  maxLength={1000}
+                  rows={2}
+                  placeholder="Enter Amharic description"
+                  className={`${inputClass} resize-none`}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                  የጽሑፉ ይዘት
+                </label>
+                <textarea
+                  value={contentAm}
+                  onChange={(e) => setContentAm(e.target.value)}
+                  rows={4}
+                  placeholder="Write the Amharic article content here..."
+                  className={`${inputClass} resize-none`}
+                />
+              </div>
             </div>
 
             {/* Publish Toggle */}

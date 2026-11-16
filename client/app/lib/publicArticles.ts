@@ -1,6 +1,7 @@
 export interface PublicSubcategory {
   id: string;
   name: string;
+  nameAm?: string | null;
   slug: string;
   count: number;
 }
@@ -8,6 +9,7 @@ export interface PublicSubcategory {
 export interface PublicCategory {
   id: string;
   name: string;
+  nameAm?: string | null;
   slug: string;
   count: number;
   subcategories?: PublicSubcategory[];
@@ -16,8 +18,10 @@ export interface PublicCategory {
 export interface ArticleSummary {
   id: string;
   title: string;
+  titleAm?: string | null;
   slug: string;
   description: string;
+  descriptionAm?: string | null;
   category?: string | null;
   image: string | null;
   videoUrl?: string | null;
@@ -27,7 +31,9 @@ export interface ArticleSummary {
 
 export interface ArticleDetail extends ArticleSummary {
   content: string;
+  contentAm?: string | null;
   note: string | null;
+  noteAm?: string | null;
   views?: number;
 }
 
@@ -43,12 +49,38 @@ export const readingMinutes = (text: string) =>
 
 export const categoryName = (
   categories: PublicCategory[],
-  slug?: string | null
+  slug?: string | null,
+  lang: "en" | "am" = "en"
 ) => {
   for (const c of categories) {
-    if (c.slug === slug) return c.name;
+    if (c.slug === slug)
+      return lang === "am" && c.nameAm ? c.nameAm : c.name;
     const sub = c.subcategories?.find((s) => s.slug === slug);
-    if (sub) return sub.name;
+    if (sub) return lang === "am" && sub.nameAm ? sub.nameAm : sub.name;
   }
   return "General";
 };
+
+/** Pick the Amharic field when the UI language is 'am' and a translation exists. */
+export const localizedTitle = (
+  article: Pick<ArticleSummary, "title" | "titleAm">,
+  lang: "en" | "am"
+) => (lang === "am" && article.titleAm ? article.titleAm : article.title);
+
+export const localizedDescription = (
+  article: Pick<ArticleSummary, "description" | "descriptionAm">,
+  lang: "en" | "am"
+) =>
+  lang === "am" && article.descriptionAm
+    ? article.descriptionAm
+    : article.description;
+
+export const localizedContent = (
+  article: Pick<ArticleDetail, "content" | "contentAm">,
+  lang: "en" | "am"
+) => (lang === "am" && article.contentAm ? article.contentAm : article.content);
+
+export const localizedNote = (
+  article: Pick<ArticleDetail, "note" | "noteAm">,
+  lang: "en" | "am"
+) => (lang === "am" && article.noteAm ? article.noteAm : article.note);

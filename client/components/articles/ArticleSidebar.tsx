@@ -5,6 +5,7 @@ import Link from "next/link";
 import { ChevronDown, ChevronRight, Folder, FileText } from "lucide-react";
 import { api } from "@/lib/api";
 import type { PublicCategory } from "@/lib/publicArticles";
+import { useLanguage } from "@/context/LanguageContext";
 
 interface ArticleSidebarProps {
   activeCategory?: string;
@@ -12,6 +13,7 @@ interface ArticleSidebarProps {
 }
 
 export default function ArticleSidebar({ activeCategory = "all", onCategorySelect }: ArticleSidebarProps) {
+  const { language, t } = useLanguage();
   const [categories, setCategories] = useState<PublicCategory[]>([]);
   const [expandedCategories, setExpandedCategories] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(true);
@@ -80,7 +82,7 @@ export default function ArticleSidebar({ activeCategory = "all", onCategorySelec
     <aside className="w-64 bg-white border-r border-slate-200 flex flex-col h-full">
       <div className="p-4 border-b border-slate-200">
         <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wide">
-          Categories
+          {t("articles.categories_heading", "Categories")}
         </h3>
       </div>
 
@@ -98,7 +100,7 @@ export default function ArticleSidebar({ activeCategory = "all", onCategorySelec
               }`}
             >
               <FileText size={16} />
-              <span>All Articles</span>
+              <span>{t("articles.all_articles", "All Articles")}</span>
             </Link>
           </li>
 
@@ -127,7 +129,9 @@ export default function ArticleSidebar({ activeCategory = "all", onCategorySelec
                     }`}
                   >
                     <Folder size={16} />
-                    <span className="flex-1">{category.name}</span>
+                    <span className="flex-1">
+                      {language === "am" && category.nameAm ? category.nameAm : category.name}
+                    </span>
                     <span className={`text-xs ${isActive ? "text-white/70" : "text-slate-400"}`}>
                       {category.count}
                     </span>
@@ -149,7 +153,9 @@ export default function ArticleSidebar({ activeCategory = "all", onCategorySelec
                           }`}
                         >
                           <FileText size={14} />
-                          <span className="flex-1">{sub.name}</span>
+                          <span className="flex-1">
+                            {language === "am" && sub.nameAm ? sub.nameAm : sub.name}
+                          </span>
                           <span className="text-xs text-slate-400">{sub.count}</span>
                         </Link>
                       </li>

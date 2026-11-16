@@ -6,6 +6,7 @@ import { api } from "@/lib/api";
 export interface ArticleCategory {
   id: string;
   name: string;
+  nameAm?: string | null;
   slug: string;
   parentId?: string | null;
   count: number;
@@ -47,15 +48,19 @@ export function useArticleCategories() {
     return () => window.clearTimeout(timer);
   }, [reload]);
 
-  const create = useCallback(async (name: string, parentId?: string | null) => {
-    const res = await api.post("/api/articles/admin/categories", {
-      name,
-      ...(parentId ? { parentId } : {}),
-    });
+  const create = useCallback(
+    async (name: string, parentId?: string | null, nameAm?: string) => {
+      const res = await api.post("/api/articles/admin/categories", {
+        name,
+        ...(nameAm ? { nameAm } : {}),
+        ...(parentId ? { parentId } : {}),
+      });
     const category = res.data?.category as ArticleCategory;
     setCategories((list) => [...list, category]);
     return category;
-  }, []);
+    },
+    []
+  );
 
   const remove = useCallback(async (id: string) => {
     await api.delete(`/api/articles/admin/categories/${id}`);

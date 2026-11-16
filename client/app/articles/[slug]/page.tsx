@@ -27,12 +27,18 @@ import {
   PublicCategory,
   categoryName,
   formatDate,
+  localizedContent,
+  localizedDescription,
+  localizedNote,
+  localizedTitle,
   readingMinutes,
 } from "@/lib/publicArticles";
+import { useLanguage } from "@/context/LanguageContext";
 
 export default function ArticlePage() {
   const params = useParams<{ slug: string }>();
   const slug = params.slug;
+  const { language, t } = useLanguage();
 
   const [article, setArticle] = useState<ArticleDetail | null>(null);
   const [categories, setCategories] = useState<PublicCategory[]>([]);
@@ -64,8 +70,8 @@ export default function ArticlePage() {
         setArticle(null);
         setError(
           (e as { response?: { status?: number } }).response?.status === 404
-            ? "This article could not be found."
-            : "This article could not be loaded. Please try again later."
+            ? t("articles.not_found", "This article could not be found.")
+            : t("articles.articles_load_failed", "This article could not be loaded. Please try again later.")
         );
         setLoadedSlug(slug);
       });
@@ -73,7 +79,7 @@ export default function ArticlePage() {
     return () => {
       active = false;
     };
-  }, [slug]);
+  }, [slug, t]);
 
   // Categories fetch (for sidebar + top nav)
   useEffect(() => {
@@ -137,19 +143,23 @@ export default function ArticlePage() {
     return (
       <main className="mx-auto flex min-h-[60vh] max-w-3xl flex-col items-center justify-center px-5 text-center">
         <p role="alert" className="text-slate-600">
-          {error || "This article could not be found."}
+          {error || t("articles.not_found", "This article could not be found.")}
         </p>
         <Link
           href="/articles"
           className="mt-5 inline-flex items-center gap-2 font-semibold text-[#cf5427]"
         >
-          <ArrowLeft size={16} /> All articles
+          <ArrowLeft size={16} /> {t("articles.all_articles", "All articles")}
         </Link>
       </main>
     );
   }
 
-  const label = categoryName(categories, article.category);
+  const label = categoryName(categories, article.category, language);
+  const title = localizedTitle(article, language);
+  const description = localizedDescription(article, language);
+  const content = localizedContent(article, language);
+  const note = localizedNote(article, language);
 
   const toggleCategory = (slug: string) => {
     setExpandedCategory((prev) => (prev === slug ? null : slug));
@@ -168,7 +178,7 @@ export default function ArticlePage() {
                 {/* Sidebar Header */}
                 <div className="border-b border-slate-200 px-4 py-3 bg-slate-50">
                   <h2 className="text-xs font-bold uppercase tracking-wider text-slate-600">
-                    Categories
+                    {t("articles.categories_heading", "Categories")}
                   </h2>
                 </div>
 
@@ -179,7 +189,7 @@ export default function ArticlePage() {
                     className="flex items-center gap-2 rounded-lg px-3 py-2.5 text-sm font-bold text-white bg-[#111827] hover:bg-[#1f2937] transition"
                   >
                     <FileIcon size={16} className="text-white" />
-                    All Articles
+                    {t("articles.all_articles", "All Articles")}
                   </Link>
 
                   {/* Category List */}
@@ -189,7 +199,6 @@ export default function ArticlePage() {
                     const isActive =
                       article.category === c.slug ||
                       subs.some((s) => s.slug === article.category);
-                    const hasChildren = subs.length > 0;
 
                     return (
                       <div key={c.id} className="flex flex-col">
@@ -211,7 +220,9 @@ export default function ArticlePage() {
                               }`}
                             />
                             <Folder size={16} className="text-slate-500" />
-                            <span className="truncate">{c.name}</span>
+                            <span className="truncate">
+                              {language === "am" && c.nameAm ? c.nameAm : c.name}
+                            </span>
                           </button>
                           
                           {/* Article Count */}
@@ -233,14 +244,14 @@ export default function ArticlePage() {
                                     : "text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                                 }`}
                               >
-                                {sub.name}
+                                {language === "am" && sub.nameAm ? sub.nameAm : sub.name}
                               </Link>
                             ))}
                             <Link
                               href={`/articles?category=${c.slug}`}
                               className="block rounded-md px-2 py-1 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-900"
                             >
-                              View all in {c.name}
+                              {t("articles.view_all_in", "View all in")} {language === "am" && c.nameAm ? c.nameAm : c.name}
                             </Link>
                           </div>
                         )}
@@ -260,7 +271,7 @@ export default function ArticlePage() {
                 href="/articles"
                 className="font-semibold text-[#cf5427] hover:underline"
               >
-                Articles
+                {t("articles.breadcrumb_articles", "Articles")}
               </Link>
               <span>/</span>
               <Link
@@ -293,35 +304,35 @@ export default function ArticlePage() {
                   </span>
                   <span>{formatDate(article.createdAt)}</span>
                   <span className="inline-flex items-center gap-1">
-                    <Clock size={13} /> {readingMinutes(article.content)} min read
+                    <Clock size={13} /> {readingMinutes(content)} {t("articles.min_read", "min read")}
                   </span>
                   {typeof article.views === "number" && (
                     <span className="inline-flex items-center gap-1">
-                      <Eye size={13} /> {article.views.toLocaleString()} views
+                      <Eye size={13} /> {article.views.toLocaleString()} {t("articles.views", "views")}
                     </span>
                   )}
                 </div>
 
                 <h1 className="mt-4 text-3xl font-bold leading-tight text-slate-900 sm:text-4xl">
-                  {article.title}
+                  {title}
                 </h1>
                 <p className="mt-4 border-b border-slate-100 pb-6 text-lg leading-7 text-slate-600">
-                  {article.description}
+                  {description}
                 </p>
 
                 {/* Content */}
                 <div className="whitespace-pre-wrap break-words py-6 text-base leading-8 text-slate-700">
-                  <LinkifyText text={article.content} />
+                  <LinkifyText text={content} />
                 </div>
 
                 {/* Note */}
-                {article.note && (
+                {note && (
                   <div className="mb-6 rounded-xl border border-amber-200 bg-amber-50 p-4">
                     <p className="mb-1 text-xs font-bold uppercase tracking-wide text-amber-700">
-                      Note
+                      {t("articles.note", "Note")}
                     </p>
                     <p className="whitespace-pre-wrap break-words text-sm leading-6 text-amber-900">
-                      {article.note}
+                      {note}
                     </p>
                   </div>
                 )}
@@ -329,7 +340,7 @@ export default function ArticlePage() {
                 {/* Video */}
                 {article.videoUrl && (
                   <div className="pb-6">
-                    <VideoPlayer url={article.videoUrl} title={article.title} />
+                    <VideoPlayer url={article.videoUrl} title={title} />
                   </div>
                 )}
 
@@ -338,7 +349,7 @@ export default function ArticlePage() {
                   <div className="pb-6">
                     <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
                       <h2 className="inline-flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-[#9c3d1a]">
-                        <FileText size={16} /> Attached PDF
+                        <FileText size={16} /> {t("articles.attached_pdf", "Attached PDF")}
                       </h2>
                       <a
                         href={article.pdfUrl}
@@ -346,13 +357,13 @@ export default function ArticlePage() {
                         rel="noopener noreferrer"
                         className="rounded-lg bg-[#20283a] px-4 py-2 text-xs font-bold text-white transition hover:bg-[#2e3a52]"
                       >
-                        Open / Download PDF
+                        {t("articles.open_pdf", "Open / Download PDF")}
                       </a>
                     </div>
                     <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-100">
                       <iframe
                         src={article.pdfUrl}
-                        title={`${article.title} PDF`}
+                        title={`${title} PDF`}
                         className="h-[32rem] w-full"
                       />
                     </div>
@@ -360,9 +371,9 @@ export default function ArticlePage() {
                 )}
 
                 {/* Second Note */}
-                {article.note && (
+                {note && (
                   <aside className="rounded-xl border-l-4 border-[#EB6D3D] bg-[#EB6D3D]/10 p-4 text-sm leading-6 text-slate-700">
-                    {article.note}
+                    {note}
                   </aside>
                 )}
 
@@ -370,7 +381,7 @@ export default function ArticlePage() {
                 <div id="comments" className="mt-8 border-t border-slate-100 pt-6">
                   <div className="flex flex-wrap items-center justify-between gap-3">
                     <h2 className="inline-flex items-center gap-2 text-lg font-bold text-slate-900">
-                      <MessageSquare size={18} /> Comments
+                      <MessageSquare size={18} /> {t("articles.comments", "Comments")}
                     </h2>
                     <button
                       type="button"
@@ -381,11 +392,11 @@ export default function ArticlePage() {
                     >
                       {showComments ? (
                         <>
-                          Hide comments <ChevronUp size={16} />
+                          {t("articles.hide_comments", "Hide comments")} <ChevronUp size={16} />
                         </>
                       ) : (
                         <>
-                          Show comments <ChevronDown size={16} />
+                          {t("articles.show_comments", "Show comments")} <ChevronDown size={16} />
                         </>
                       )}
                     </button>
@@ -401,7 +412,7 @@ export default function ArticlePage() {
                     href="/articles"
                     className="mt-6 inline-flex items-center gap-2 text-sm font-semibold text-[#cf5427]"
                   >
-                    <ArrowLeft size={16} /> Back to all articles
+                    <ArrowLeft size={16} /> {t("articles.back_to_all", "Back to all articles")}
                   </Link>
                 </div>
               </div>
@@ -411,7 +422,7 @@ export default function ArticlePage() {
             {related.length > 0 && (
               <section className="mt-10">
                 <h2 className="mb-4 text-xl font-bold text-slate-900">
-                  More Articles
+                  {t("articles.more_articles", "More Articles")}
                 </h2>
                 <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
                   {related.map((item) => (
@@ -436,7 +447,7 @@ export default function ArticlePage() {
                       )}
                       <div className="p-4">
                         <p className="line-clamp-2 text-sm font-semibold leading-snug text-slate-900 group-hover:text-[#cf5427]">
-                          {item.title}
+                          {localizedTitle(item, language)}
                         </p>
                         <p className="mt-2 text-xs text-slate-400">
                           {formatDate(item.createdAt)}

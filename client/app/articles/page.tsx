@@ -9,12 +9,17 @@ import { api } from "@/lib/api";
 import VideoPlayer from "@/components/VideoPlayer";
 import { LinkifyText } from "@/components/LinkifyText";
 import ArticleSidebar from "@/components/articles/ArticleSidebar";
+import { useLanguage } from "@/context/LanguageContext";
 import {
   ArticleDetail,
   ArticleSummary,
   PublicCategory,
   categoryName,
   formatDate,
+  localizedContent,
+  localizedDescription,
+  localizedNote,
+  localizedTitle,
 } from "@/lib/publicArticles";
 
 const LOGO_SRC = "/banners/photo.jpg";
@@ -62,6 +67,7 @@ function LogoPlaceholder({
 function ArticlesBrowser() {
   const router = useRouter();
   const searchParams = useSearchParams();
+  const { language, t } = useLanguage();
 
   const activeCategory = searchParams.get("category") || "all";
   const urlSearch = searchParams.get("search") || "";
@@ -124,7 +130,7 @@ function ArticlesBrowser() {
         setError("");
       })
       .catch(() => {
-        if (active) setError("Articles could not be loaded. Please try again later.");
+        if (active) setError(t("articles.articles_load_failed", "Articles could not be loaded. Please try again later."));
       })
       .finally(() => {
         if (active) setLoading(false);
@@ -132,7 +138,7 @@ function ArticlesBrowser() {
     return () => {
       active = false;
     };
-  }, [activeCategory]);
+  }, [activeCategory, t]);
 
   // Quick preview content
   useEffect(() => {
@@ -144,7 +150,7 @@ function ArticlesBrowser() {
         if (active) setPreview(res.data?.article || null);
       })
       .catch(() => {
-        if (active) setPreviewError("This article preview could not be loaded.");
+        if (active) setPreviewError(t("articles.preview_load_failed", "This article preview could not be loaded."));
       })
       .finally(() => {
         if (active) setPreviewLoading(false);
@@ -152,7 +158,7 @@ function ArticlesBrowser() {
     return () => {
       active = false;
     };
-  }, [selected]);
+  }, [selected, t]);
 
   // Comments for the selected article (inside modal)
   useEffect(() => {
@@ -164,7 +170,7 @@ function ArticlesBrowser() {
         if (active) setComments(res.data?.comments || []);
       })
       .catch(() => {
-        if (active) setCommentsError("Comments could not be loaded.");
+        if (active) setCommentsError(t("articles.comments_load_failed", "Comments could not be loaded."));
       })
       .finally(() => {
         if (active) setCommentsLoading(false);
@@ -172,7 +178,7 @@ function ArticlesBrowser() {
     return () => {
       active = false;
     };
-  }, [selected]);
+  }, [selected, t]);
 
   // Jump to the comments section when the preview was opened with "Comment"
   useEffect(() => {
@@ -242,7 +248,7 @@ function ArticlesBrowser() {
     const name = commentName.trim();
     const message = commentMessage.trim();
     if (!name || !message) {
-      setSubmitError("Please enter your name and a comment.");
+      setSubmitError(t("articles.comment_required", "Please enter your name and a comment."));
       return;
     }
 
@@ -257,15 +263,15 @@ function ArticlesBrowser() {
       const created: ArticleComment | undefined = res.data?.comment;
       if (created) {
         setComments((prev) => [created, ...prev]);
-        setSubmitNotice("Thank you! Your comment has been submitted for review.");
+        setSubmitNotice(t("articles.comment_sent_review", "Thank you! Your comment has been submitted for review."));
       } else {
-        setSubmitNotice("Thank you! Your comment was submitted and will appear after review.");
+        setSubmitNotice(t("articles.comment_sent_pending", "Thank you! Your comment was submitted and will appear after review."));
       }
       setCommentMessage("");
       setCommentImage(null);
       setCommentImagePreview(null);
     } catch {
-      setSubmitError("Your comment could not be sent. Please try again.");
+      setSubmitError(t("articles.comment_failed", "Your comment could not be sent. Please try again."));
     } finally {
       setSubmitting(false);
     }
@@ -276,11 +282,11 @@ function ArticlesBrowser() {
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      setSubmitError("Please upload an image file");
+      setSubmitError(t("articles.upload_image_error", "Please upload an image file"));
       return;
     }
     if (file.size > 10 * 1024 * 1024) {
-      setSubmitError("Image must be less than 10MB");
+      setSubmitError(t("articles.upload_image_size", "Image must be less than 10MB"));
       return;
     }
 
@@ -296,11 +302,11 @@ function ArticlesBrowser() {
         setCommentImage(res.data.url);
         setCommentImagePreview(res.data.url);
       } else {
-        setSubmitError(res.data?.error || "Failed to upload image");
+        setSubmitError(res.data?.error || t("articles.upload_failed", "Failed to upload image"));
       }
     } catch (err) {
       const error = err as { response?: { data?: { error?: string } } };
-      setSubmitError(error.response?.data?.error || "Failed to upload image");
+      setSubmitError(error.response?.data?.error || t("articles.upload_failed", "Failed to upload image"));
     } finally {
       setUploadingImage(false);
       if (commentFileRef.current) commentFileRef.current.value = "";
@@ -320,7 +326,9 @@ function ArticlesBrowser() {
     return articles.filter(
       (a) =>
         a.title.toLowerCase().includes(q) ||
-        a.description.toLowerCase().includes(q)
+        a.description.toLowerCase().includes(q) ||
+        (a.titleAm || "").toLowerCase().includes(q) ||
+        (a.descriptionAm || "").toLowerCase().includes(q)
     );
   }, [articles, urlSearch]);
 
@@ -328,7 +336,9 @@ function ArticlesBrowser() {
   const featured = showFeatured ? filtered[0] : null;
   const rest = showFeatured ? filtered.slice(1) : filtered;
   const activeName =
-    activeCategory === "all" ? "All articles" : categoryName(categories, activeCategory);
+    activeCategory === "all"
+      ? "All articles"
+      : categoryName(categories, activeCategory, language);
 
   return (
     <main className="min-h-screen bg-[var(--cream)] pb-20">
@@ -350,15 +360,15 @@ function ArticlesBrowser() {
         <div className="relative mx-auto w-full max-w-4xl">
           <p className="inline-flex items-center justify-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-1.5 text-xs font-bold uppercase tracking-[0.2em] text-[#F47822] backdrop-blur-md">
             <span className="h-1.5 w-1.5 rounded-full bg-[#F47822] animate-pulse" />
-            Dream More Affiliate Market
+            {t("articles.hero_eyebrow", "Dream More Affiliate Market")}
           </p>
 
           <h1 className="mt-6 text-4xl font-bold tracking-tight text-white drop-shadow-lg sm:text-5xl lg:text-6xl">
-            Dream More Articles
+            {t("articles.hero_title", "Dream More Articles")}
           </h1>
 
           <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-white/90 drop-shadow sm:text-lg">
-            Discover marketplace news, in-depth product guides, and useful business updates curated directly by Dream More.
+            {t("articles.hero_subtitle", "Discover marketplace news, in-depth product guides, and useful business updates curated directly by Dream More.")}
           </p>
         </div>
       </section>
@@ -383,7 +393,7 @@ function ArticlesBrowser() {
                       : "text-slate-600 hover:bg-slate-100"
                   }`}
                 >
-                  All <span className="ml-1 opacity-70">{totalCount}</span>
+                  {t("articles.all", "All")} <span className="ml-1 opacity-70">{totalCount}</span>
                 </button>
               </li>
               {categories.map((c) => (
@@ -398,7 +408,8 @@ function ArticlesBrowser() {
                         : "text-slate-600 hover:bg-slate-100"
                     }`}
                   >
-                    {c.name} <span className="ml-1 opacity-70">{c.count}</span>
+                    {language === "am" && c.nameAm ? c.nameAm : c.name}{" "}
+                    <span className="ml-1 opacity-70">{c.count}</span>
                   </button>
                 </li>
               ))}
@@ -412,7 +423,7 @@ function ArticlesBrowser() {
               type="text"
               value={query}
               onChange={(e) => setSearchInput(e.target.value)}
-              placeholder="Search..."
+              placeholder={t("articles.search_placeholder", "Search articles...")}
               className="h-10 w-full rounded-full border border-slate-200 bg-slate-50 pl-9 pr-4 text-sm outline-none transition focus:border-[#EB6D3D] focus:bg-white focus:ring-2 focus:ring-[#EB6D3D]/20"
             />
           </form>
@@ -431,11 +442,16 @@ function ArticlesBrowser() {
             <section className="pt-8">
               <div className="mb-6 flex flex-wrap items-end justify-between gap-2">
                 <h2 className="text-2xl font-bold text-slate-900">
-                  {urlSearch ? `Search results for "${urlSearch}"` : activeName}
+                  {urlSearch
+                    ? `${t("articles.search_results_for", "Search results for")} "${urlSearch}"`
+                    : activeName}
                 </h2>
                 {!loading && (
                   <p className="text-sm text-slate-500">
-                    {filtered.length} article{filtered.length === 1 ? "" : "s"}
+                    {filtered.length}{" "}
+                    {filtered.length === 1
+                      ? t("articles.article_singular", "article")
+                      : t("articles.article_plural", "articles")}
                   </p>
                 )}
               </div>
@@ -461,11 +477,13 @@ function ArticlesBrowser() {
                     unoptimized
                     className="mx-auto h-20 w-20 object-contain opacity-80"
                   />
-                  <h3 className="mt-3 font-semibold text-slate-800">No articles found</h3>
+                  <h3 className="mt-3 font-semibold text-slate-800">
+                    {t("articles.no_articles_title", "No articles found")}
+                  </h3>
                   <p className="mt-1 text-sm text-slate-500">
                     {urlSearch
-                      ? "Try a different search word."
-                      : "Please check back soon for marketplace updates and guides."}
+                      ? t("articles.no_articles_search", "Try a different search word.")
+                      : t("articles.no_articles_desc", "Please check back soon for marketplace updates and guides.")}
                   </p>
                 </div>
               ) : (
@@ -485,6 +503,7 @@ function ArticlesBrowser() {
                               width={1000}
                               height={620}
                               unoptimized
+                              priority
                               className="h-full w-full object-cover"
                             />
                           </Link>
@@ -498,7 +517,7 @@ function ArticlesBrowser() {
                       <div className="flex flex-col justify-center p-6 sm:p-10">
                         <div className="flex flex-wrap items-center gap-2">
                           <span className="rounded-full bg-[#EB6D3D]/15 px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#9c3d1a]">
-                            {categoryName(categories, featured.category)}
+                            {categoryName(categories, featured.category, language)}
                           </span>
                           <span className="text-xs text-slate-400">
                             {formatDate(featured.createdAt)}
@@ -506,18 +525,18 @@ function ArticlesBrowser() {
                         </div>
                         <h3 className="mt-3 text-2xl font-bold leading-tight text-slate-900 sm:text-3xl">
                           <Link href={`/articles/${featured.slug}`} className="hover:text-[#cf5427]">
-                            {featured.title}
+                            {localizedTitle(featured, language)}
                           </Link>
                         </h3>
                         <p className="mt-3 line-clamp-4 text-base leading-7 text-slate-600">
-                          {featured.description}
+                          {localizedDescription(featured, language)}
                         </p>
                         <div className="mt-6 flex flex-wrap items-center gap-3">
                           <Link
                             href={`/articles/${featured.slug}`}
                             className="inline-flex items-center gap-2 rounded-lg bg-[#EB6D3D] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#cf5427]"
                           >
-                            Read article <ArrowRight size={16} />
+                            {t("articles.read_article", "Read article")} <ArrowRight size={16} />
                           </Link>
 
                           <button
@@ -525,7 +544,7 @@ function ArticlesBrowser() {
                             onClick={() => openPreview(featured)}
                             className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                           >
-                            Quick preview
+                            {t("articles.quick_preview", "Quick preview")}
                           </button>
 
                           {/* Comment Button (Featured) - Opens Full Screen Page */}
@@ -533,7 +552,7 @@ function ArticlesBrowser() {
                             href={`/articles/${featured.slug}#comments`}
                             className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                           >
-                            <MessageSquare size={16} /> Comment
+                            <MessageSquare size={16} /> {t("articles.comment", "Comment")}
                           </Link>
                         </div>
                       </div>
@@ -570,11 +589,11 @@ function ArticlesBrowser() {
                             )}
 
                             <span className="absolute left-3 top-3 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#cf5427] shadow-sm z-10">
-                              {categoryName(categories, article.category)}
+                              {categoryName(categories, article.category, language)}
                             </span>
                             {article.videoUrl && (
                               <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-[#20283a]/85 px-2 py-1 text-[11px] font-bold text-white shadow-sm z-10">
-                                <Video size={12} /> Video
+                                <Video size={12} /> {t("articles.video_badge", "Video")}
                               </span>
                             )}
                           </div>
@@ -583,11 +602,11 @@ function ArticlesBrowser() {
                             <p className="text-xs text-slate-400">{formatDate(article.createdAt)}</p>
                             <h3 className="mt-1.5 text-lg font-bold leading-snug text-slate-900">
                               <Link href={`/articles/${article.slug}`} className="hover:text-[#cf5427]">
-                                {article.title}
+                                {localizedTitle(article, language)}
                               </Link>
                             </h3>
                             <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">
-                              {article.description}
+                              {localizedDescription(article, language)}
                             </p>
 
                             <div className="mt-auto flex items-center justify-between gap-2 pt-4 border-t border-slate-100 mt-4">
@@ -596,14 +615,14 @@ function ArticlesBrowser() {
                                 href={`/articles/${article.slug}#comments`}
                                 className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 transition hover:text-[#cf5427]"
                               >
-                                <MessageSquare size={15} /> Comment
+                                <MessageSquare size={15} /> {t("articles.comment", "Comment")}
                               </Link>
 
                               <Link
                                 href={`/articles/${article.slug}`}
                                 className="inline-flex items-center gap-1 text-sm font-bold text-[#cf5427] transition hover:text-[#9c3d1a]"
                               >
-                                Read <ArrowRight size={15} />
+                                {t("articles.read", "Read")} <ArrowRight size={15} />
                               </Link>
                             </div>
                           </div>
@@ -635,7 +654,7 @@ function ArticlesBrowser() {
             <button
               type="button"
               onClick={() => setSelected(null)}
-              aria-label="Close article preview"
+              aria-label={t("articles.close_preview_aria", "Close article preview")}
               className="absolute right-4 top-4 z-10 rounded-full bg-white/95 p-2 text-slate-700 shadow transition hover:bg-white hover:text-slate-950"
             >
               <X size={20} />
@@ -654,16 +673,16 @@ function ArticlesBrowser() {
             )}
             <div className="p-6 sm:p-8">
               <p className="text-xs font-semibold uppercase tracking-wide text-[#cf5427]">
-                {categoryName(categories, selected.category)} · {formatDate(selected.createdAt)}
+                {categoryName(categories, selected.category, language)} · {formatDate(selected.createdAt)}
               </p>
               <h2
                 id="article-preview-title"
                 className="mt-2 text-2xl font-bold leading-tight text-slate-900 sm:text-3xl"
               >
-                {selected.title}
+                {localizedTitle(selected, language)}
               </h2>
               <p className="mt-4 border-b border-slate-100 pb-5 text-base leading-7 text-slate-600">
-                {selected.description}
+                {localizedDescription(selected, language)}
               </p>
 
               {previewLoading ? (
@@ -677,7 +696,7 @@ function ArticlesBrowser() {
               ) : preview ? (
                 <>
                   <div className="whitespace-pre-wrap break-words py-5 text-sm leading-7 text-slate-700">
-                    <LinkifyText text={preview.content} />
+                    <LinkifyText text={localizedContent(preview, language)} />
                   </div>
                   {(preview.videoUrl || selected.videoUrl) && (
                     <div className="pb-5">
@@ -687,9 +706,9 @@ function ArticlesBrowser() {
                       />
                     </div>
                   )}
-                  {preview.note && (
+                  {localizedNote(preview, language) && (
                     <aside className="rounded-xl border-l-4 border-[#EB6D3D] bg-[#EB6D3D]/10 p-4 text-sm leading-6 text-slate-700">
-                      {preview.note}
+                      {localizedNote(preview, language)}
                     </aside>
                   )}
                 </>
@@ -705,7 +724,7 @@ function ArticlesBrowser() {
                   id="article-comments-title"
                   className="text-lg font-bold text-slate-900"
                 >
-                  Comments{!commentsLoading && ` (${comments.length})`}
+                  {t("articles.comments", "Comments")}{!commentsLoading && ` (${comments.length})`}
                 </h3>
 
                 <form onSubmit={submitComment} className="mt-4 space-y-3">
@@ -714,7 +733,7 @@ function ArticlesBrowser() {
                       htmlFor="comment-name"
                       className="mb-1 block text-sm font-semibold text-slate-700"
                     >
-                      Your name
+                      {t("articles.your_name", "Your name")}
                     </label>
                     <input
                       id="comment-name"
@@ -730,7 +749,7 @@ function ArticlesBrowser() {
                       htmlFor="comment-message"
                       className="mb-1 block text-sm font-semibold text-slate-700"
                     >
-                      Your comment
+                      {t("articles.your_comment", "Your comment")}
                     </label>
                     <textarea
                       id="comment-message"
@@ -748,7 +767,7 @@ function ArticlesBrowser() {
                   {/* Image upload */}
                   <div>
                     <label className="mb-1 block text-sm font-semibold text-slate-700">
-                      Attach image <span className="text-slate-400">(optional)</span>
+                      {t("articles.attach_image", "Attach image")} <span className="text-slate-400">{t("articles.optional", "(optional)")}</span>
                     </label>
                     {commentImagePreview ? (
                       <div className="relative inline-block">
@@ -776,8 +795,8 @@ function ArticlesBrowser() {
                           <LoaderCircle className="h-6 w-6 animate-spin text-[#EB6D3D] mx-auto" />
                         ) : (
                           <>
-                            <p className="text-sm text-slate-600">Click to upload image</p>
-                            <p className="text-xs text-slate-400 mt-1">PNG, JPG up to 10MB</p>
+                            <p className="text-sm text-slate-600">{t("articles.click_upload", "Click to upload image")}</p>
+                            <p className="text-xs text-slate-400 mt-1">{t("articles.upload_hint", "PNG, JPG up to 10MB")}</p>
                           </>
                         )}
                       </div>
@@ -808,7 +827,7 @@ function ArticlesBrowser() {
                     className="inline-flex items-center gap-2 rounded-lg bg-[#EB6D3D] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#cf5427] disabled:cursor-not-allowed disabled:opacity-60"
                   >
                     {submitting && <LoaderCircle size={16} className="animate-spin" />}
-                    {submitting ? "Posting..." : "Post comment"}
+                    {submitting ? t("articles.posting", "Posting...") : t("articles.post_comment", "Post comment")}
                   </button>
                 </form>
 
@@ -823,7 +842,7 @@ function ArticlesBrowser() {
                     </p>
                   ) : comments.length === 0 ? (
                     <p className="text-sm text-slate-500">
-                      No comments yet. Be the first to comment.
+                      {t("articles.no_comments", "No comments yet. Be the first to comment.")}
                     </p>
                   ) : (
                     <ul className="space-y-4">
@@ -870,7 +889,7 @@ function ArticlesBrowser() {
                           )}
                           {c.reply && (
                             <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                              <p className="text-xs font-semibold text-blue-900 mb-1">Admin Reply:</p>
+                              <p className="text-xs font-semibold text-blue-900 mb-1">{t("articles.admin_reply", "Admin Reply:")}</p>
                               <p className="text-sm text-blue-800 whitespace-pre-wrap">{c.reply}</p>
                             </div>
                           )}
@@ -887,13 +906,13 @@ function ArticlesBrowser() {
                   onClick={() => setSelected(null)}
                   className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
                 >
-                  Close preview
+                  {t("articles.close_preview", "Close preview")}
                 </button>
                 <Link
                   href={`/articles/${selected.slug}`}
                   className="inline-flex items-center gap-2 rounded-lg bg-[#EB6D3D] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#cf5427]"
                 >
-                  Open full article <ArrowRight size={16} />
+                  {t("articles.open_full_article", "Open full article")} <ArrowRight size={16} />
                 </Link>
               </div>
             </div>

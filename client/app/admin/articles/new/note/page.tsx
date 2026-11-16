@@ -25,6 +25,10 @@ export default function NewArticleNotePage() {
   const [description, setDescription] = useState("");
   const [content, setContent] = useState("");
   const [note, setNote] = useState("");
+  const [titleAm, setTitleAm] = useState("");
+  const [descriptionAm, setDescriptionAm] = useState("");
+  const [contentAm, setContentAm] = useState("");
+  const [noteAm, setNoteAm] = useState("");
   const [image, setImage] = useState("");
   const [pdfUrl, setPdfUrl] = useState("");
   const [published, setPublished] = useState(false);
@@ -38,6 +42,7 @@ export default function NewArticleNotePage() {
   // New category state
   const [newCategoryOpen, setNewCategoryOpen] = useState(false);
   const [newCategoryName, setNewCategoryName] = useState("");
+  const [newCategoryNameAm, setNewCategoryNameAm] = useState("");
   const [newCategoryParent, setNewCategoryParent] = useState("");
   const [creatingCategory, setCreatingCategory] = useState(false);
 
@@ -133,10 +138,12 @@ export default function NewArticleNotePage() {
     try {
       const created = await createCategory(
         name,
-        newCategoryParent || null
+        newCategoryParent || null,
+        newCategoryNameAm.trim() || undefined
       );
       setCategory(created.slug);
       setNewCategoryName("");
+      setNewCategoryNameAm("");
       setNewCategoryParent("");
       setNewCategoryOpen(false);
     } catch (e) {
@@ -164,6 +171,10 @@ export default function NewArticleNotePage() {
         description: description.trim(),
         content: content.trim(),
         note: note.trim(),
+        titleAm: titleAm.trim(),
+        descriptionAm: descriptionAm.trim(),
+        contentAm: contentAm.trim(),
+        noteAm: noteAm.trim(),
         image: image,
         videoUrl: "",
         pdfUrl: pdfUrl,
@@ -339,6 +350,19 @@ export default function NewArticleNotePage() {
                         autoFocus
                         className="w-full rounded border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-[#EB6D3D]"
                       />
+                      <input
+                        value={newCategoryNameAm}
+                        onChange={(e) => setNewCategoryNameAm(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") {
+                            e.preventDefault();
+                            void handleCreateCategory();
+                          }
+                        }}
+                        placeholder="ስም በአማርኛ (optional)"
+                        dir="rtl"
+                        className="w-full rounded border border-slate-300 px-3 py-1.5 text-sm outline-none focus:border-[#EB6D3D]"
+                      />
                       <button
                         type="button"
                         onClick={() => void handleCreateCategory()}
@@ -352,6 +376,7 @@ export default function NewArticleNotePage() {
                         onClick={() => {
                           setNewCategoryOpen(false);
                           setNewCategoryName("");
+                          setNewCategoryNameAm("");
                           setNewCategoryParent("");
                         }}
                         className="rounded bg-slate-200 px-3 py-1.5 text-sm font-semibold text-slate-700"
@@ -390,6 +415,62 @@ export default function NewArticleNotePage() {
                 placeholder="Any extra notes..."
                 className={`${inputClass} resize-none`}
               />
+            </div>
+
+            {/* Amharic translation (optional) */}
+            <div className="rounded-lg border border-slate-200 bg-slate-50 p-3 space-y-3">
+              <p className="text-sm font-bold text-slate-700">
+                አማርኛ ትርጉም <span className="font-normal text-slate-400">(optional)</span>
+              </p>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                  የጽሑፉ ርዕስ
+                </label>
+                <input
+                  value={titleAm}
+                  onChange={(e) => setTitleAm(e.target.value)}
+                  maxLength={180}
+                  placeholder="Enter Amharic title"
+                  className={inputClass}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                  ማጠቃለያ
+                </label>
+                <textarea
+                  value={descriptionAm}
+                  onChange={(e) => setDescriptionAm(e.target.value)}
+                  maxLength={1000}
+                  rows={2}
+                  placeholder="Enter Amharic description"
+                  className={`${inputClass} resize-none`}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                  የጽሑፉ ይዘት
+                </label>
+                <textarea
+                  value={contentAm}
+                  onChange={(e) => setContentAm(e.target.value)}
+                  rows={4}
+                  placeholder="Write the Amharic article content here..."
+                  className={`${inputClass} resize-none`}
+                />
+              </div>
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-slate-600">
+                  ተጨማሪ ማስታወሻ
+                </label>
+                <textarea
+                  value={noteAm}
+                  onChange={(e) => setNoteAm(e.target.value)}
+                  rows={2}
+                  placeholder="Any extra notes in Amharic..."
+                  className={`${inputClass} resize-none`}
+                />
+              </div>
             </div>
 
             {/* Image Upload (Like the screenshot) */}

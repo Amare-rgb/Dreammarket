@@ -21,6 +21,7 @@ export default function ArticleCategoriesPage() {
   const { categories, loading, error: loadError, create, remove } =
     useArticleCategories();
   const [name, setName] = useState("");
+  const [nameAm, setNameAm] = useState("");
   const [parentId, setParentId] = useState("");
   const [adding, setAdding] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
@@ -60,8 +61,9 @@ export default function ArticleCategoriesPage() {
     setError("");
     setAdding(true);
     try {
-      const created = await create(value, parentId || null);
+      const created = await create(value, parentId || null, nameAm.trim() || undefined);
       setName("");
+      setNameAm("");
       setParentId("");
       if (created.parentId) {
         setExpanded((prev) => new Set(prev).add(created.parentId as string));
@@ -133,8 +135,17 @@ export default function ArticleCategoriesPage() {
           value={name}
           onChange={(e) => setName(e.target.value)}
           maxLength={40}
-          placeholder="New category name"
+          placeholder="New category name (English)"
           aria-label="New category name"
+          className="h-11 min-w-0 flex-1 rounded-xl border border-slate-300 px-3 outline-none focus:border-[#EB6D3D] focus:ring-2 focus:ring-[#EB6D3D]/20"
+        />
+        <input
+          value={nameAm}
+          onChange={(e) => setNameAm(e.target.value)}
+          maxLength={40}
+          placeholder="ስም በአማርኛ (optional)"
+          aria-label="New category name in Amharic"
+          dir="rtl"
           className="h-11 min-w-0 flex-1 rounded-xl border border-slate-300 px-3 outline-none focus:border-[#EB6D3D] focus:ring-2 focus:ring-[#EB6D3D]/20"
         />
         <select
@@ -201,7 +212,14 @@ export default function ArticleCategoriesPage() {
                     )}
                     <Folder size={16} className="shrink-0 text-[#EB6D3D]" />
                     <div className="min-w-0 flex-1">
-                      <p className="font-semibold text-slate-900">{c.name}</p>
+                      <p className="font-semibold text-slate-900">
+                        {c.name}
+                        {c.nameAm && (
+                          <span className="ml-2 text-sm font-normal text-slate-500" dir="rtl">
+                            {c.nameAm}
+                          </span>
+                        )}
+                      </p>
                       <p className="text-xs text-slate-400">
                         {c.slug} · {c.count} article{c.count === 1 ? "" : "s"}
                         {children.length > 0 &&
@@ -222,6 +240,11 @@ export default function ArticleCategoriesPage() {
                           <div className="min-w-0 flex-1">
                             <p className="text-sm font-medium text-slate-800">
                               {sub.name}
+                              {sub.nameAm && (
+                                <span className="ml-2 text-xs font-normal text-slate-500" dir="rtl">
+                                  {sub.nameAm}
+                                </span>
+                              )}
                               <span className="ml-2 rounded-full bg-[#EB6D3D]/10 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wide text-[#9c3d1a]">
                                 Subcategory
                               </span>
