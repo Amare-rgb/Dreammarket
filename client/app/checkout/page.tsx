@@ -456,7 +456,7 @@ export default function CheckoutPage() {
               <button
                 type="submit"
                 disabled={submitting || uploadingProof || items.length === 0}
-                className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#EB6D3D] px-5 text-sm font-bold text-[#20283a] transition hover:bg-[#cf5427] hover:text-white disabled:cursor-not-allowed disabled:opacity-60"
+                className="mt-5 flex h-12 w-full items-center justify-center gap-2 rounded-xl bg-[#cf5427] px-5 text-base font-extrabold text-white shadow-lg shadow-[#cf5427]/25 transition hover:bg-[#9c3d1a] hover:shadow-xl hover:shadow-[#cf5427]/30 active:scale-[0.99] disabled:cursor-not-allowed disabled:opacity-60 disabled:shadow-none"
               >
                 {submitting && <LoaderCircle className="h-4 w-4 animate-spin" />}
                 {submitting ? "Placing order..." : "Place order"}

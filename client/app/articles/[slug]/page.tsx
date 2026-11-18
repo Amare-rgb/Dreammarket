@@ -18,6 +18,7 @@ import {
   FileText as FileIcon,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { getVideoSource } from "@/lib/video";
 import VideoPlayer from "@/components/VideoPlayer";
 import { LinkifyText } from "@/components/LinkifyText";
 import ArticleComments from "@/components/articles/ArticleComments";
@@ -34,6 +35,14 @@ import {
   readingMinutes,
 } from "@/lib/publicArticles";
 import { useLanguage } from "@/context/LanguageContext";
+
+// YouTube videos get an automatic thumbnail when the article has no image.
+function youtubeThumbnail(videoUrl: string) {
+  const source = getVideoSource(videoUrl);
+  if (source?.kind !== "iframe") return null;
+  const id = source.src.match(/youtube-nocookie\.com\/embed\/([\w-]+)/)?.[1];
+  return id ? `https://i.ytimg.com/vi/${id}/hqdefault.jpg` : null;
+}
 
 export default function ArticlePage() {
   const params = useParams<{ slug: string }>();
@@ -425,15 +434,19 @@ export default function ArticlePage() {
                   {t("articles.more_articles", "More Articles")}
                 </h2>
                 <div className="grid gap-4 sm:grid-cols-2 md:grid-cols-4">
-                  {related.map((item) => (
+                  {related.map((item) => {
+                    const thumb =
+                      item.image ||
+                      (item.videoUrl ? youtubeThumbnail(item.videoUrl) : null);
+                    return (
                     <Link
                       key={item.id}
                       href={`/articles/${item.slug}`}
                       className="group flex flex-col overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm transition hover:shadow-md"
                     >
-                      {item.image ? (
+                      {thumb ? (
                         <Image
-                          src={item.image}
+                          src={thumb}
                           alt=""
                           width={400}
                           height={250}
@@ -454,7 +467,8 @@ export default function ArticlePage() {
                         </p>
                       </div>
                     </Link>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
             )}
