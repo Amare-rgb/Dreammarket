@@ -24,6 +24,7 @@ import {
   Phone,
   MapPin,
   Clock,
+  Truck,
 } from "lucide-react";
 
 // ═══════════════════════════════════════════════════════════
@@ -246,6 +247,13 @@ interface SettingsData {
   productNotifications: boolean;
   userNotifications: boolean;
   marketingEmails: boolean;
+  storeLatitude: string;
+  storeLongitude: string;
+  deliveryBaseFee: number;
+  deliveryPerKmRate: number;
+  deliveryTiers: string;
+  freeDeliveryAbove: number;
+  maxDeliveryRadiusKm: number;
 }
 
 interface PasswordData {
@@ -291,6 +299,13 @@ const defaultSettings: SettingsData = {
   productNotifications: true,
   userNotifications: true,
   marketingEmails: false,
+  storeLatitude: "",
+  storeLongitude: "",
+  deliveryBaseFee: 0,
+  deliveryPerKmRate: 0,
+  deliveryTiers: "",
+  freeDeliveryAbove: 0,
+  maxDeliveryRadiusKm: 30,
 };
 
 // ═══════════════════════════════════════════════════════════
@@ -328,6 +343,7 @@ const SettingsPage: React.FC = () => {
     { id: "general", label: "General", icon: Settings },
     { id: "store", label: "Store", icon: Store },
     { id: "contact", label: "Contact", icon: Mail },
+    { id: "delivery", label: "Delivery", icon: Truck },
     { id: "security", label: "Security", icon: Shield },
   ];
 
@@ -1245,6 +1261,144 @@ const SettingsPage: React.FC = () => {
                   checked={formData.enableContactForm}
                   onChange={() => handleToggle("enableContactForm")}
                 />
+              </div>
+            </SettingSection>
+          </TabPanel>
+
+          {/* Delivery Tab */}
+          <TabPanel active={activeTab === "delivery"}>
+            <SettingSection
+              title="Store Location"
+              description="Set your store's GPS coordinates for distance-based delivery pricing"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Store Latitude
+                  </label>
+                  <input
+                    type="number"
+                    name="storeLatitude"
+                    step="any"
+                    value={formData.storeLatitude}
+                    onChange={handleChange}
+                    placeholder="e.g. 11.5742"
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Store Longitude
+                  </label>
+                  <input
+                    type="number"
+                    name="storeLongitude"
+                    step="any"
+                    value={formData.storeLongitude}
+                    onChange={handleChange}
+                    placeholder="e.g. 37.3618"
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all text-sm"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-gray-400">
+                Find coordinates on Google Maps (right-click the store pin → copy lat/lng). Required for distance-based delivery fees.
+              </p>
+            </SettingSection>
+
+            <SettingSection
+              title="Delivery Pricing"
+              description="Configure how delivery fees are calculated at checkout"
+            >
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Base delivery fee (ETB)
+                  </label>
+                  <input
+                    type="number"
+                    name="deliveryBaseFee"
+                    min="0"
+                    step="0.01"
+                    value={formData.deliveryBaseFee}
+                    onChange={handleChange}
+                    placeholder="e.g. 50"
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all text-sm"
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                    Per-km rate (ETB)
+                  </label>
+                  <input
+                    type="number"
+                    name="deliveryPerKmRate"
+                    min="0"
+                    step="0.01"
+                    value={formData.deliveryPerKmRate}
+                    onChange={handleChange}
+                    placeholder="e.g. 10"
+                    className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all text-sm"
+                  />
+                </div>
+              </div>
+              <p className="text-xs text-gray-400">
+                Fee = base fee + (distance in km × per-km rate). Used when no distance tiers are set below.
+              </p>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Distance tiers (JSON, optional)
+                </label>
+                <textarea
+                  name="deliveryTiers"
+                  value={formData.deliveryTiers}
+                  onChange={handleChange}
+                  rows={4}
+                  placeholder='[{"maxKm":5,"fee":50},{"maxKm":15,"fee":100},{"maxKm":null,"fee":200}]'
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all text-sm font-mono"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Overrides base+per-km when set. Each tier: maxKm (null = unlimited) and flat fee. Leave empty to use base + per-km.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Free delivery above (ETB)
+                </label>
+                <input
+                  type="number"
+                  name="freeDeliveryAbove"
+                  min="0"
+                  step="0.01"
+                  value={formData.freeDeliveryAbove}
+                  onChange={handleChange}
+                  placeholder="e.g. 2000 — 0 to disable"
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all text-sm"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Orders with subtotal above this amount get free delivery. Set 0 to disable.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-1.5">
+                  Maximum delivery radius (km)
+                </label>
+                <input
+                  type="number"
+                  name="maxDeliveryRadiusKm"
+                  min="0"
+                  step="0.1"
+                  value={formData.maxDeliveryRadiusKm}
+                  onChange={handleChange}
+                  placeholder="e.g. 30"
+                  className="w-full px-4 py-2.5 border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-yellow-500 focus:border-transparent transition-all text-sm"
+                />
+                <p className="text-xs text-gray-400 mt-1">
+                  Orders with GPS coordinates farther than this from the store are rejected as out-of-area.
+                </p>
               </div>
             </SettingSection>
           </TabPanel>

@@ -9,6 +9,7 @@ const ORDER_STATUSES = [
   'CONFIRMED',
   'PROCESSING',
   'SHIPPED',
+  'OUT_FOR_DELIVERY',
   'DELIVERED',
   'CANCELLED',
 ];
@@ -16,8 +17,9 @@ const ORDER_STATUSES = [
 const allowedTransitions = {
   PENDING: ['CONFIRMED', 'CANCELLED'],
   CONFIRMED: ['PROCESSING', 'CANCELLED'],
-  PROCESSING: ['SHIPPED', 'CANCELLED'],
-  SHIPPED: ['DELIVERED'],
+  PROCESSING: ['SHIPPED', 'OUT_FOR_DELIVERY', 'CANCELLED'],
+  SHIPPED: ['OUT_FOR_DELIVERY', 'DELIVERED'],
+  OUT_FOR_DELIVERY: ['DELIVERED'],
   DELIVERED: [],
   CANCELLED: [],
 };
@@ -45,21 +47,74 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
             },
           },
         },
+        rewardDispatches: {
+          orderBy: { createdAt: 'desc' },
+          select: {
+            id: true, channel: true, status: true, message: true,
+            sentAt: true, createdAt: true,
+            rewardRule: { select: { id: true, name: true, rewardValue: true } },
+          },
+        },
+        qualifiedRule: {
+          select: {
+            id: true, name: true, rewardType: true, rewardValue: true,
+            promoCode: true, triggerType: true, threshold: true, scope: true,
+          },
+        },
+        deliveryRegion: {
+          select: { id: true, name: true, country: true, fee: true },
+        },
       },
     });
 
+    // ── Reward eligibility: cumulative spend per customer vs active rules ──
+    const [activeRules, allOrders] = await Promise.all([
+      prisma.rewardRule.findMany({
+        where: { active: true, scope: 'ALL_ORDERS', triggerType: 'MIN_SPEND' },
+      }),
+      prisma.order.findMany({
+        where: { status: { not: 'CANCELLED' } },
+        select: { userId: true, customerEmail: true, total: true },
+      }),
+    ]);
+    const spendByCustomer = new Map();
+    for (const o of allOrders) {
+      const key = o.userId || o.customerEmail.toLowerCase();
+      spendByCustomer.set(key, (spendByCustomer.get(key) || 0) + Number(o.total));
+    }
+
     res.json({
       success: true,
-      orders: orders.map((order) => ({
-        ...order,
-        total: Number(order.total),
-        items: order.items.map((item) => ({
-          ...item,
-          productName: item.productName || item.product?.name || 'Product name unavailable',
-          unitPrice: Number(item.unitPrice),
-          image: item.product?.images?.[0] || null,
-        })),
-      })),
+      orders: orders.map((order) => {
+        const key = order.userId || order.customerEmail.toLowerCase();
+        const totalSpend = spendByCustomer.get(key) || 0;
+        const eligibleRewards = activeRules
+          .map((r) => ({ rule: r, limit: Number(r.threshold ?? r.minSpend ?? 0) }))
+          .filter(({ limit }) => limit > 0 && totalSpend >= limit)
+          .map(({ rule: r, limit }) => ({
+            id: r.id, name: r.name, minSpend: limit,
+            rewardType: r.rewardType, rewardValue: r.rewardValue,
+          }));
+        return {
+          ...order,
+          total: Number(order.total),
+          discountAmount: Number(order.discountAmount || 0),
+          deliveryFee: order.deliveryFee != null ? Number(order.deliveryFee) : null,
+          deliveryDistanceKm: order.deliveryDistanceKm ?? null,
+          customerLat: order.customerLat ?? null,
+          customerLng: order.customerLng ?? null,
+          deliveryMapsUrl: order.deliveryMapsUrl ?? null,
+          promoCode: order.promoCode ?? null,
+          customerTotalSpend: Math.round(totalSpend * 100) / 100,
+          eligibleRewards,
+          items: order.items.map((item) => ({
+            ...item,
+            productName: item.productName || item.product?.name || 'Product name unavailable',
+            unitPrice: Number(item.unitPrice),
+            image: item.product?.images?.[0] || null,
+          })),
+        };
+      }),
     });
   } catch (error) {
     console.error('Failed to fetch admin orders:', error);

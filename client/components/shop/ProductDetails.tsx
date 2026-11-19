@@ -40,6 +40,16 @@ export interface Product {
   badge?: string;
   images: string[];
   videoUrl: string | null;
+  sizes?: { size: string; stock: number; sku?: string | null }[];
+  rewards?: {
+    id: string;
+    name: string;
+    triggerType: string;
+    threshold: number;
+    rewardType: string;
+    rewardValue: string;
+    promoCode: string | null;
+  }[];
 }
 
 type ProductDetailsProps = {
@@ -144,6 +154,25 @@ function CloseIcon() {
       />
     </svg>
   );
+}
+
+function rewardBadgeText(r: {
+  triggerType: string;
+  threshold: number;
+  rewardType: string;
+  rewardValue: string;
+}): string {
+  const trigger =
+    r.triggerType === "MIN_QUANTITY"
+      ? `Buy ${Number(r.threshold)}+`
+      : `Spend ${Number(r.threshold).toLocaleString()}+ ETB`;
+  const reward =
+    r.rewardType === "PERCENT_DISCOUNT"
+      ? `${r.rewardValue}% off`
+      : r.rewardType === "FREE_ITEM"
+      ? `Free ${r.rewardValue}`
+      : `${r.rewardValue} ETB reward`;
+  return `${trigger} → ${reward}`;
 }
 
 function PackageIcon({ className = "h-8 w-8" }: { className?: string }) {
@@ -484,6 +513,21 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
   const [selectedImage, setSelectedImage] = useState(0);
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [cartMessage, setCartMessage] = useState("");
+  const [selectedSize, setSelectedSize] = useState<string | null>(null);
+
+  const sizeVariants = useMemo(
+    () =>
+      (product.sizes || []).filter(
+        (s) => s && typeof s.size === "string" && s.size.trim() !== ""
+      ),
+    [product.sizes]
+  );
+  const hasSizes = sizeVariants.length > 0;
+  const activeSize = hasSizes
+    ? sizeVariants.find((s) => s.size === selectedSize) ?? null
+    : null;
+  // Effective stock: per-size stock when a size is selected, else product stock
+  const effectiveStock = activeSize ? activeSize.stock : product.stock;
 
   // Primary price = first row from admin (already normalized on the server page)
   const primary = product.prices[0] ?? {
@@ -545,22 +589,27 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
   const addToCart = () => {
     try {
       const cart = readCart();
-      const existing = cart.find((item) => item.productId === product.id);
+      const cartKey = activeSize ? `${product.id}::${activeSize.size}` : product.id;
+      const existing = cart.find((item) => item.productId === cartKey);
       const nextQuantity = (existing?.quantity || 0) + 1;
-      if (nextQuantity > product.stock) {
+      if (nextQuantity > effectiveStock) {
         setCartMessage(
           t("checkout.stock_limit", "There is not enough stock for another item.")
         );
         return;
       }
 
+      const displayName = activeSize
+        ? `${product.name} — Size ${activeSize.size}`
+        : product.name;
+
       if (existing) {
         writeCart(
           cart.map((item) =>
-            item.productId === product.id
+            item.productId === cartKey
               ? {
                   ...item,
-                  name: product.name,
+                  name: displayName,
                   slug: product.slug,
                   image: currentImage,
                   unitPrice: effectivePrice,
@@ -573,8 +622,8 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
         writeCart([
           ...cart,
           {
-            productId: product.id,
-            name: product.name,
+            productId: cartKey,
+            name: displayName,
             slug: product.slug,
             image: currentImage,
             unitPrice: effectivePrice,
@@ -621,7 +670,7 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
                   {(() => {
                     const isTempOut =
                       product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY";
-                    const isAvailable = product.stock > 0 && !isTempOut;
+                    const isAvailable = effectiveStock > 0 && !isTempOut;
                     if (isAvailable) return null;
                     return (
                       <div className="absolute inset-0 flex items-center justify-center bg-[#1a1410]/55 backdrop-blur-[1px]">
@@ -808,10 +857,73 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
                 );
               })()}
 
+              {/* Reward badges */}
+              {(product.rewards || []).length > 0 && (
+                <div className="mt-3 space-y-1.5">
+                  {(product.rewards || []).map((r) => (
+                    <div
+                      key={r.id}
+                      className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800"
+                    >
+                      <span aria-hidden="true">🎁</span>
+                      <span>{rewardBadgeText(r)}</span>
+                      {r.promoCode && (
+                        <span className="ml-auto rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white">
+                          {r.promoCode}
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+
+              {/* Size selector */}
+              {hasSizes && (
+                <div className="mt-4">
+                  <p className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-[#b98a3e]">
+                    {t("product.select_size", "Select Size")}
+                  </p>
+                  <div className="flex flex-wrap gap-2">
+                    {sizeVariants.map((s) => {
+                      const active = selectedSize === s.size;
+                      const out = s.stock < 1;
+                      return (
+                        <button
+                          key={s.size}
+                          type="button"
+                          onClick={() => setSelectedSize(active ? null : s.size)}
+                          disabled={out}
+                          className={`rounded-xl border px-4 py-2 text-sm font-semibold transition ${
+                            active
+                              ? "border-[#1a1410] bg-[#1a1410] text-white"
+                              : out
+                              ? "border-[#3a2a1e]/15 bg-[#faf6ee] text-[#7a6a58]/50 cursor-not-allowed"
+                              : "border-[#3a2a1e]/15 bg-white text-[#1a1410] hover:border-[#b98a3e]"
+                          }`}
+                        >
+                          {s.size}
+                          <span className={`ml-1.5 text-[10px] font-medium ${active ? "text-white/70" : "text-[#7a6a58]"}`}>
+                            {out
+                              ? t("product.size_out", "Out")
+                              : `${s.stock} ${t("product.in_stock", "in stock")}`}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                  {activeSize && (
+                    <p className="mt-2 text-xs text-[#7a6a58]">
+                      {t("product.size_selected", "Selected")}: <strong>{activeSize.size}</strong>
+                      {activeSize.sku ? ` · SKU: ${activeSize.sku}` : ""}
+                    </p>
+                  )}
+                </div>
+              )}
+
               {/* Live stock & countdown badges */}
               <div className="mt-3">
                 <ProductCountdown
-                  stock={product.stock}
+                  stock={effectiveStock}
                   availableAt={product.availableAt}
                   restockDate={product.restockDate}
                   saleEndDate={product.saleEndDate}
@@ -870,9 +982,9 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
                 <button
                   type="button"
                   onClick={addToCart}
-                  disabled={product.stock < 1 || product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY"}
+                  disabled={effectiveStock < 1 || product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY" || (hasSizes && !selectedSize)}
                   className={`flex h-14 items-center justify-center gap-2 rounded-2xl border px-5 text-base font-bold shadow-lg transition ${
-                    product.stock < 1 || product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY"
+                    effectiveStock < 1 || product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY" || (hasSizes && !selectedSize)
                       ? product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY"
                         ? "border-amber-300 bg-amber-100 text-amber-800 cursor-not-allowed"
                         : "border-slate-300 bg-slate-200 text-slate-500 cursor-not-allowed"
@@ -880,9 +992,11 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
                   }`}
                 >
                   <ShoppingCart size={18} />
-                  {product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY"
+                  {hasSizes && !selectedSize
+                    ? t("product.select_size_first", "Select a size")
+                    : product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY"
                     ? t("product.out_of_stock_temp", "Out of stock temporarily")
-                    : product.stock < 1
+                    : effectiveStock < 1
                     ? t("product.out_of_stock", "Out of stock")
                     : t("checkout.add_to_order", "Add to order")}
                 </button>

@@ -28,6 +28,16 @@ export interface Product {
   badge?: string;
   images: string[];
   videoUrl: string | null;
+  sizes?: { size: string; stock: number; sku?: string | null }[];
+  rewards?: {
+    id: string;
+    name: string;
+    triggerType: string;
+    threshold: number;
+    rewardType: string;
+    rewardValue: string;
+    promoCode: string | null;
+  }[];
 }
 
 type ProductDetailsPageProps = {
@@ -82,6 +92,16 @@ interface RawProduct {
   images?: unknown[];
   videoUrl?: string | null;
   video?: string | null;
+  sizesList?: { size?: string; stock?: number; sku?: string | null }[] | null;
+  rewardRules?: {
+    id: string;
+    name: string;
+    triggerType: string;
+    threshold: number;
+    rewardType: string;
+    rewardValue: string;
+    promoCode: string | null;
+  }[] | null;
 }
 
 const isNonEmptyString = (v: unknown): v is string =>
@@ -196,6 +216,24 @@ export default async function ProductDetailsPage({
           badge: hasDiscount ? "Sale" : undefined,
           images: imageList,
           videoUrl,
+          sizes: (Array.isArray(rawObj.sizesList) ? rawObj.sizesList : [])
+            .map((s) => ({
+              size: typeof s?.size === "string" ? s.size.trim() : "",
+              stock: typeof s?.stock === "number" ? s.stock : 0,
+              sku: s?.sku ?? null,
+            }))
+            .filter((s) => s.size !== ""),
+          rewards: (Array.isArray(rawObj.rewardRules) ? rawObj.rewardRules : []).map(
+            (r) => ({
+              id: r.id,
+              name: r.name,
+              triggerType: r.triggerType,
+              threshold: Number(r.threshold) || 0,
+              rewardType: r.rewardType,
+              rewardValue: r.rewardValue,
+              promoCode: r.promoCode ?? null,
+            })
+          ),
         };
       } else {
         console.warn(`Unexpected product payload for slug "${slug}"`);

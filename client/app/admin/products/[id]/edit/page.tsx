@@ -17,7 +17,7 @@ import axios from "axios";
 import {
   ArrowLeft, Save, X, Package, AlertCircle, Image as ImageIcon, Upload,
   Trash2, CheckCircle, XCircle, Info, Weight, FolderPlus, Clock,
-  Calendar, Plus, Video as VideoIcon,
+  Calendar, Plus, Video as VideoIcon, Ruler, Gift,
 } from "lucide-react";
 import { uploadApi } from "@/lib/api";
 
@@ -152,6 +152,24 @@ interface ApiProduct {
   availableAt?: string | null;
   restockDate?: string | null;
   saleEndDate?: string | null;
+  sideProductLinks?: {
+    sideProductId: string;
+    bundlePrice: number | null;
+    sideProduct?: { id: string; name: string } | null;
+  }[];
+  rewardRules?: {
+    id: string;
+    name: string;
+    scope: string;
+    triggerType: string;
+    threshold: number;
+    rewardType: string;
+    rewardValue: string;
+    promoCode: string | null;
+    expiresAt: string | null;
+    active: boolean;
+  }[];
+  sizesList?: { size: string; stock: number; sku: string | null }[];
 }
 
 interface EditProductPageProps { params: Promise<{ id: string }>; }
@@ -685,6 +703,38 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
     availableAt: "", restockDate: "", saleEndDate: "",
   });
 
+  // ── Side / add-on products & size variants ──
+  const [allProducts, setAllProducts] = useState<{ id: string; name: string }[]>([]);
+  const [sideProducts, setSideProducts] = useState<{ productId: string; bundlePrice: string }[]>([]);
+  const [sizeVariants, setSizeVariants] = useState<{ size: string; stock: string; sku: string }[]>([]);
+
+  // ── Quick product purchase reward ──
+  const [rewardEnabled, setRewardEnabled] = useState(false);
+  const [rewardRuleId, setRewardRuleId] = useState<string | null>(null);
+  const [rewardTriggerType, setRewardTriggerType] = useState<"MIN_QUANTITY" | "MIN_SPEND">("MIN_QUANTITY");
+  const [rewardThreshold, setRewardThreshold] = useState("");
+  const [rewardType, setRewardType] = useState<"FIXED_CASHBACK" | "PERCENT_DISCOUNT" | "FREE_ITEM" | "CUSTOM">("FIXED_CASHBACK");
+  const [rewardValue, setRewardValue] = useState("");
+  const [rewardPromoCode, setRewardPromoCode] = useState("");
+  const [rewardExpiresAt, setRewardExpiresAt] = useState("");
+
+  useEffect(() => {
+    api
+      .get("/api/products")
+      .then((res) => {
+        const list = Array.isArray(res.data) ? res.data : res.data?.products || [];
+        setAllProducts(
+          (Array.isArray(list) ? list : [])
+            .map((p: { id?: unknown; name?: unknown }) => ({
+              id: String(p.id ?? ""),
+              name: String(p.name ?? ""),
+            }))
+            .filter((p) => p.id && p.name)
+        );
+      })
+      .catch(() => {});
+  }, []);
+
   const busy = saving || uploadingImage || uploadingVideo || deletingCategory;
   const usedCurrencies = useMemo(() => priceRows.map((r) => r.currency), [priceRows]);
   const canAddCurrency = useMemo(
@@ -792,6 +842,38 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
           saleEndDate: toDateTimeLocal(product.saleEndDate),
         });
         setPriceRows(buildPriceRows(product, nextRowId));
+        setSideProducts(
+          (product.sideProductLinks || []).map((link) => ({
+            productId: link.sideProductId,
+            bundlePrice: link.bundlePrice != null ? String(link.bundlePrice) : "",
+          }))
+        );
+        setSizeVariants(
+          (product.sizesList || []).map((s) => ({
+            size: s.size,
+            stock: String(s.stock ?? 0),
+            sku: s.sku || "",
+          }))
+        );
+        const existingRule = (product.rewardRules || [])[0];
+        if (existingRule) {
+          setRewardRuleId(existingRule.id);
+          setRewardEnabled(existingRule.active);
+          setRewardTriggerType(
+            existingRule.triggerType === "MIN_SPEND" ? "MIN_SPEND" : "MIN_QUANTITY"
+          );
+          setRewardThreshold(String(Number(existingRule.threshold ?? 0)));
+          setRewardType(
+            (["FIXED_CASHBACK", "PERCENT_DISCOUNT", "FREE_ITEM", "CUSTOM"] as const).includes(
+              existingRule.rewardType as never
+            )
+              ? (existingRule.rewardType as typeof rewardType)
+              : "FIXED_CASHBACK"
+          );
+          setRewardValue(existingRule.rewardValue || "");
+          setRewardPromoCode(existingRule.promoCode || "");
+          setRewardExpiresAt(existingRule.expiresAt ? existingRule.expiresAt.slice(0, 10) : "");
+        }
         if (categoryId) void fetchSubCategories(categoryId);
       })
       .catch((err) => {
@@ -1012,10 +1094,51 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
         availableAt: formData.availableAt || null,
         restockDate: formData.restockDate || null,
         saleEndDate: formData.saleEndDate || null,
+        sideProducts: sideProducts
+          .filter((s) => s.productId)
+          .map((s) => ({
+            productId: s.productId,
+            bundlePrice: s.bundlePrice.trim() === "" ? null : Number(s.bundlePrice),
+          })),
+        sizeVariants: sizeVariants
+          .filter((s) => s.size.trim() !== "")
+          .map((s) => ({
+            size: s.size.trim(),
+            stock: Number(s.stock) || 0,
+            sku: s.sku.trim() || undefined,
+          })),
       };
 
       const { data } = await api.put(`/api/products/${productId}`, submitData);
       if (data.success) {
+        // ── Sync product purchase reward rule ──
+        const thresholdNum = Number(rewardThreshold);
+        const rewardPayload = {
+          name: `${formData.name.trim()} — purchase reward`,
+          scope: "PRODUCT",
+          productId,
+          triggerType: rewardTriggerType,
+          threshold: thresholdNum,
+          minSpend: rewardTriggerType === "MIN_SPEND" ? thresholdNum : null,
+          rewardType,
+          rewardValue: rewardValue.trim(),
+          promoCode: rewardPromoCode.trim() || null,
+          expiresAt: rewardExpiresAt || null,
+          active: rewardEnabled,
+        };
+        try {
+          if (rewardEnabled && Number.isFinite(thresholdNum) && thresholdNum > 0 && rewardValue.trim()) {
+            if (rewardRuleId) {
+              await api.patch(`/api/admin/rewards/rules/${rewardRuleId}`, rewardPayload);
+            } else {
+              await api.post("/api/admin/rewards/rules", rewardPayload);
+            }
+          } else if (!rewardEnabled && rewardRuleId) {
+            await api.patch(`/api/admin/rewards/rules/${rewardRuleId}`, { active: false });
+          }
+        } catch (rewardErr) {
+          console.warn("Product saved but reward sync failed:", rewardErr);
+        }
         notify("success", "Product updated successfully! 🎉");
         setTimeout(() => router.push("/admin/products"), 1500);
       } else {
@@ -1524,6 +1647,224 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
                 onChange={handleVideoUpload} className="hidden"
               />
               <p className="text-xs text-gray-400 mt-2">MP4, WEBM, or MOV; up to 100 MB.</p>
+            </div>
+
+            {/* Side / add-on products */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center space-x-2">
+                  <Package className="w-4 h-4 text-yellow-500" />
+                  <h3 className="font-semibold text-gray-900 text-sm">Side / Add-on Products</h3>
+                  <span className="text-xs text-gray-400">Optional</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSideProducts((rows) => [...rows, { productId: "", bundlePrice: "" }])}
+                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-yellow-500 px-2.5 text-xs font-semibold text-yellow-700 transition hover:bg-yellow-50"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add
+                </button>
+              </div>
+              {sideProducts.length === 0 ? (
+                <p className="text-xs text-gray-400">No side products linked.</p>
+              ) : (
+                <div className="space-y-2">
+                  {sideProducts.map((row, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <select
+                        value={row.productId}
+                        onChange={(e) =>
+                          setSideProducts((rows) =>
+                            rows.map((r, i) => (i === index ? { ...r, productId: e.target.value } : r))
+                          )
+                        }
+                        className="h-10 min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 text-sm outline-none focus:border-yellow-500"
+                      >
+                        <option value="">Select product…</option>
+                        {allProducts.map((p) => (
+                          <option key={p.id} value={p.id}>{p.name}</option>
+                        ))}
+                      </select>
+                      <input
+                        type="number" min="0" step="0.01" value={row.bundlePrice}
+                        onChange={(e) =>
+                          setSideProducts((rows) =>
+                            rows.map((r, i) => (i === index ? { ...r, bundlePrice: e.target.value } : r))
+                          )
+                        }
+                        placeholder="Bundle price"
+                        className="h-10 w-32 rounded-lg border border-gray-200 bg-white px-2 text-sm outline-none focus:border-yellow-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setSideProducts((rows) => rows.filter((_, i) => i !== index))}
+                        className="flex h-10 w-10 items-center justify-center rounded-lg text-red-500 hover:bg-red-50"
+                        aria-label="Remove side product"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Size variants & per-size stock */}
+            <div className="bg-white rounded-xl border border-gray-200 p-5 shadow-sm hover:shadow-md transition-shadow">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center space-x-2">
+                  <Ruler className="w-4 h-4 text-yellow-500" />
+                  <h3 className="font-semibold text-gray-900 text-sm">Size Variants &amp; Stock</h3>
+                  <span className="text-xs text-gray-400">Optional</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setSizeVariants((rows) => [...rows, { size: "", stock: "0", sku: "" }])}
+                  className="inline-flex h-8 items-center gap-1 rounded-lg border border-yellow-500 px-2.5 text-xs font-semibold text-yellow-700 transition hover:bg-yellow-50"
+                >
+                  <Plus className="w-3.5 h-3.5" /> Add size
+                </button>
+              </div>
+              {sizeVariants.length === 0 ? (
+                <p className="text-xs text-gray-400">No size variants defined.</p>
+              ) : (
+                <div className="space-y-2">
+                  {sizeVariants.map((row, index) => (
+                    <div key={index} className="flex items-center gap-2">
+                      <input
+                        value={row.size}
+                        onChange={(e) =>
+                          setSizeVariants((rows) =>
+                            rows.map((r, i) => (i === index ? { ...r, size: e.target.value } : r))
+                          )
+                        }
+                        placeholder="Size (e.g. M)"
+                        className="h-10 w-28 rounded-lg border border-gray-200 bg-white px-2 text-sm outline-none focus:border-yellow-500"
+                      />
+                      <input
+                        type="number" min="0" step="1" value={row.stock}
+                        onChange={(e) =>
+                          setSizeVariants((rows) =>
+                            rows.map((r, i) => (i === index ? { ...r, stock: e.target.value } : r))
+                          )
+                        }
+                        placeholder="Stock"
+                        className="h-10 w-24 rounded-lg border border-gray-200 bg-white px-2 text-sm outline-none focus:border-yellow-500"
+                      />
+                      <input
+                        value={row.sku}
+                        onChange={(e) =>
+                          setSizeVariants((rows) =>
+                            rows.map((r, i) => (i === index ? { ...r, sku: e.target.value } : r))
+                          )
+                        }
+                        placeholder="SKU (optional)"
+                        className="h-10 min-w-0 flex-1 rounded-lg border border-gray-200 bg-white px-2 text-sm outline-none focus:border-yellow-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setSizeVariants((rows) => rows.filter((_, i) => i !== index))}
+                        className="flex h-10 w-10 items-center justify-center rounded-lg text-red-500 hover:bg-red-50"
+                        aria-label="Remove size"
+                      >
+                        <Trash2 className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Product Purchase Reward (optional) */}
+            <div className="bg-white rounded-xl border border-[#EB6D3D]/40 p-5 shadow-sm hover:shadow-md transition-shadow">
+              <button
+                type="button"
+                onClick={() => setRewardEnabled((v) => !v)}
+                className="flex w-full items-center justify-between"
+              >
+                <div className="flex items-center space-x-2">
+                  <Gift className="w-4 h-4 text-[#cf5427]" />
+                  <h3 className="font-semibold text-gray-900 text-sm">Product Purchase Reward (Optional)</h3>
+                </div>
+                <span className="text-xs font-semibold text-[#cf5427]">
+                  {rewardEnabled ? "Hide" : "Configure"}
+                </span>
+              </button>
+              {rewardEnabled && (
+                <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600">Trigger</label>
+                    <select
+                      value={rewardTriggerType}
+                      onChange={(e) => setRewardTriggerType(e.target.value as typeof rewardTriggerType)}
+                      className="mt-1 h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-sm"
+                    >
+                      <option value="MIN_QUANTITY">Buy ≥ quantity</option>
+                      <option value="MIN_SPEND">Spend ≥ ETB</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600">
+                      {rewardTriggerType === "MIN_QUANTITY" ? "Min. quantity" : "Min. spend (ETB)"}
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step={rewardTriggerType === "MIN_QUANTITY" ? "1" : "0.01"}
+                      value={rewardThreshold}
+                      onChange={(e) => setRewardThreshold(e.target.value)}
+                      placeholder={rewardTriggerType === "MIN_QUANTITY" ? "2" : "5000"}
+                      className="mt-1 h-9 w-full rounded-lg border border-gray-200 px-2 text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600">Reward type</label>
+                    <select
+                      value={rewardType}
+                      onChange={(e) => setRewardType(e.target.value as typeof rewardType)}
+                      className="mt-1 h-9 w-full rounded-lg border border-gray-200 bg-white px-2 text-sm"
+                    >
+                      <option value="FIXED_CASHBACK">Fixed Cashback (ETB)</option>
+                      <option value="PERCENT_DISCOUNT">Percentage Discount (%)</option>
+                      <option value="FREE_ITEM">Free Bonus Item</option>
+                      <option value="CUSTOM">Custom</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label className="text-xs font-semibold text-gray-600">
+                      {rewardType === "PERCENT_DISCOUNT" ? "Percent (%)" : rewardType === "FREE_ITEM" ? "Gift name" : "Value"}
+                    </label>
+                    <input
+                      value={rewardValue}
+                      onChange={(e) => setRewardValue(e.target.value)}
+                      placeholder={rewardType === "PERCENT_DISCOUNT" ? "15" : rewardType === "FREE_ITEM" ? "Free Socks" : "300"}
+                      className="mt-1 h-9 w-full rounded-lg border border-gray-200 px-2 text-sm"
+                    />
+                  </div>
+                  {(rewardType === "FIXED_CASHBACK" || rewardType === "PERCENT_DISCOUNT") && (
+                    <>
+                      <div>
+                        <label className="text-xs font-semibold text-gray-600">Promo code</label>
+                        <input
+                          value={rewardPromoCode}
+                          onChange={(e) => setRewardPromoCode(e.target.value.toUpperCase())}
+                          placeholder="REWARD300"
+                          className="mt-1 h-9 w-full rounded-lg border border-gray-200 px-2 text-sm"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-xs font-semibold text-gray-600">Code expiry</label>
+                        <input
+                          type="date"
+                          value={rewardExpiresAt}
+                          onChange={(e) => setRewardExpiresAt(e.target.value)}
+                          className="mt-1 h-9 w-full rounded-lg border border-gray-200 px-2 text-sm"
+                        />
+                      </div>
+                    </>
+                  )}
+                </div>
+              )}
             </div>
 
             {/* Duration info */}

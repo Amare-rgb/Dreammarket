@@ -5,7 +5,10 @@ import Image from "next/image";
 import {
   Check,
   ExternalLink,
+  Gift,
   LoaderCircle,
+  MapPin,
+  Send,
   ShoppingCart,
   Trash2,
   X,
@@ -44,6 +47,39 @@ interface Order {
   total: number;
   createdAt: string;
   items: OrderItem[];
+  rewardQualified?: boolean;
+  qualifiedRule?: {
+    id: string;
+    name: string;
+    rewardType: string;
+    rewardValue: string;
+    promoCode: string | null;
+    triggerType: string;
+    threshold: number;
+    scope: string;
+  } | null;
+  rewardDispatches?: {
+    id: string;
+    channel: string;
+    status: string;
+    sentAt: string | null;
+    createdAt: string;
+  }[];
+  deliveryFee?: number | null;
+  deliveryDistanceKm?: number | null;
+  deliveryMapsUrl?: string | null;
+  customerLat?: number | null;
+  customerLng?: number | null;
+  gpsAccuracy?: number | null;
+  geoAddress?: string | null;
+  landmark?: string | null;
+  deliveryVerified?: boolean;
+  deliveryRegion?: {
+    id: string;
+    name: string;
+    country: string | null;
+    fee: number;
+  } | null;
 }
 
 const money = (amount: number) =>
@@ -60,6 +96,7 @@ export default function AdminOrdersPage() {
   const [updatingId, setUpdatingId] = useState("");
   const [deletingId, setDeletingId] = useState("");
   const [expandedId, setExpandedId] = useState("");
+  const [sendingRewardId, setSendingRewardId] = useState("");
   const [paymentPreview, setPaymentPreview] = useState<{
     url: string;
     orderNumber: string;
@@ -128,6 +165,48 @@ export default function AdminOrdersPage() {
       );
     } finally {
       setUpdatingId("");
+    }
+  };
+
+  const sendOrderReward = async (order: Order) => {
+    if (!order.qualifiedRule) return;
+    setSendingRewardId(order.id);
+    setError("");
+    setNotice(null);
+    try {
+      const response = await api.post("/api/admin/rewards/dispatch", {
+        rewardRuleId: order.qualifiedRule.id,
+        orderId: order.id,
+        channel: "BOTH",
+      });
+      setNotice({
+        type: response.data.success ? "success" : "warning",
+        message: response.data.success
+          ? `Reward "${order.qualifiedRule.name}" sent for order ${order.orderNumber}.`
+          : `Reward dispatch failed for order ${order.orderNumber}.`,
+      });
+      if (response.data.dispatch) {
+        setOrders((current) =>
+          current.map((item) =>
+            item.id === order.id
+              ? {
+                  ...item,
+                  rewardDispatches: [
+                    response.data.dispatch,
+                    ...(item.rewardDispatches || []),
+                  ],
+                }
+              : item
+          )
+        );
+      }
+    } catch (requestError) {
+      setError(
+        (requestError as { response?: { data?: { error?: string } } }).response
+          ?.data?.error || "Could not send reward."
+      );
+    } finally {
+      setSendingRewardId("");
     }
   };
 
@@ -253,6 +332,11 @@ export default function AdminOrdersPage() {
                     <strong className="text-sm text-slate-800">
                       {money(order.total)}
                     </strong>
+                    {order.rewardQualified && order.qualifiedRule && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800">
+                        <Gift className="h-3 w-3" /> Reward Qualified
+                      </span>
+                    )}
                     <span className={`rounded-full px-3 py-1 text-xs font-bold ${
                       order.status === "CONFIRMED"
                         ? "bg-green-50 text-green-800"
@@ -392,6 +476,54 @@ export default function AdminOrdersPage() {
                         <p className="text-sm text-slate-600">
                           {order.shippingAddress}
                         </p>
+                        {order.deliveryRegion && (
+                          <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                            <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-blue-800">
+                              <MapPin className="h-3.5 w-3.5" /> Delivery Region
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-slate-800">
+                              {order.deliveryRegion.name}
+                              {order.deliveryRegion.country
+                                ? ` (${order.deliveryRegion.country})`
+                                : ""}
+                            </p>
+                            <p className="text-xs text-slate-600">
+                              Flat delivery fee: {money(Number(order.deliveryRegion.fee))}
+                            </p>
+                          </div>
+                        )}
+                        {(order.deliveryVerified || order.customerLat != null) && (
+                          <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50 p-3">
+                            <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-emerald-800">
+                              <MapPin className="h-3.5 w-3.5" /> Verified Delivery Location
+                            </p>
+                            <p className="mt-1 text-xs font-semibold text-emerald-700">
+                              {order.gpsAccuracy != null
+                                ? `Verified GPS (±${Math.round(order.gpsAccuracy)}m)`
+                                : "GPS verified"}
+                              {order.deliveryDistanceKm != null &&
+                                ` · ${order.deliveryDistanceKm} km from store`}
+                            </p>
+                            {order.geoAddress && (
+                              <p className="mt-1 text-xs text-slate-600">{order.geoAddress}</p>
+                            )}
+                            {order.landmark && (
+                              <p className="mt-1 text-xs text-slate-600">
+                                <strong>Landmark:</strong> {order.landmark}
+                              </p>
+                            )}
+                            {order.deliveryMapsUrl && (
+                              <a
+                                href={order.deliveryMapsUrl}
+                                target="_blank"
+                                rel="noreferrer"
+                                className="mt-2 inline-flex items-center gap-1 text-xs font-semibold text-[#cf5427] underline underline-offset-2"
+                              >
+                                Open in Google Maps <ExternalLink size={11} />
+                              </a>
+                            )}
+                          </div>
+                        )}
                         <div className="mt-3 rounded-lg border border-slate-200 bg-white p-3">
                           <p className="text-xs font-bold uppercase tracking-wide text-slate-500">
                             Payment method
@@ -457,6 +589,43 @@ export default function AdminOrdersPage() {
                           <p className="mt-3 border-t border-slate-200 pt-3 text-sm text-slate-600">
                             <strong>Note:</strong> {order.note}
                           </p>
+                        )}
+                        {order.rewardQualified && order.qualifiedRule && (
+                          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3">
+                            <p className="flex items-center gap-1.5 text-xs font-bold uppercase tracking-wide text-amber-800">
+                              <Gift className="h-3.5 w-3.5" /> Reward Qualified
+                            </p>
+                            <p className="mt-1 text-sm font-semibold text-slate-800">
+                              {order.qualifiedRule.name}
+                            </p>
+                            <p className="text-xs text-slate-600">
+                              {order.qualifiedRule.rewardValue}
+                              {order.qualifiedRule.promoCode
+                                ? ` · Code: ${order.qualifiedRule.promoCode}`
+                                : ""}
+                            </p>
+                            {(order.rewardDispatches || []).length > 0 && (
+                              <p className="mt-1 text-xs text-slate-500">
+                                Dispatched:{" "}
+                                {(order.rewardDispatches || [])
+                                  .map((d) => `${d.channel} · ${d.status}`)
+                                  .join(", ")}
+                              </p>
+                            )}
+                            <button
+                              type="button"
+                              disabled={sendingRewardId === order.id}
+                              onClick={() => void sendOrderReward(order)}
+                              className="mt-2 inline-flex h-8 items-center gap-1.5 rounded-lg bg-amber-600 px-3 text-xs font-bold text-white hover:bg-amber-700 disabled:cursor-not-allowed disabled:opacity-60"
+                            >
+                              {sendingRewardId === order.id ? (
+                                <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                              ) : (
+                                <Send className="h-3.5 w-3.5" />
+                              )}
+                              Send Reward (SMS + Email)
+                            </button>
+                          </div>
                         )}
                       </div>
                     </div>

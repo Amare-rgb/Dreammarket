@@ -689,6 +689,58 @@ router.post('/feedback', requireAuth, (req, res) => {
     });
   });
 });
+/* ────────────────────────────────────────────────────────────────
+   COMMENT PDF — any authenticated user
+   POST /api/upload/comment-pdf
+   field: "file" — PDF only, max 5MB
+   ──────────────────────────────────────────────────────────────── */
+router.post('/comment-pdf', requireAuth, (req, res) => {
+  const uploader = buildUploader({
+    subfolder: 'comments',
+    maxSizeMB: 5,
+    maxFiles: 1,
+    pdfs: true,
+  });
+  const mw = uploader.fields([
+    { name: 'file', maxCount: 1 },
+    { name: 'pdf', maxCount: 1 },
+  ]);
+
+  mw(req, res, (err) => {
+    const mErr = handleMulterErrors(err, res);
+    if (mErr) return;
+
+    const file = pickSingleFile(req);
+    if (!file) {
+      return res.status(400).json({
+        success: false,
+        error: 'No PDF uploaded (field "file" or "pdf").',
+        code: 'NO_FILE',
+      });
+    }
+    if (file.mimetype !== 'application/pdf') {
+      return res.status(400).json({
+        success: false,
+        error: 'Only PDF files are allowed for comment attachments.',
+        code: 'INVALID_FILE_TYPE',
+      });
+    }
+
+    const url = fileToUrl(req, file);
+    const publicId = fileToPublicId(file);
+    return res.json({
+      success: true,
+      url,
+      secure_url: url,
+      publicId,
+      public_id: publicId,
+      fileName: file.originalname,
+      fileSize: file.size,
+      fileType: file.mimetype,
+    });
+  });
+});
+
 router.post('/blog', requireAuth, requireAdmin, makeFolderRoute('blog'));
 router.post('/profile', requireAuth, makeFolderRoute('profiles'));
 

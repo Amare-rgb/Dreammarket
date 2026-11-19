@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
-import { LoaderCircle, PackageCheck, ShoppingBag } from "lucide-react";
+import { Gift, LoaderCircle, PackageCheck, ShoppingBag } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/app/providers";
 import { useLanguage } from "@/context/LanguageContext";
@@ -37,6 +37,14 @@ interface Order {
   updatedAt?: string;
   shippingAddress: string;
   items: OrderItem[];
+  rewardQualified?: boolean;
+  qualifiedRule?: {
+    id: string;
+    name: string;
+    rewardType: string;
+    rewardValue: string;
+    promoCode: string | null;
+  } | null;
 }
 
 const money = (amount: number) =>
@@ -189,6 +197,12 @@ export default function OrdersPage() {
                         ? t("orders.cash_on_delivery", "Cash on delivery")
                         : order.paymentMethod}
                     </span>
+                    {order.rewardQualified && order.qualifiedRule && (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-emerald-100 px-3 py-1 text-xs font-bold text-emerald-700">
+                        <Gift size={12} />
+                        {order.qualifiedRule.name}
+                      </span>
+                    )}
                   </div>
                 </div>
                 <OrderTracking

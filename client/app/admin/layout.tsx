@@ -154,7 +154,9 @@ export default function AdminLayout({
     { name: "Orders", href: "/admin/orders", section: "Main" },
     { name: "Articles", href: "/admin/articles", section: "Main" },
     { name: "Feedback", href: "/admin/feedback", section: "Main" },
+    { name: "Rewards & Loyalty", href: "/admin/rewards", section: "Main" },
     { name: "Users", href: "/admin/users", section: "Main" },
+    { name: "Delivery Regions", href: "/admin/delivery", section: "Settings" },
     { name: "Settings", href: "/admin/settings", section: "Settings" },
   ];
 

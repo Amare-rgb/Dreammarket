@@ -19,6 +19,7 @@ enum OrderStatus {
   CONFIRMED
   PROCESSING
   SHIPPED
+  OUT_FOR_DELIVERY
   DELIVERED
   CANCELLED
 }
@@ -50,6 +51,8 @@ model User {
   chatMessages    ChatMessage[]
   articles        Article[]
   articleComments ArticleComment[]
+  orders          Order[]
+  rewardDispatches RewardDispatch[]
 
   @@index([role])
   @@index([createdAt])
@@ -142,6 +145,11 @@ model Category {
 
 model Product {
   id                String   @id @default(cuid())
+  // Optional side/add-on products linked to this main product
+  sideProductLinks  ProductSide[] @relation("MainProductSides")
+  sideOfLinks       ProductSide[] @relation("SideProductLink")
+  sizesList         ProductSize[]
+  rewardRules       RewardRule[]
   name              String
   slug              String   @unique
   description       String   @db.Text
@@ -193,6 +201,154 @@ model Product {
   @@map("products")
 }
 
+// ============================================
+// PRODUCT SIDE / ADD-ON PRODUCTS
+// ============================================
+model ProductSide {
+  id            String   @id @default(cuid())
+  mainProductId String
+  sideProductId String
+  // Optional bundle price override for this pairing (null = use side product's own price)
+  bundlePrice   Decimal? @db.Decimal(10, 2)
+  sortOrder     Int      @default(0)
+  createdAt     DateTime @default(now())
+
+  mainProduct Product @relation("MainProductSides", fields: [mainProductId], references: [id], onDelete: Cascade)
+  sideProduct Product @relation("SideProductLink", fields: [sideProductId], references: [id], onDelete: Cascade)
+
+  @@unique([mainProductId, sideProductId])
+  @@index([mainProductId])
+  @@map("product_sides")
+}
+
+// ============================================
+// PRODUCT SIZE VARIANTS (per-size stock)
+// ============================================
+model ProductSize {
+  id        String  @id @default(cuid())
+  productId String
+  size      String
+  stock     Int     @default(0)
+  sku       String?
+
+  product Product @relation(fields: [productId], references: [id], onDelete: Cascade)
+
+  @@unique([productId, size])
+  @@index([productId])
+  @@map("product_sizes")
+}
+
+// ============================================
+// LOYALTY & REWARD RULES
+// ============================================
+model RewardRule {
+  id           String   @id @default(cuid())
+  name         String
+  description  String?  @db.Text
+  // Scope: PRODUCT = tied to a specific product, ALL_ORDERS = store-wide
+  scope        String   @default("ALL_ORDERS")
+  productId    String?
+  // Trigger: MIN_QUANTITY = units bought, MIN_SPEND = amount spent
+  triggerType  String   @default("MIN_SPEND")
+  // Threshold value (quantity or currency amount)
+  threshold    Decimal  @default(0) @db.Decimal(12, 2)
+  // Legacy cumulative-spend threshold (kept for backward compatibility)
+  minSpend     Decimal? @db.Decimal(12, 2)
+  // FIXED_CASHBACK | PERCENT_DISCOUNT | FREE_ITEM | CUSTOM
+  rewardType   String   @default("FIXED_CASHBACK")
+  // Reward value: ETB amount, percent, free item name, or custom text
+  rewardValue  String
+  // Optional promo code granted by this rule (auto-created in promo_codes)
+  promoCode    String?
+  expiresAt    DateTime?
+  active       Boolean  @default(true)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  product     Product?        @relation(fields: [productId], references: [id], onDelete: Cascade)
+  dispatches  RewardDispatch[]
+  qualifiedOrders Order[]     @relation("OrderQualifiedRule")
+
+  @@index([active])
+  @@index([productId])
+  @@map("reward_rules")
+}
+
+// ============================================
+// REWARD DISPATCH AUDIT LOG (SMS / Email)
+// ============================================
+model RewardDispatch {
+  id          String    @id @default(cuid())
+  rewardRuleId String?
+  userId      String?
+  orderId     String?
+  // Recipient contact
+  recipientEmail String?
+  recipientPhone String?
+  channel     String    // SMS | EMAIL | BOTH
+  status      String    @default("PENDING") // PENDING | SENT | FAILED | REDEEMED
+  message     String?   @db.Text
+  error       String?   @db.Text
+  sentAt      DateTime?
+  sentBy      String?   // admin user id
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  rewardRule RewardRule? @relation(fields: [rewardRuleId], references: [id], onDelete: SetNull)
+  user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  order      Order?      @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@index([userId])
+  @@index([orderId])
+  @@index([status, createdAt])
+  @@map("reward_dispatches")
+}
+
+// ============================================
+// AIRTIME VOUCHERS (manual PIN pool for MOBILE_AIRTIME rewards)
+// ============================================
+model AirtimeVoucher {
+  id             String    @id @default(cuid())
+  // Face value in ETB
+  amount         Decimal   @db.Decimal(10, 2)
+  pinCode        String
+  // e.g. Ethio Telecom / Safaricom / Telebirr
+  network        String?
+  // AVAILABLE | USED
+  status         String    @default("AVAILABLE")
+  assignedOrderId String?
+  usedAt         DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([status, amount])
+  @@map("airtime_vouchers")
+}
+
+// ============================================
+// PROMO CODES (checkout redemption)
+// ============================================
+model PromoCode {
+  id             String    @id @default(cuid())
+  code           String    @unique
+  description    String?
+  // PERCENT | FIXED
+  discountType   String    @default("PERCENT")
+  discountValue  Decimal   @db.Decimal(12, 2)
+  minOrderTotal  Decimal?  @db.Decimal(12, 2)
+  active         Boolean   @default(true)
+  expiresAt      DateTime?
+  usageLimit     Int?
+  usedCount      Int       @default(0)
+  // Link back to the reward rule that generated this code (optional)
+  rewardRuleId   String?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  @@index([active])
+  @@map("promo_codes")
+}
+
 model Order {
   id              String      @id @default(cuid())
   orderNumber     String      @unique
@@ -205,13 +361,42 @@ model Order {
   paymentProofUrl String?
   status          OrderStatus @default(PENDING)
   total           Decimal     @db.Decimal(12, 2)
+
+  // Linked customer account (for loyalty/spend tracking)
+  userId          String?
+  // Promo / reward code applied at checkout
+  promoCode       String?
+  discountAmount  Decimal     @default(0) @db.Decimal(12, 2)
+
+  // Delivery fee & geolocation
+  deliveryFee       Decimal?  @db.Decimal(10, 2)
+  deliveryDistanceKm Float?
+  customerLat       Float?
+  customerLng       Float?
+  deliveryMapsUrl   String?
+  // Verified GPS & reverse-geocoded delivery details
+  gpsAccuracy       Float?
+  geoAddress        String?   @db.Text
+  landmark          String?
+  deliveryVerified  Boolean   @default(false)
+
   createdAt       DateTime    @default(now())
   updatedAt       DateTime    @updatedAt
 
-  items OrderItem[]
+  user    User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items   OrderItem[]
+  rewardDispatches RewardDispatch[]
+  // Reward rule this order qualified for (auto-evaluated at checkout)
+  rewardQualified   Boolean     @default(false)
+  qualifiedRule   RewardRule? @relation("OrderQualifiedRule", fields: [qualifiedRuleId], references: [id], onDelete: SetNull)
+  qualifiedRuleId String?
+  // Delivery region selected at checkout (fallback when GPS unavailable)
+  deliveryRegion   DeliveryRegion? @relation(fields: [deliveryRegionId], references: [id], onDelete: SetNull)
+  deliveryRegionId String?
 
   @@index([status, createdAt])
   @@index([customerEmail])
+  @@index([userId])
   @@map("orders")
 }
 
@@ -287,6 +472,7 @@ model ArticleComment {
   name        String
   message     String   @db.Text
   imageUrl    String?
+  pdfUrl      String?
   status      String   @default("PENDING") // PENDING | APPROVED | HIDDEN
   reply       String?  @db.Text
   repliedAt   DateTime?
@@ -344,6 +530,26 @@ model Address {
 }
 
 // ============================================
+// DELIVERY REGIONS (admin-managed delivery areas & fees)
+// ============================================
+model DeliveryRegion {
+  id        String   @id @default(cuid())
+  name      String
+  country   String?
+  // Flat delivery fee for this region (ETB)
+  fee       Decimal  @default(0) @db.Decimal(10, 2)
+  active    Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  orders Order[]
+
+  @@index([active])
+  @@map("delivery_regions")
+}
+
+// ============================================
 // SETTINGS MODEL
 // ============================================
 model Settings {
@@ -372,6 +578,17 @@ model Settings {
   marketingEmails      Boolean @default(false)
   themeColor           String  @default("#e0a83c")
   darkMode             Boolean @default(false)
+
+  // Store origin coordinates for distance-based delivery pricing
+  storeLatitude     Float?
+  storeLongitude    Float?
+  deliveryBaseFee   Float   @default(0)
+  deliveryPerKmRate Float   @default(0)
+  // Distance tiers: [{ "minKm": 0, "maxKm": 5, "fee": 50 }, ...]
+  deliveryTiers     Json?
+  freeDeliveryAbove Float?
+  // Maximum allowed delivery radius from store origin (km)
+  maxDeliveryRadiusKm Float? @default(30)
 
   contactEmail      String? @default("support@alemayehplastic.com")
   contactPhone      String? @default("+251 900 000 000")

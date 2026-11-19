@@ -330,6 +330,30 @@ router.post(
           req.body.infoEmail ??
           settings?.infoEmail ??
           DEFAULT_SETTINGS.infoEmail,
+        // ── Delivery zone & distance pricing ──
+        storeLatitude:
+          parseNumber(req.body.storeLatitude) ?? settings?.storeLatitude ?? null,
+        storeLongitude:
+          parseNumber(req.body.storeLongitude) ?? settings?.storeLongitude ?? null,
+        deliveryBaseFee:
+          parseNumber(req.body.deliveryBaseFee) ?? settings?.deliveryBaseFee ?? 0,
+        deliveryPerKmRate:
+          parseNumber(req.body.deliveryPerKmRate) ?? settings?.deliveryPerKmRate ?? 0,
+        deliveryTiers: (() => {
+          const raw = req.body.deliveryTiers;
+          if (raw === undefined) return settings?.deliveryTiers ?? null;
+          if (raw === '' || raw === null) return null;
+          try {
+            const parsed = typeof raw === 'string' ? JSON.parse(raw) : raw;
+            return Array.isArray(parsed) ? parsed : null;
+          } catch {
+            return settings?.deliveryTiers ?? null;
+          }
+        })(),
+        freeDeliveryAbove:
+          parseNumber(req.body.freeDeliveryAbove) ?? settings?.freeDeliveryAbove ?? null,
+        maxDeliveryRadiusKm:
+          parseNumber(req.body.maxDeliveryRadiusKm) ?? settings?.maxDeliveryRadiusKm ?? 30,
       };
 
       if (!settings) {

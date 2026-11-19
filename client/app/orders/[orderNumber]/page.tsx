@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
 import {
   ArrowLeft,
+  Gift,
   LoaderCircle,
   PackageCheck,
   ShoppingBag,
@@ -47,6 +48,14 @@ interface Order {
   customerPhone: string;
   note: string | null;
   items: OrderItem[];
+  rewardQualified?: boolean;
+  qualifiedRule?: {
+    id: string;
+    name: string;
+    rewardType: string;
+    rewardValue: string;
+    promoCode: string | null;
+  } | null;
 }
 
 const money = (amount: number) =>
@@ -277,6 +286,27 @@ export default function OrderDetailPage() {
                   <dd>{money(order.total)}</dd>
                 </div>
               </dl>
+              {order.rewardQualified && order.qualifiedRule && (
+                <div className="mt-4 flex items-start gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-3">
+                  <Gift size={18} className="mt-0.5 shrink-0 text-emerald-600" />
+                  <div>
+                    <p className="text-sm font-bold text-emerald-800">
+                      {t("orders.reward_earned", "Reward earned")}: {order.qualifiedRule.name}
+                    </p>
+                    <p className="mt-0.5 text-xs text-emerald-700">
+                      {order.qualifiedRule.rewardType === "MOBILE_AIRTIME"
+                        ? `${order.qualifiedRule.rewardValue} ETB airtime`
+                        : order.qualifiedRule.rewardType === "PERCENT_DISCOUNT"
+                          ? `${order.qualifiedRule.rewardValue}% discount`
+                          : order.qualifiedRule.rewardType === "FIXED_CASHBACK"
+                            ? `${order.qualifiedRule.rewardValue} ETB cashback`
+                            : order.qualifiedRule.rewardValue}
+                      {order.qualifiedRule.promoCode &&
+                        ` · Code: ${order.qualifiedRule.promoCode}`}
+                    </p>
+                  </div>
+                </div>
+              )}
               <div className="mt-4 rounded-xl bg-slate-50 p-3 text-xs text-slate-600">
                 <p className="font-semibold text-[#20283a]">
                   {order.paymentMethod === "CASH_ON_DELIVERY"

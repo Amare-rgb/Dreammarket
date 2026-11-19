@@ -25,9 +25,12 @@ import {
   Camera,
   LogOut,
   Star,
+  Gift,
+  Ticket,
 } from "lucide-react";
 import { useAuth } from "@/app/providers";
 import { useLanguage } from "@/context/LanguageContext";
+import { api } from "@/lib/api";
 
 // ─── Avatar resolver — Cloudinary-only ────────────────────────────────────
 function resolveAvatar(raw: unknown): string {
@@ -54,6 +57,70 @@ function formatMemberSince(createdAt?: string | null): string {
     return "—";
   }
 }
+
+interface RewardRuleProgress {
+  id: string;
+  name: string;
+  description: string | null;
+  scope: string;
+  triggerType: string;
+  threshold: number;
+  rewardType: string;
+  rewardValue: string;
+  promoCode: string | null;
+  expiresAt: string | null;
+  product: { id: string; name: string } | null;
+  progress: number;
+  percent: number;
+  qualified: boolean;
+}
+
+interface QualifiedOrder {
+  id: string;
+  orderNumber: string;
+  total: number;
+  createdAt: string;
+  rule: { id: string; name: string; rewardType: string; rewardValue: string; promoCode: string | null };
+}
+
+interface RewardDispatch {
+  id: string;
+  channel: string;
+  status: string;
+  message: string | null;
+  sentAt: string | null;
+  createdAt: string;
+  rewardRule: { id: string; name: string; rewardValue: string } | null;
+}
+
+interface MyRewards {
+  totalSpend: number;
+  rules: RewardRuleProgress[];
+  qualifiedOrders: QualifiedOrder[];
+  dispatches: RewardDispatch[];
+}
+
+const rewardLabel = (type: string, value: string) => {
+  switch (type) {
+    case "PERCENT_DISCOUNT":
+      return `${value}% discount`;
+    case "FIXED_CASHBACK":
+      return `${value} ETB cashback`;
+    case "FREE_ITEM":
+      return `Free: ${value}`;
+    case "MOBILE_AIRTIME":
+      return `${value} ETB airtime`;
+    default:
+      return value || "Reward";
+  }
+};
+
+const money = (amount: number) =>
+  new Intl.NumberFormat("en-ET", {
+    style: "currency",
+    currency: "ETB",
+    maximumFractionDigits: 2,
+  }).format(amount);
 
 // ─── Avatar with fallback ───────────────────────────────────────────────────
 const AvatarImage: React.FC<{
@@ -119,6 +186,7 @@ export default function ProfilePage() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [avatarUploading, setAvatarUploading] = useState(false);
   const [loggingOut, setLoggingOut] = useState(false);
+  const [rewards, setRewards] = useState<MyRewards | null>(null);
 
   // Sync form data when user changes
   const [prevUserId, setPrevUserId] = useState(user?.id);
@@ -137,6 +205,20 @@ export default function ProfilePage() {
       router.replace("/");
     }
   }, [status, router, loggingOut]);
+
+  useEffect(() => {
+    if (status !== "authenticated" || !user) return;
+    let cancelled = false;
+    api
+      .get("/api/rewards/me")
+      .then((res) => {
+        if (!cancelled && res.data?.success) setRewards(res.data);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [status, user]);
 
   const handleLogout = async () => {
     setLoggingOut(true);
@@ -539,8 +621,131 @@ export default function ProfilePage() {
             </div>
           </div>
 
-          {/* RIGHT COLUMN — Account & Security */}
+          {/* RIGHT COLUMN — Rewards & Account */}
           <div className="space-y-6">
+            {/* My Rewards */}
+            {rewards && rewards.rules.length > 0 && (
+              <div className="bg-white rounded-2xl border border-[#f0e8d8] shadow-sm overflow-hidden">
+                <div className="px-5 py-4 border-b border-[#f0e8d8]">
+                  <h3 className="text-sm font-bold text-[#1a1410] flex items-center gap-2">
+                    <Gift size={16} className="text-[#b98a3e]" />
+                    My Rewards
+                  </h3>
+                  <p className="text-[11px] text-[#7a6a58] mt-0.5">
+                    Total spend: {money(rewards.totalSpend)}
+                  </p>
+                </div>
+                <div className="p-3 space-y-3 max-h-96 overflow-y-auto">
+                  {rewards.rules.map((rule) => (
+                    <div
+                      key={rule.id}
+                      className={`rounded-xl border p-3 ${
+                        rule.qualified
+                          ? "border-emerald-200 bg-emerald-50/60"
+                          : "border-[#f0e8d8] bg-[#faf6ee]/40"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <p className="text-sm font-semibold text-[#1a1410]">
+                          {rule.name}
+                        </p>
+                        {rule.qualified && (
+                          <span className="shrink-0 rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-bold uppercase text-emerald-700">
+                            Qualified
+                          </span>
+                        )}
+                      </div>
+                      {rule.description && (
+                        <p className="mt-0.5 text-[11px] text-[#7a6a58]">
+                          {rule.description}
+                        </p>
+                      )}
+                      <p className="mt-1 text-xs font-semibold text-[#b98a3e]">
+                        {rewardLabel(rule.rewardType, rule.rewardValue)}
+                        {rule.promoCode && (
+                          <span className="ml-1 inline-flex items-center gap-1 rounded bg-yellow-100 px-1.5 py-0.5 text-[10px] font-bold text-[#8a6420]">
+                            <Ticket size={10} /> {rule.promoCode}
+                          </span>
+                        )}
+                      </p>
+                      <div className="mt-2">
+                        <div className="flex justify-between text-[10px] text-[#7a6a58]">
+                          <span>
+                            {rule.triggerType === "MIN_QUANTITY"
+                              ? `${rule.progress} / ${rule.threshold} items`
+                              : `${money(rule.progress)} / ${money(rule.threshold)}`}
+                          </span>
+                          <span>{rule.percent}%</span>
+                        </div>
+                        <div className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-[#f0e8d8]">
+                          <div
+                            className={`h-full rounded-full transition-all ${
+                              rule.qualified ? "bg-emerald-500" : "bg-[#e0a83c]"
+                            }`}
+                            style={{ width: `${rule.percent}%` }}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+
+                  {rewards.qualifiedOrders.length > 0 && (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50/50 p-3">
+                      <p className="text-xs font-bold uppercase tracking-wide text-emerald-800">
+                        Qualified orders
+                      </p>
+                      <div className="mt-2 space-y-1.5">
+                        {rewards.qualifiedOrders.slice(0, 5).map((o) => (
+                          <div
+                            key={o.id}
+                            className="flex items-center justify-between text-xs"
+                          >
+                            <span className="font-semibold text-[#1a1410]">
+                              {o.orderNumber}
+                            </span>
+                            <span className="text-[#7a6a58]">
+                              {o.rule.name}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {rewards.dispatches.length > 0 && (
+                    <div className="rounded-xl border border-[#f0e8d8] p-3">
+                      <p className="text-xs font-bold uppercase tracking-wide text-[#7a6a58]">
+                        Reward notifications
+                      </p>
+                      <div className="mt-2 space-y-1.5">
+                        {rewards.dispatches.slice(0, 5).map((d) => (
+                          <div
+                            key={d.id}
+                            className="flex items-center justify-between text-xs"
+                          >
+                            <span className="text-[#1a1410]">
+                              {d.rewardRule?.name || "Reward"}
+                            </span>
+                            <span
+                              className={`rounded-full px-2 py-0.5 text-[10px] font-bold uppercase ${
+                                d.status === "SENT" || d.status === "REDEEMED"
+                                  ? "bg-emerald-100 text-emerald-700"
+                                  : d.status === "FAILED"
+                                    ? "bg-red-100 text-red-700"
+                                    : "bg-gray-100 text-gray-600"
+                              }`}
+                            >
+                              {d.status}
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="bg-white rounded-2xl border border-[#f0e8d8] shadow-sm overflow-hidden">
               <div className="px-5 py-4 border-b border-[#f0e8d8]">
                 <h3 className="text-sm font-bold text-[#1a1410]">

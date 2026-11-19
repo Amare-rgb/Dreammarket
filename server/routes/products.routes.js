@@ -219,6 +219,8 @@ router.get('/public', async (req, res) => {
       where.OR = [
         { name: { contains: search, mode: 'insensitive' } },
         { description: { contains: search, mode: 'insensitive' } },
+        { sku: { contains: search, mode: 'insensitive' } },
+        { sizesList: { some: { size: { contains: search, mode: 'insensitive' } } } },
       ];
     }
 
@@ -238,6 +240,15 @@ router.get('/public', async (req, res) => {
         include: {
           category: { select: { id: true, name: true, slug: true } },
           subCategory: { select: { id: true, name: true, slug: true } },
+          sizesList: { orderBy: { size: 'asc' } },
+          rewardRules: {
+            where: { active: true },
+            select: {
+              id: true, name: true, scope: true, triggerType: true,
+              threshold: true, rewardType: true, rewardValue: true,
+              promoCode: true, expiresAt: true,
+            },
+          },
         },
       }),
       prisma.product.count({ where }),
@@ -361,6 +372,27 @@ router.get('/:id', optionalAuth, async (req, res) => {
         subCategory: true,
         reviews: {
           include: { user: { select: { name: true, avatar: true } } },
+        },
+        sideProductLinks: {
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            sideProduct: {
+              select: {
+                id: true, name: true, slug: true, price: true, currency: true,
+                prices: true, discountPrice: true, discountPrices: true,
+                stock: true, images: true, availabilityStatus: true,
+              },
+            },
+          },
+        },
+        sizesList: { orderBy: { size: 'asc' } },
+        rewardRules: {
+          where: { active: true },
+          select: {
+            id: true, name: true, scope: true, triggerType: true,
+            threshold: true, rewardType: true, rewardValue: true,
+            promoCode: true, expiresAt: true,
+          },
         },
       },
     });
@@ -563,6 +595,42 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
       },
       include: { category: true, subCategory: true },
     });
+
+    // ── Side / add-on products ──────────────────────────────
+    const sideProducts = Array.isArray(body.sideProducts) ? body.sideProducts : [];
+    for (let i = 0; i < sideProducts.length; i++) {
+      const sp = sideProducts[i];
+      const sideId = typeof sp === 'string' ? sp : sp?.productId || sp?.id;
+      if (!sideId || sideId === product.id) continue;
+      const bundlePrice =
+        sp && typeof sp === 'object' && sp.bundlePrice !== undefined && sp.bundlePrice !== ''
+          ? parseFloat(sp.bundlePrice)
+          : null;
+      await prisma.productSide.upsert({
+        where: { mainProductId_sideProductId: { mainProductId: product.id, sideProductId: sideId } },
+        update: { bundlePrice: Number.isFinite(bundlePrice) ? bundlePrice : null, sortOrder: i },
+        create: {
+          mainProductId: product.id,
+          sideProductId: sideId,
+          bundlePrice: Number.isFinite(bundlePrice) ? bundlePrice : null,
+          sortOrder: i,
+        },
+      }).catch(() => {});
+    }
+
+    // ── Per-size stock variants ─────────────────────────────
+    const sizeVariants = Array.isArray(body.sizeVariants) ? body.sizeVariants : [];
+    for (const sv of sizeVariants) {
+      const sizeName = typeof sv === 'string' ? sv : sv?.size;
+      if (!sizeName) continue;
+      const sizeStock = typeof sv === 'object' ? parseInt(sv.stock, 10) || 0 : 0;
+      const sizeSku = typeof sv === 'object' && sv.sku ? String(sv.sku) : null;
+      await prisma.productSize.upsert({
+        where: { productId_size: { productId: product.id, size: String(sizeName).slice(0, 60) } },
+        update: { stock: sizeStock, sku: sizeSku },
+        create: { productId: product.id, size: String(sizeName).slice(0, 60), stock: sizeStock, sku: sizeSku },
+      }).catch(() => {});
+    }
 
     // ── Optionally set category image from first product image ──
     try {
@@ -771,10 +839,64 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       if (subCat) updateData.subCategoryId = subCat.id;
     }
 
+    // ── Side / add-on products (replace set) ────────────────
+    if (body.sideProducts !== undefined) {
+      const sideProducts = Array.isArray(body.sideProducts) ? body.sideProducts : [];
+      await prisma.productSide.deleteMany({ where: { mainProductId: id } });
+      for (let i = 0; i < sideProducts.length; i++) {
+        const sp = sideProducts[i];
+        const sideId = typeof sp === 'string' ? sp : sp?.productId || sp?.id;
+        if (!sideId || sideId === id) continue;
+        const bundlePrice =
+          sp && typeof sp === 'object' && sp.bundlePrice !== undefined && sp.bundlePrice !== ''
+            ? parseFloat(sp.bundlePrice)
+            : null;
+        await prisma.productSide.create({
+          data: {
+            mainProductId: id,
+            sideProductId: sideId,
+            bundlePrice: Number.isFinite(bundlePrice) ? bundlePrice : null,
+            sortOrder: i,
+          },
+        }).catch(() => {});
+      }
+    }
+
+    // ── Per-size stock variants (replace set) ───────────────
+    if (body.sizeVariants !== undefined) {
+      const sizeVariants = Array.isArray(body.sizeVariants) ? body.sizeVariants : [];
+      await prisma.productSize.deleteMany({ where: { productId: id } });
+      for (const sv of sizeVariants) {
+        const sizeName = typeof sv === 'string' ? sv : sv?.size;
+        if (!sizeName) continue;
+        const sizeStock = typeof sv === 'object' ? parseInt(sv.stock, 10) || 0 : 0;
+        const sizeSku = typeof sv === 'object' && sv.sku ? String(sv.sku) : null;
+        await prisma.productSize.create({
+          data: { productId: id, size: String(sizeName).slice(0, 60), stock: sizeStock, sku: sizeSku },
+        }).catch(() => {});
+      }
+    }
+
     const updated = await prisma.product.update({
       where: { id },
       data: updateData,
-      include: { category: true, subCategory: true },
+      include: {
+        category: true,
+        subCategory: true,
+        sideProductLinks: {
+          orderBy: { sortOrder: 'asc' },
+          include: {
+            sideProduct: {
+              select: {
+                id: true, name: true, slug: true, price: true, currency: true,
+                prices: true, discountPrice: true, discountPrices: true,
+                stock: true, images: true, availabilityStatus: true,
+              },
+            },
+          },
+        },
+        sizesList: { orderBy: { size: 'asc' } },
+      },
     });
 
     // ── Delete orphaned local images ─────────────────────────

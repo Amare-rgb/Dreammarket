@@ -40,6 +40,16 @@ export interface Product {
   images: string[];
   videoUrl: string | null;
   liters?: number | null;
+  sizes?: string[];
+  rewards?: {
+    id: string;
+    name: string;
+    triggerType: string;
+    threshold: number;
+    rewardType: string;
+    rewardValue: string;
+    promoCode: string | null;
+  }[];
 }
 
 type SortOption = "size-low" | "size-high" | "price-low" | "price-high" | "name";
@@ -83,6 +93,16 @@ interface ApiProduct {
   volume?: number | string | null;
   size?: string | null;
   capacity?: string | null;
+  sizesList?: { size?: string; stock?: number }[] | null;
+  rewardRules?: {
+    id: string;
+    name: string;
+    triggerType: string;
+    threshold: number;
+    rewardType: string;
+    rewardValue: string;
+    promoCode: string | null;
+  }[] | null;
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -230,6 +250,25 @@ function parseBucketValue(label: string): number {
   return m ? parseFloat(m[1]) : 0;
 }
 
+function rewardBadgeText(r: {
+  triggerType: string;
+  threshold: number;
+  rewardType: string;
+  rewardValue: string;
+}): string {
+  const trigger =
+    r.triggerType === "MIN_QUANTITY"
+      ? `Buy ${Number(r.threshold)}+`
+      : `Spend ${Number(r.threshold).toLocaleString()}+ ETB`;
+  const reward =
+    r.rewardType === "PERCENT_DISCOUNT"
+      ? `${r.rewardValue}% off`
+      : r.rewardType === "FREE_ITEM"
+      ? `Free ${r.rewardValue}`
+      : `${r.rewardValue} ETB reward`;
+  return `${trigger} → ${reward}`;
+}
+
 function PackageIcon({ className = "h-10 w-10" }: { className?: string }) {
   return (
     <svg
@@ -365,6 +404,7 @@ export default function Products() {
   const [selectedCategory, setSelectedCategory] =
     useState<string>(initialCategoryParam);
   const [selectedLiter, setSelectedLiter] = useState<string>("All");
+  const [selectedSize, setSelectedSize] = useState<string>("All");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("size-low");
   const [cartFeedback, setCartFeedback] = useState<{
@@ -608,6 +648,10 @@ export default function Products() {
               images: imageList,
               videoUrl,
               liters,
+              sizes: (Array.isArray(p.sizesList) ? p.sizesList : [])
+                .map((s) => (typeof s?.size === "string" ? s.size.trim() : ""))
+                .filter(Boolean),
+              rewards: Array.isArray(p.rewardRules) ? p.rewardRules : [],
             };
           });
           setProducts(mapped);
@@ -649,6 +693,17 @@ export default function Products() {
     return sorted.length > 0 ? ["All", ...sorted] : [];
   }, [products]);
 
+  // ── Size options (from product size variants) ─────────────────────────
+  const sizeOptions = useMemo(() => {
+    const set = new Set<string>();
+    products.forEach((p) => {
+      (p.sizes || []).forEach((s) => {
+        if (s) set.add(s);
+      });
+    });
+    return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
+  }, [products]);
+
   // ── Category tabs ──────────────────────────────────────────────────────
   const categoryTabs = useMemo(() => {
     const set = new Set<string>(["All"]);
@@ -678,13 +733,22 @@ export default function Products() {
           product.liters > 0 &&
           literBucket(product.liters) === selectedLiter);
 
+      const matchesSize =
+        selectedSize === "All" ||
+        (product.sizes || []).some(
+          (s) => s.toLowerCase() === selectedSize.toLowerCase()
+        );
+
       const matchesSearch =
         !normalizedSearch ||
         product.name.toLowerCase().includes(normalizedSearch) ||
         product.description.toLowerCase().includes(normalizedSearch) ||
-        product.category.toLowerCase().includes(normalizedSearch);
+        product.category.toLowerCase().includes(normalizedSearch) ||
+        (product.sizes || []).some((s) =>
+          s.toLowerCase().includes(normalizedSearch)
+        );
 
-      return matchesCategory && matchesLiter && matchesSearch;
+      return matchesCategory && matchesLiter && matchesSize && matchesSearch;
     });
 
     return [...filtered].sort((a, b) => {
@@ -709,11 +773,12 @@ export default function Products() {
           return 0;
       }
     });
-  }, [products, selectedCategory, selectedLiter, search, sort]);
+  }, [products, selectedCategory, selectedLiter, selectedSize, search, sort]);
 
   const hasActiveFilters =
     selectedCategory.toLowerCase() !== "all" ||
     selectedLiter !== "All" ||
+    selectedSize !== "All" ||
     search.trim() !== "";
 
   return (
@@ -866,7 +931,22 @@ export default function Products() {
                   />
                 </div>
 
-                <div className="flex items-center justify-end">
+                <div className="flex items-center justify-end gap-2">
+                  {sizeOptions.length > 0 && (
+                    <select
+                      value={selectedSize}
+                      onChange={(e) => setSelectedSize(e.target.value)}
+                      className="h-10 rounded-full border border-[#3a2a1e]/10 bg-[#faf6ee] px-4 text-xs font-semibold text-[#1a1410] outline-none focus:border-[#b98a3e]"
+                      aria-label="Filter by size"
+                    >
+                      <option value="All">{t("shop.size_all", "All Sizes")}</option>
+                      {sizeOptions.map((size) => (
+                        <option key={size} value={size}>
+                          {size}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <select
                     value={sort}
                     onChange={(e) => setSort(e.target.value as SortOption)}
@@ -956,6 +1036,7 @@ export default function Products() {
                   onClick={() => {
                     setSelectedCategory("All");
                     setSelectedLiter("All");
+                    setSelectedSize("All");
                     setSearch("");
                   }}
                   className="inline-flex items-center gap-1 text-xs font-semibold text-[#b98a3e] hover:underline"
@@ -1046,6 +1127,22 @@ export default function Products() {
                               {literBucket(product.liters)}
                             </span>
                           )}
+                          {(product.sizes || []).slice(0, 3).map((size) => (
+                            <span
+                              key={size}
+                              className="rounded-full bg-[#EB6D3D]/90 px-2 py-0.5 text-[9px] font-bold tracking-wider text-white shadow-sm backdrop-blur"
+                            >
+                              {size}
+                            </span>
+                          ))}
+                          {(product.rewards || []).slice(0, 1).map((r) => (
+                            <span
+                              key={r.id}
+                              className="rounded-full bg-emerald-600/95 px-2 py-0.5 text-[9px] font-bold tracking-wider text-white shadow-sm backdrop-blur"
+                            >
+                              🎁 {rewardBadgeText(r)}
+                            </span>
+                          ))}
                           {hasDiscount && (
                             <span className="rounded-full bg-red-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm">
                               Sale

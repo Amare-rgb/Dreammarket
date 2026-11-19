@@ -23,6 +23,10 @@ const mockPrisma = {
     findMany: jest.fn(),
     updateMany: jest.fn(),
   },
+  settings: { findFirst: jest.fn() },
+  rewardRule: { findMany: jest.fn() },
+  deliveryRegion: { findFirst: jest.fn() },
+  promoCode: { findUnique: jest.fn() },
   $transaction: jest.fn(),
 };
 
@@ -69,6 +73,10 @@ const sampleOrder = {
 };
 
 beforeEach(() => {
+  mockPrisma.settings.findFirst.mockResolvedValue(null);
+  mockPrisma.rewardRule.findMany.mockResolvedValue([]);
+  mockPrisma.deliveryRegion.findFirst.mockResolvedValue(null);
+  mockPrisma.promoCode.findUnique.mockResolvedValue(null);
   jest.clearAllMocks();
   mockPrisma.user.findUnique.mockResolvedValue({
     email: 'customer@example.com',
@@ -156,6 +164,9 @@ describe('POST /api/orders', () => {
     shippingAddress: 'Addis Ababa, Bole',
     note: '',
     paymentMethod: 'CASH_ON_DELIVERY',
+    customerLat: 11.5742,
+    customerLng: 37.3517,
+    gpsAccuracy: 20,
     items: [{ productId: 'prod-1', quantity: 2 }],
   };
 

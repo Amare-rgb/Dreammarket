@@ -654,6 +654,7 @@ router.get('/:slug/comments', optionalAuth, async (req, res) => {
         name: c.name,
         message: c.message,
         imageUrl: c.imageUrl,
+        pdfUrl: c.pdfUrl,
         reply: c.reply,
         repliedAt: c.repliedAt,
         createdAt: c.createdAt,
@@ -679,6 +680,7 @@ router.post('/:slug/comments', optionalAuth, async (req, res) => {
     const name = text(req.body?.name);
     const message = text(req.body?.message);
     const imageUrl = text(req.body?.imageUrl);
+    const pdfUrl = text(req.body?.pdfUrl);
 
     if (!name || !message) {
       return res.status(400).json({ success: false, error: 'Name and message are required.' });
@@ -709,6 +711,29 @@ router.post('/:slug/comments', optionalAuth, async (req, res) => {
       }
     }
 
+    // Validate PDF URL if provided (must be an uploaded file on this server)
+    let validatedPdfUrl = null;
+    if (pdfUrl) {
+      try {
+        const pdf = new URL(pdfUrl);
+        const requestOrigin = `${req.protocol}://${req.get('host')}`;
+        if (
+          pdfUrl.length > 2048 ||
+          pdf.origin !== requestOrigin ||
+          !pdf.pathname.startsWith('/uploads/') ||
+          !pdf.pathname.toLowerCase().endsWith('.pdf')
+        ) {
+          throw new Error('Invalid PDF URL');
+        }
+        validatedPdfUrl = pdfUrl;
+      } catch {
+        return res.status(400).json({
+          success: false,
+          error: 'Invalid PDF URL. Please upload the PDF first.',
+        });
+      }
+    }
+
     // If user is authenticated, use their name and link userId
     let userId = null;
     let displayName = name;
@@ -724,6 +749,7 @@ router.post('/:slug/comments', optionalAuth, async (req, res) => {
         name: displayName,
         message,
         imageUrl: validatedImageUrl,
+        pdfUrl: validatedPdfUrl,
         status: 'PENDING', // New comments start as pending for moderation
       },
       include: {
@@ -740,6 +766,7 @@ router.post('/:slug/comments', optionalAuth, async (req, res) => {
         name: comment.name,
         message: comment.message,
         imageUrl: comment.imageUrl,
+        pdfUrl: comment.pdfUrl,
         reply: comment.reply,
         repliedAt: comment.repliedAt,
         createdAt: comment.createdAt,
