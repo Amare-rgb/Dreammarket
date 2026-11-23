@@ -576,6 +576,115 @@ model DeliveryRegion {
 }
 
 // ============================================
+// MEDIA INDUSTRY NEWS (public news table)
+// ============================================
+model NewsItem {
+  id        String   @id @default(cuid())
+  date      DateTime
+  company   String
+  headline  String
+  summary   String?  @db.Text
+  url       String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([date])
+  @@map("news_items")
+}
+
+// ============================================
+// VIDEO RELEASES (newest videos section)
+// ============================================
+model VideoRelease {
+  id            String   @id @default(cuid())
+  series        String
+  episodeNumber Int?
+  title         String
+  summary       String?  @db.Text
+  url           String
+  publishedAt   DateTime @default(now())
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  @@index([publishedAt])
+  @@map("video_releases")
+}
+
+// ============================================
+// POPULAR ARTICLES (ranked lists by period)
+// ============================================
+model PopularArticle {
+  id          String   @id @default(cuid())
+  title       String
+  url         String
+  // LAST_7_DAYS | LAST_30_DAYS
+  period      String   @default("LAST_7_DAYS")
+  rank        Int      @default(0)
+  publishedAt DateTime?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([period, rank])
+  @@map("popular_articles")
+}
+
+// ============================================
+// NEWSLETTER SUBSCRIBERS
+// ============================================
+model NewsletterSubscriber {
+  id               String   @id @default(cuid())
+  firstName        String
+  lastName         String
+  email            String   @unique
+  // Comma-separated subscription types, e.g. "news,videos,articles"
+  types            String   @default("news")
+  status           String   @default("ACTIVE") // ACTIVE | UNSUBSCRIBED
+  unsubscribeToken String   @unique @default(cuid())
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@index([status])
+  @@map("newsletter_subscribers")
+}
+
+// ============================================
+// NEWSLETTER ISSUES (published "Edit Smarter" editions)
+// ============================================
+model NewsletterIssue {
+  id          String   @id @default(cuid())
+  subject     String
+  previewText String?  @db.Text
+  body        String   @db.Text
+  // DRAFT | SENT
+  status      String   @default("DRAFT")
+  publishedAt DateTime @default(now())
+  sentCount   Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@index([status, publishedAt])
+  @@map("newsletter_issues")
+}
+
+// ============================================
+// SITE PAGES (admin-editable content pages: training, resources, ...)
+// ============================================
+model SitePage {
+  id           String   @id @default(cuid())
+  slug         String   @unique
+  title        String
+  heroTitle    String?
+  heroSubtitle String?  @db.Text
+  body         String?  @db.Text
+  // Array of { title, description, url } cards/links
+  links        Json?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  @@map("site_pages")
+}
+
+// ============================================
 // SETTINGS MODEL
 // ============================================
 model Settings {

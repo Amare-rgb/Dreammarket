@@ -127,6 +127,15 @@ export default function CheckoutPage() {
     [items]
   );
 
+  const selectedRegion = regions.find((r) => r.id === selectedRegionId) || null;
+
+  // Delivery fee mirrors server logic: verified GPS quote wins, otherwise the
+  // selected region's flat fee. Server recomputes authoritatively on submit.
+  const deliveryFee = gps
+    ? deliveryQuote?.fee ?? 0
+    : selectedRegion?.fee ?? 0;
+  const grandTotal = total + deliveryFee;
+
   const updateCart = (nextItems: CartItem[]) => {
     setItems(nextItems);
     writeCart(nextItems);
@@ -262,7 +271,26 @@ export default function CheckoutPage() {
     );
   };
 
-  const selectedRegion = regions.find((r) => r.id === selectedRegionId) || null;
+  // Re-fetch the GPS delivery quote whenever the subtotal changes so the
+  // displayed fee (incl. free-delivery thresholds) stays accurate.
+  useEffect(() => {
+    if (!gps) return;
+    let cancelled = false;
+    api
+      .get("/api/orders/delivery-quote", {
+        params: { lat: gps.lat, lng: gps.lng, subtotal: total },
+      })
+      .then((q) => {
+        if (cancelled || !q.data?.success) return;
+        setDeliveryQuote({ fee: q.data.fee ?? 0, distanceKm: q.data.distanceKm ?? null });
+      })
+      .catch(() => {
+        if (!cancelled) setDeliveryQuote(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [gps, total]);
 
   const composedAddress = useMemo(() => {
     const parts = [
@@ -683,9 +711,28 @@ export default function CheckoutPage() {
                   </li>
                 ))}
               </ul>
-              <div className="mt-3 flex items-center justify-between border-t border-slate-200 pt-4 text-base font-bold text-[#20283a]">
-                <span>Total</span>
-                <span>{money(total)}</span>
+              <div className="mt-3 space-y-1.5 border-t border-slate-200 pt-4 text-sm">
+                <div className="flex items-center justify-between text-slate-600">
+                  <span>Subtotal</span>
+                  <span>{money(total)}</span>
+                </div>
+                <div className="flex items-center justify-between text-slate-600">
+                  <span>
+                    Delivery fee
+                    {gps && deliveryQuote?.distanceKm != null
+                      ? ` (${deliveryQuote.distanceKm} km)`
+                      : selectedRegion
+                      ? ` (${selectedRegion.name})`
+                      : ""}
+                  </span>
+                  <span>
+                    {gps && !deliveryQuote ? "…" : money(deliveryFee)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between border-t border-slate-200 pt-2 text-base font-bold text-[#20283a]">
+                  <span>Total</span>
+                  <span>{money(grandTotal)}</span>
+                </div>
               </div>
               <p className="mt-2 text-xs leading-5 text-slate-500">
                 Final prices and available stock are verified when you place

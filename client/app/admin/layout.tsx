@@ -158,6 +158,8 @@ export default function AdminLayout({
     { name: "Products", href: "/admin/products", section: "Main" },
     { name: "Orders", href: "/admin/orders", section: "Main" },
     { name: "Articles", href: "/admin/articles", section: "Main" },
+    { name: "Media & News", href: "/admin/media", section: "Main" },
+    { name: "Pages", href: "/admin/pages", section: "Main" },
     { name: "Feedback", href: "/admin/feedback", section: "Main" },
     { name: "Rewards & Loyalty", href: "/admin/rewards", section: "Main" },
     { name: "Users", href: "/admin/users", section: "Main" },

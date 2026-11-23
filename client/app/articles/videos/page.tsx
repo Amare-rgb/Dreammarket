@@ -17,6 +17,12 @@ import VideoPlayer from "@/components/VideoPlayer";
 import { ArticleSummary, formatDate, localizedDescription, localizedTitle } from "@/lib/publicArticles";
 import { useLanguage } from "@/context/LanguageContext";
 
+const HERO_VIDEO_SRCS = [
+  "/banners/articl1.mp4",
+  "/banners/articl2.mp4",
+  "/banners/articl3.mp4",
+];
+
 // YouTube videos get an automatic thumbnail when the article has no image.
 function youtubeThumbnail(videoUrl: string) {
   const source = getVideoSource(videoUrl);
@@ -32,6 +38,7 @@ export default function VideosPage() {
   const [error, setError] = useState("");
   const [query, setQuery] = useState("");
   const [playing, setPlaying] = useState<ArticleSummary | null>(null);
+  const [heroVideoIndex, setHeroVideoIndex] = useState(0);
 
   useEffect(() => {
     let active = true;
@@ -81,19 +88,34 @@ export default function VideosPage() {
 
   return (
     <main className="min-h-screen bg-[var(--cream)] pb-20">
-      <section className="bg-[#20283a] px-5 py-14 text-white sm:px-8 sm:py-20">
-        <div className="mx-auto max-w-7xl">
-          <p className="text-xs font-bold uppercase tracking-[0.2em] text-[#F47822]">
+      <section className="relative isolate flex min-h-[480px] items-center justify-center overflow-hidden bg-[#20283a] px-5 pb-20 pt-24 text-center text-white sm:px-8 md:min-h-[550px] md:pb-24 md:pt-28">
+        <video
+          key={HERO_VIDEO_SRCS[heroVideoIndex]}
+          src={HERO_VIDEO_SRCS[heroVideoIndex]}
+          onEnded={() =>
+            setHeroVideoIndex((i) => (i + 1) % HERO_VIDEO_SRCS.length)
+          }
+          className="absolute inset-0 -z-10 h-full w-full object-cover object-top"
+          autoPlay
+          muted
+          playsInline
+          preload="metadata"
+          aria-hidden="true"
+        />
+        <div className="absolute inset-0 -z-10 bg-black/60" />
+        <div className="relative mx-auto w-full max-w-3xl">
+          <p className="inline-flex items-center justify-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-1.5 text-xs font-bold uppercase tracking-[0.2em] text-[#F47822] backdrop-blur-md">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#F47822] animate-pulse" />
             {t("articles.hero_eyebrow", "Dream More Affiliate Market")}
           </p>
-          <h1 className="mt-3 text-4xl font-semibold sm:text-5xl">
+          <h1 className="mt-6 text-4xl font-bold tracking-tight text-[#F47822] drop-shadow-lg sm:text-5xl lg:text-6xl">
             {t("articles.videos_title", "Videos")}
           </h1>
-          <p className="mt-3 max-w-2xl text-sm leading-6 text-white/70 sm:text-base">
+          <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-white/90 drop-shadow sm:text-lg">
             {t("articles.videos_subtitle", "Watch product guides and marketplace updates.")}
           </p>
 
-          <div className="relative mt-8 max-w-xl">
+          <div className="relative mx-auto mt-8 max-w-xl">
             <Search
               size={18}
               className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-slate-400"

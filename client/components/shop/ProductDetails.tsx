@@ -648,6 +648,27 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
     }
   };
 
+  const ctaDisabled =
+    effectiveStock < 1 ||
+    product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY" ||
+    (hasSizes && !selectedSize);
+
+  const ctaLabel = hasSizes && !selectedSize
+    ? t("product.select_size_first", "Select a size")
+    : product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY"
+    ? t("product.out_of_stock_temp", "Out of stock temporarily")
+    : effectiveStock < 1
+    ? t("product.out_of_stock", "Out of stock")
+    : t("checkout.add_to_order", "Add to order");
+
+  const ctaButtonClass = `flex h-14 items-center justify-center gap-2 rounded-2xl border px-5 text-base font-bold shadow-lg transition ${
+    ctaDisabled
+      ? product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY"
+        ? "border-amber-300 bg-amber-100 text-amber-800 cursor-not-allowed"
+        : "border-slate-300 bg-slate-200 text-slate-500 cursor-not-allowed"
+      : "border-[#20283a] bg-[#20283a] text-white hover:bg-[#30384f]"
+  }`;
+
   return (
     <main className="shop-theme min-h-screen bg-[#efe9e2] text-[#1a1410]">
       <section className="px-4 py-8 sm:px-8 lg:px-12 lg:py-14">
@@ -989,23 +1010,11 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
                 <button
                   type="button"
                   onClick={addToCart}
-                  disabled={effectiveStock < 1 || product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY" || (hasSizes && !selectedSize)}
-                  className={`flex h-14 items-center justify-center gap-2 rounded-2xl border px-5 text-base font-bold shadow-lg transition ${
-                    effectiveStock < 1 || product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY" || (hasSizes && !selectedSize)
-                      ? product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY"
-                        ? "border-amber-300 bg-amber-100 text-amber-800 cursor-not-allowed"
-                        : "border-slate-300 bg-slate-200 text-slate-500 cursor-not-allowed"
-                      : "border-[#20283a] bg-[#20283a] text-white hover:bg-[#30384f]"
-                  }`}
+                  disabled={ctaDisabled}
+                  className={ctaButtonClass}
                 >
                   <ShoppingCart size={18} />
-                  {hasSizes && !selectedSize
-                    ? t("product.select_size_first", "Select a size")
-                    : product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY"
-                    ? t("product.out_of_stock_temp", "Out of stock temporarily")
-                    : effectiveStock < 1
-                    ? t("product.out_of_stock", "Out of stock")
-                    : t("checkout.add_to_order", "Add to order")}
+                  {ctaLabel}
                 </button>
                 <Link
                   href="/contact"
@@ -1074,6 +1083,41 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
       <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
         <ProductFeedback productId={product.id} />
       </div>
+
+      {/* Bottom CTA — same actions as the top buttons */}
+      <section className="mx-auto max-w-5xl px-4 pb-10 sm:px-6 lg:px-8">
+        <div className="rounded-[28px] bg-[#f5f1ea]/95 p-4 shadow-[0_20px_60px_rgba(58,42,30,0.08)] ring-1 ring-[#3a2a1e]/5 sm:p-6">
+          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <button
+              type="button"
+              onClick={addToCart}
+              disabled={ctaDisabled}
+              className={ctaButtonClass}
+            >
+              <ShoppingCart size={18} />
+              {ctaLabel}
+            </button>
+            <Link
+              href="/contact"
+              className="flex h-14 items-center justify-center gap-2 rounded-2xl bg-[#EB6D3D] px-5 text-base font-bold text-[#20283a] shadow-lg transition-all duration-200 hover:bg-[#cf5427] hover:text-white hover:shadow-xl"
+            >
+              <span>{t("product.request_quote", "Request a Quote")}</span>
+              <span className="text-xl font-bold">→</span>
+            </Link>
+          </div>
+          {cartMessage && (
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-2 rounded-2xl border border-[#EB6D3D]/30 bg-white px-4 py-3 text-sm text-[#20283a]">
+              <span role="status">{cartMessage}</span>
+              <Link
+                href="/checkout"
+                className="rounded-xl bg-[#cf5427] px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-[#b84520]"
+              >
+                {t("checkout.go_to_checkout", "Go to checkout")}
+              </Link>
+            </div>
+          )}
+        </div>
+      </section>
 
       {lightboxOpen && images.length > 0 && (
         <ImageLightbox

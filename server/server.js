@@ -188,6 +188,8 @@ const chatbotRoutes = require('./routes/chatbot.routes');
 const feedbackRoutes = require('./routes/feedback.routes');
 const { publicRouter: deliveryPublicRoutes, adminRouter: deliveryAdminRoutes } = require('./routes/delivery.routes');
 const rewardsRoutes = require('./routes/rewards.routes');
+const { publicRouter: pagesPublicRoutes, adminRouter: pagesAdminRoutes } = require('./routes/pages.routes');
+const { publicRouter: mediaPublicRoutes, adminRouter: mediaAdminRoutes } = require('./routes/media.routes');
 
 // ═══════════════════════════════════════════════════════════
 // API ROUTER
@@ -211,6 +213,10 @@ apiRouter.use('/feedback', feedbackRoutes);
 apiRouter.use('/rewards', rewardsRoutes);
 apiRouter.use('/delivery-regions', deliveryPublicRoutes);
 apiRouter.use('/admin/delivery-regions', deliveryAdminRoutes);
+apiRouter.use('/pages', pagesPublicRoutes);
+apiRouter.use('/admin/pages', pagesAdminRoutes);
+apiRouter.use('/media', mediaPublicRoutes);
+apiRouter.use('/admin/media', mediaAdminRoutes);
 
 // ═══════════════════════════════════════════════════════════
 // HEALTH CHECK

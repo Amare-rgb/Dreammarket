@@ -48,6 +48,13 @@ const nextConfig: NextConfig = {
   // Allow dev requests from your ngrok tunnel origin
   allowedDevOrigins: ["concise-skunk-preferably.ngrok-free.app"],
 
+  // Watchpack can choke on Windows system files (DumpStack.log.tmp,
+  // pagefile.sys) when the dev server resolves watchers near the drive
+  // root. Polling mode avoids the buggy recursive lstat scan.
+  watchOptions: {
+    pollIntervalMs: 1000,
+  },
+
   images: {
     dangerouslyAllowLocalIP: !isProd,
 

@@ -1,43 +1,42 @@
 "use client";
 
-import { FormEvent, Suspense, useEffect, useMemo, useRef, useState } from "react";
+import { Suspense, useEffect, useMemo, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { ArrowRight, LoaderCircle, Search, Video, X, MessageSquare } from "lucide-react";
+import { LoaderCircle, Play, Search } from "lucide-react";
 import { api } from "@/lib/api";
-import VideoPlayer from "@/components/VideoPlayer";
-import { LinkifyText } from "@/components/LinkifyText";
 import ArticleSidebar from "@/components/articles/ArticleSidebar";
 import { useLanguage } from "@/context/LanguageContext";
 import {
-  ArticleDetail,
   ArticleSummary,
   PublicCategory,
   categoryName,
   formatDate,
-  localizedContent,
   localizedDescription,
-  localizedNote,
   localizedTitle,
 } from "@/lib/publicArticles";
 
 const LOGO_SRC = "/banners/photo.jpg";
-const HERO_VIDEO_SRC = "/banners/adpp_is.mp4";
-const MAX_COMMENT_LENGTH = 1000;
+const HERO_VIDEO_SRCS = [
+  "/banners/articl1.mp4",
+  "/banners/articl2.mp4",
+  "/banners/articl3.mp4",
+];
 
-interface ArticleComment {
-  id: string | number;
-  name: string;
-  message: string;
-  imageUrl?: string | null;
-  reply?: string | null;
-  repliedAt?: string | null;
-  createdAt: string;
-  user?: {
-    name: string;
-    avatar: string | null;
-  } | null;
+// YouTube videos get an automatic thumbnail when the article has no image.
+function youtubeThumbnail(videoUrl: string) {
+  const match = videoUrl.match(
+    /(?:youtube\.com\/(?:watch\?v=|embed\/|shorts\/)|youtu\.be\/)([\w-]{6,})/
+  );
+  return match ? `https://i.ytimg.com/vi/${match[1]}/hqdefault.jpg` : null;
+}
+
+function articleThumb(article: ArticleSummary) {
+  return (
+    article.image ||
+    (article.videoUrl ? youtubeThumbnail(article.videoUrl) : null)
+  );
 }
 
 function LogoPlaceholder({
@@ -80,26 +79,52 @@ function ArticlesBrowser() {
   const [searchInput, setSearchInput] = useState<string | null>(null);
   const query = searchInput !== null ? searchInput : urlSearch;
 
-  const [selected, setSelected] = useState<ArticleSummary | null>(null);
-  const [preview, setPreview] = useState<ArticleDetail | null>(null);
-  const [previewLoading, setPreviewLoading] = useState(false);
-  const [previewError, setPreviewError] = useState("");
+  const [heroVideoIndex, setHeroVideoIndex] = useState(0);
 
-  // Comments
-  const [comments, setComments] = useState<ArticleComment[]>([]);
-  const [commentsLoading, setCommentsLoading] = useState(false);
-  const [commentsError, setCommentsError] = useState("");
-  const [commentName, setCommentName] = useState("");
-  const [commentMessage, setCommentMessage] = useState("");
-  const [commentImage, setCommentImage] = useState<string | null>(null);
-  const [commentImagePreview, setCommentImagePreview] = useState<string | null>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
-  const commentFileRef = useRef<HTMLInputElement>(null);
-  const [submitting, setSubmitting] = useState(false);
-  const [submitError, setSubmitError] = useState("");
-  const [submitNotice, setSubmitNotice] = useState("");
-  const commentsRef = useRef<HTMLElement>(null);
-  const wantsComments = useRef(false);
+  // Edit Smarter newsletter form
+  const [showNewsletter, setShowNewsletter] = useState(false);
+  const [nlForm, setNlForm] = useState({ firstName: "", lastName: "", email: "", website: "" });
+  const [nlTypes, setNlTypes] = useState<string[]>(["edit-smarter"]);
+  const [nlSubmitting, setNlSubmitting] = useState(false);
+  const [nlMessage, setNlMessage] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const toggleNlType = (value: string) => {
+    setNlTypes((prev) =>
+      prev.includes(value) ? prev.filter((t) => t !== value) : [...prev, value]
+    );
+  };
+
+  const subscribeNewsletter = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setNlMessage(null);
+    if (!nlForm.firstName.trim() || !nlForm.lastName.trim() || !nlForm.email.trim()) {
+      setNlMessage({ ok: false, text: "Please fill in all fields." });
+      return;
+    }
+    if (nlTypes.length === 0) {
+      setNlMessage({ ok: false, text: "Select at least one newsletter." });
+      return;
+    }
+    setNlSubmitting(true);
+    try {
+      await api.post("/api/media/newsletter/subscribe", {
+        firstName: nlForm.firstName,
+        lastName: nlForm.lastName,
+        email: nlForm.email,
+        types: nlTypes,
+        website: nlForm.website, // honeypot — must stay empty
+      });
+      setNlMessage({ ok: true, text: "Subscribed! Check your inbox for confirmation." });
+      setNlForm({ firstName: "", lastName: "", email: "", website: "" });
+      setNlTypes(["edit-smarter"]);
+    } catch (err) {
+      const msg = (err as { response?: { data?: { error?: string } } })
+        ?.response?.data?.error;
+      setNlMessage({ ok: false, text: msg || "Subscription failed. Please try again." });
+    } finally {
+      setNlSubmitting(false);
+    }
+  };
 
   // Categories
   useEffect(() => {
@@ -140,67 +165,6 @@ function ArticlesBrowser() {
     };
   }, [activeCategory, t]);
 
-  // Quick preview content
-  useEffect(() => {
-    if (!selected) return;
-    let active = true;
-    api
-      .get(`/api/articles/${encodeURIComponent(selected.slug)}`)
-      .then((res) => {
-        if (active) setPreview(res.data?.article || null);
-      })
-      .catch(() => {
-        if (active) setPreviewError(t("articles.preview_load_failed", "This article preview could not be loaded."));
-      })
-      .finally(() => {
-        if (active) setPreviewLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [selected, t]);
-
-  // Comments for the selected article (inside modal)
-  useEffect(() => {
-    if (!selected) return;
-    let active = true;
-    api
-      .get(`/api/articles/${encodeURIComponent(selected.slug)}/comments`)
-      .then((res) => {
-        if (active) setComments(res.data?.comments || []);
-      })
-      .catch(() => {
-        if (active) setCommentsError(t("articles.comments_load_failed", "Comments could not be loaded."));
-      })
-      .finally(() => {
-        if (active) setCommentsLoading(false);
-      });
-    return () => {
-      active = false;
-    };
-  }, [selected, t]);
-
-  // Jump to the comments section when the preview was opened with "Comment"
-  useEffect(() => {
-    if (!selected || previewLoading || !wantsComments.current) return;
-    wantsComments.current = false;
-    commentsRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  }, [selected, previewLoading]);
-
-  useEffect(() => {
-    if (!selected) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setSelected(null);
-    };
-    const previous = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKey);
-    return () => {
-      document.body.style.overflow = previous;
-      window.removeEventListener("keydown", onKey);
-    };
-  }, [selected]);
-
   const chooseCategory = (slug: string) => {
     if (slug === activeCategory) return;
     setLoading(true);
@@ -226,98 +190,6 @@ function ArticlesBrowser() {
     router.push(`/articles${qs ? `?${qs}` : ""}`, { scroll: false });
   };
 
-  const openPreview = (article: ArticleSummary, goToComments = false) => {
-    wantsComments.current = goToComments;
-    setPreview(null);
-    setPreviewError("");
-    setPreviewLoading(true);
-    setComments([]);
-    setCommentsError("");
-    setCommentsLoading(true);
-    setCommentName("");
-    setCommentMessage("");
-    setSubmitError("");
-    setSubmitNotice("");
-    setSelected(article);
-  };
-
-  const submitComment = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!selected || submitting) return;
-
-    const name = commentName.trim();
-    const message = commentMessage.trim();
-    if (!name || !message) {
-      setSubmitError(t("articles.comment_required", "Please enter your name and a comment."));
-      return;
-    }
-
-    setSubmitting(true);
-    setSubmitError("");
-    setSubmitNotice("");
-    try {
-      const res = await api.post(
-        `/api/articles/${encodeURIComponent(selected.slug)}/comments`,
-        { name, message, imageUrl: commentImage }
-      );
-      const created: ArticleComment | undefined = res.data?.comment;
-      if (created) {
-        setComments((prev) => [created, ...prev]);
-        setSubmitNotice(t("articles.comment_sent_review", "Thank you! Your comment has been submitted for review."));
-      } else {
-        setSubmitNotice(t("articles.comment_sent_pending", "Thank you! Your comment was submitted and will appear after review."));
-      }
-      setCommentMessage("");
-      setCommentImage(null);
-      setCommentImagePreview(null);
-    } catch {
-      setSubmitError(t("articles.comment_failed", "Your comment could not be sent. Please try again."));
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  const handleCommentImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    if (!file.type.startsWith("image/")) {
-      setSubmitError(t("articles.upload_image_error", "Please upload an image file"));
-      return;
-    }
-    if (file.size > 10 * 1024 * 1024) {
-      setSubmitError(t("articles.upload_image_size", "Image must be less than 10MB"));
-      return;
-    }
-
-    setUploadingImage(true);
-    setSubmitError("");
-    try {
-      const formData = new FormData();
-      formData.append("image", file);
-      const res = await api.post("/api/upload/feedback", formData, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-      if (res.data?.success) {
-        setCommentImage(res.data.url);
-        setCommentImagePreview(res.data.url);
-      } else {
-        setSubmitError(res.data?.error || t("articles.upload_failed", "Failed to upload image"));
-      }
-    } catch (err) {
-      const error = err as { response?: { data?: { error?: string } } };
-      setSubmitError(error.response?.data?.error || t("articles.upload_failed", "Failed to upload image"));
-    } finally {
-      setUploadingImage(false);
-      if (commentFileRef.current) commentFileRef.current.value = "";
-    }
-  };
-
-  const removeCommentImage = () => {
-    setCommentImage(null);
-    setCommentImagePreview(null);
-  };
-
   const totalCount = categories.reduce((sum, c) => sum + c.count, 0);
 
   const filtered = useMemo(() => {
@@ -333,8 +205,6 @@ function ArticlesBrowser() {
   }, [articles, urlSearch]);
 
   const showFeatured = !urlSearch.trim() && filtered.length > 0;
-  const featured = showFeatured ? filtered[0] : null;
-  const rest = showFeatured ? filtered.slice(1) : filtered;
   const activeName =
     activeCategory === "all"
       ? "All articles"
@@ -343,13 +213,16 @@ function ArticlesBrowser() {
   return (
     <main className="min-h-screen bg-[var(--cream)] pb-20">
       {/* Immersive Centered Hero with background video */}
-      <section className="relative isolate flex min-h-[75vh] items-center justify-center overflow-hidden bg-[#20283a] px-5 py-24 text-center text-white sm:px-8 sm:py-32 lg:min-h-[80vh]">
+      <section className="relative isolate flex min-h-[480px] items-center justify-center overflow-hidden bg-[#20283a] px-5 pb-20 pt-24 text-center text-white sm:px-8 md:min-h-[550px] md:pb-24 md:pt-28">
         <video
-          src={HERO_VIDEO_SRC}
-          className="absolute inset-0 -z-10 h-full w-full object-cover"
+          key={HERO_VIDEO_SRCS[heroVideoIndex]}
+          src={HERO_VIDEO_SRCS[heroVideoIndex]}
+          onEnded={() =>
+            setHeroVideoIndex((i) => (i + 1) % HERO_VIDEO_SRCS.length)
+          }
+          className="absolute inset-0 -z-10 h-full w-full object-cover object-top"
           autoPlay
           muted
-          loop
           playsInline
           preload="metadata"
           aria-hidden="true"
@@ -363,7 +236,7 @@ function ArticlesBrowser() {
             {t("articles.hero_eyebrow", "Dream More Affiliate Market")}
           </p>
 
-          <h1 className="mt-6 text-4xl font-bold tracking-tight text-white drop-shadow-lg sm:text-5xl lg:text-6xl">
+          <h1 className="mt-6 text-4xl font-bold tracking-tight text-[#F47822] drop-shadow-lg sm:text-5xl lg:text-6xl">
             {t("articles.hero_title", "Dream More Articles")}
           </h1>
 
@@ -372,6 +245,118 @@ function ArticlesBrowser() {
           </p>
         </div>
       </section>
+
+      {/* Edit Smarter newsletter banner — hidden until toggled */}
+      {showNewsletter && (
+      <section className="bg-[#1d4ed8] px-4 py-10 text-white sm:px-6">
+        <div className="mx-auto grid max-w-7xl gap-8 lg:grid-cols-2 lg:items-center">
+          <div>
+            <p className="text-xs font-bold uppercase tracking-[0.25em] text-blue-200">
+              Weekly Newsletter
+            </p>
+            <h2 className="mt-2 text-3xl font-extrabold tracking-tight sm:text-4xl">
+              Edit Smarter
+            </h2>
+            <p className="mt-3 max-w-md text-sm leading-relaxed text-blue-100">
+              Get the latest media industry news, video releases, and top articles
+              delivered to your inbox every week.
+            </p>
+            <Link
+              href="/newsletter"
+              className="mt-4 inline-flex items-center gap-2 text-sm font-bold text-white underline decoration-blue-300 underline-offset-4 transition hover:decoration-white"
+            >
+              View past newsletters →
+            </Link>
+          </div>
+
+          <form
+            onSubmit={subscribeNewsletter}
+            className="rounded-2xl bg-white p-5 text-slate-900 shadow-xl sm:p-6"
+          >
+            <div className="grid gap-3 sm:grid-cols-2">
+              <input
+                required
+                value={nlForm.firstName}
+                onChange={(e) => setNlForm({ ...nlForm, firstName: e.target.value })}
+                placeholder="First Name"
+                className="h-11 rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#1d4ed8]/20"
+              />
+              <input
+                required
+                value={nlForm.lastName}
+                onChange={(e) => setNlForm({ ...nlForm, lastName: e.target.value })}
+                placeholder="Last Name"
+                className="h-11 rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#1d4ed8]/20"
+              />
+              <input
+                required
+                type="email"
+                value={nlForm.email}
+                onChange={(e) => setNlForm({ ...nlForm, email: e.target.value })}
+                placeholder="Email Address"
+                className="h-11 rounded-lg border border-slate-300 px-4 text-sm outline-none focus:border-[#1d4ed8] focus:ring-2 focus:ring-[#1d4ed8]/20 sm:col-span-2"
+              />
+              {/* Honeypot — hidden from humans, bots fill it */}
+              <input
+                type="text"
+                value={nlForm.website}
+                onChange={(e) => setNlForm({ ...nlForm, website: e.target.value })}
+                tabIndex={-1}
+                autoComplete="off"
+                aria-hidden="true"
+                className="absolute -left-[9999px] h-0 w-0 opacity-0"
+              />
+            </div>
+
+            <div className="mt-4">
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-widest text-slate-500">
+                Subscribe to
+              </p>
+              <div className="flex flex-wrap gap-2">
+                {[
+                  { value: "edit-smarter", label: "Edit Smarter weekly newsletter" },
+                  { value: "news", label: "Media Industry News" },
+                ].map((opt) => (
+                  <label
+                    key={opt.value}
+                    className="flex cursor-pointer items-center gap-2 rounded-lg border border-slate-200 px-3 py-2 text-xs font-semibold text-slate-600 transition hover:border-[#1d4ed8] hover:text-[#1d4ed8]"
+                  >
+                    <input
+                      type="checkbox"
+                      checked={nlTypes.includes(opt.value)}
+                      onChange={() => toggleNlType(opt.value)}
+                      className="accent-[#1d4ed8]"
+                    />
+                    {opt.label}
+                  </label>
+                ))}
+              </div>
+            </div>
+
+            {nlMessage && (
+              <p
+                className={`mt-4 rounded-lg px-4 py-2 text-sm font-semibold ${
+                  nlMessage.ok
+                    ? "bg-green-50 text-green-700"
+                    : "bg-red-50 text-red-700"
+                }`}
+              >
+                {nlMessage.text}
+              </p>
+            )}
+
+            <button
+              type="submit"
+              disabled={nlSubmitting}
+              className="mt-5 flex h-11 w-full items-center justify-center gap-2 rounded-lg bg-[#1d4ed8] px-6 text-sm font-extrabold uppercase tracking-wide text-white transition hover:bg-[#1e40af] disabled:opacity-60"
+            >
+              {nlSubmitting && <LoaderCircle size={15} className="animate-spin" />}
+              {nlSubmitting ? "Subscribing…" : "Subscribe"}
+            </button>
+          </form>
+        </div>
+      </section>
+      )}
 
       {/* Navigation Toolbar (Sticky) */}
       <nav
@@ -416,17 +401,31 @@ function ArticlesBrowser() {
             </ul>
           </div>
 
-          {/* Inline Search */}
-          <form onSubmit={handleInlineSearch} className="relative w-full shrink-0 sm:w-72">
-            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-            <input
-              type="text"
-              value={query}
-              onChange={(e) => setSearchInput(e.target.value)}
-              placeholder={t("articles.search_placeholder", "Search articles...")}
-              className="h-10 w-full rounded-full border border-slate-200 bg-slate-50 pl-9 pr-4 text-sm outline-none transition focus:border-[#EB6D3D] focus:bg-white focus:ring-2 focus:ring-[#EB6D3D]/20"
-            />
-          </form>
+          {/* Edit Smarter toggle + Inline Search */}
+          <div className="flex w-full shrink-0 items-center gap-2 sm:w-auto">
+            <button
+              type="button"
+              onClick={() => setShowNewsletter((v) => !v)}
+              aria-expanded={showNewsletter}
+              className={`flex h-10 items-center gap-2 whitespace-nowrap rounded-full px-4 text-sm font-bold transition ${
+                showNewsletter
+                  ? "bg-[#1d4ed8] text-white"
+                  : "bg-[#1d4ed8]/10 text-[#1d4ed8] hover:bg-[#1d4ed8]/20"
+              }`}
+            >
+              Edit Smarter
+            </button>
+            <form onSubmit={handleInlineSearch} className="relative flex-1 sm:w-72 sm:flex-none">
+              <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+              <input
+                type="text"
+                value={query}
+                onChange={(e) => setSearchInput(e.target.value)}
+                placeholder={t("articles.search_placeholder", "Search articles...")}
+                className="h-10 w-full rounded-full border border-slate-200 bg-slate-50 pl-9 pr-4 text-sm outline-none transition focus:border-[#EB6D3D] focus:bg-white focus:ring-2 focus:ring-[#EB6D3D]/20"
+              />
+            </form>
+          </div>
         </div>
       </nav>
 
@@ -487,147 +486,146 @@ function ArticlesBrowser() {
                   </p>
                 </div>
               ) : (
-                <div className="space-y-8">
-                  {/* Featured */}
-                  {featured && (
-                    <article className="grid overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:shadow-xl lg:grid-cols-2">
-                      {/* Featured Media: Shows Video if exists, else Image */}
-                      <div className="relative block h-64 lg:h-full min-h-[300px] bg-slate-900">
-                        {featured.videoUrl ? (
-                          <VideoPlayer url={featured.videoUrl} title={featured.title} />
-                        ) : featured.image ? (
-                          <Link href={`/articles/${featured.slug}`} className="block h-full w-full">
-                            <Image
-                              src={featured.image}
-                              alt=""
-                              width={1000}
-                              height={620}
-                              unoptimized
-                              priority
-                              className="h-full w-full object-cover"
-                            />
-                          </Link>
-                        ) : (
-                          <Link href={`/articles/${featured.slug}`} className="block h-full w-full">
-                            <LogoPlaceholder className="h-full w-full" size={96} />
-                          </Link>
-                        )}
-                      </div>
-
-                      <div className="flex flex-col justify-center p-6 sm:p-10">
-                        <div className="flex flex-wrap items-center gap-2">
-                          <span className="rounded-full bg-[#EB6D3D]/15 px-3 py-1 text-xs font-bold uppercase tracking-wide text-[#9c3d1a]">
-                            {categoryName(categories, featured.category, language)}
-                          </span>
-                          <span className="text-xs text-slate-400">
-                            {formatDate(featured.createdAt)}
-                          </span>
-                        </div>
-                        <h3 className="mt-3 text-2xl font-bold leading-tight text-slate-900 sm:text-3xl">
-                          <Link href={`/articles/${featured.slug}`} className="hover:text-[#cf5427]">
-                            {localizedTitle(featured, language)}
-                          </Link>
-                        </h3>
-                        <p className="mt-3 line-clamp-4 text-base leading-7 text-slate-600">
-                          {localizedDescription(featured, language)}
-                        </p>
-                        <div className="mt-6 flex flex-wrap items-center gap-3">
-                          <Link
-                            href={`/articles/${featured.slug}`}
-                            className="inline-flex items-center gap-2 rounded-lg bg-[#EB6D3D] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#cf5427]"
-                          >
-                            {t("articles.read_article", "Read article")} <ArrowRight size={16} />
-                          </Link>
-
-                          <button
-                            type="button"
-                            onClick={() => openPreview(featured)}
-                            className="rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                          >
-                            {t("articles.quick_preview", "Quick preview")}
-                          </button>
-
-                          {/* Comment Button (Featured) - Opens Full Screen Page */}
-                          <Link
-                            href={`/articles/${featured.slug}#comments`}
-                            className="inline-flex items-center gap-2 rounded-lg border border-slate-300 px-4 py-2.5 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                          >
-                            <MessageSquare size={16} /> {t("articles.comment", "Comment")}
-                          </Link>
-                        </div>
-                      </div>
-                    </article>
-                  )}
-
-                  {/* Grid */}
-                  {rest.length > 0 && (
-                    <div className="grid gap-5 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
-                      {rest.map((article) => (
-                        <article
-                          key={article.id}
-                          className="group flex h-full flex-col overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition duration-200 hover:-translate-y-1 hover:border-[#EB6D3D]/50 hover:shadow-xl"
-                        >
-                          {/* Media: Shows Video if exists, else Image */}
-                          <div className="relative block bg-slate-900 h-44">
-                            {article.videoUrl ? (
-                              <VideoPlayer url={article.videoUrl} title={article.title} />
-                            ) : article.image ? (
-                              <Link href={`/articles/${article.slug}`} className="block h-full w-full">
-                                <Image
-                                  src={article.image}
-                                  alt=""
-                                  width={700}
-                                  height={420}
-                                  unoptimized
-                                  className="h-full w-full object-cover transition duration-300 group-hover:scale-[1.02]"
-                                />
-                              </Link>
-                            ) : (
-                              <Link href={`/articles/${article.slug}`} className="block h-full w-full">
-                                <LogoPlaceholder className="h-full w-full" size={72} />
-                              </Link>
-                            )}
-
-                            <span className="absolute left-3 top-3 rounded-full bg-white/95 px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[#cf5427] shadow-sm z-10">
-                              {categoryName(categories, article.category, language)}
-                            </span>
-                            {article.videoUrl && (
-                              <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-[#20283a]/85 px-2 py-1 text-[11px] font-bold text-white shadow-sm z-10">
-                                <Video size={12} /> {t("articles.video_badge", "Video")}
-                              </span>
-                            )}
-                          </div>
-
-                          <div className="flex flex-1 flex-col p-4">
-                            <p className="text-xs text-slate-400">{formatDate(article.createdAt)}</p>
-                            <h3 className="mt-1.5 text-lg font-bold leading-snug text-slate-900">
-                              <Link href={`/articles/${article.slug}`} className="hover:text-[#cf5427]">
-                                {localizedTitle(article, language)}
+                <div className="space-y-10">
+                  {/* Featured: asymmetric editorial split */}
+                  {showFeatured && filtered.length > 0 && (
+                    <div className="grid gap-6 lg:grid-cols-5">
+                      {/* Left: two stacked medium text-focused stories */}
+                      <div className="flex flex-col divide-y divide-slate-200 border-y border-slate-200 lg:col-span-3">
+                        {filtered.slice(1, 3).map((a) => (
+                          <article key={a.id} className="group py-5 first:pt-0 last:pb-0">
+                            <p className="text-[11px] font-bold uppercase tracking-widest text-[#cf5427]">
+                              {categoryName(categories, a.category, language)}
+                            </p>
+                            <h3 className="mt-1.5 text-xl font-bold leading-snug text-slate-900 transition group-hover:text-[#cf5427] sm:text-2xl">
+                              <Link href={`/articles/${a.slug}`}>
+                                {localizedTitle(a, language)}
                               </Link>
                             </h3>
                             <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">
-                              {localizedDescription(article, language)}
+                              {localizedDescription(a, language)}
                             </p>
-
-                            <div className="mt-auto flex items-center justify-between gap-2 pt-4 border-t border-slate-100 mt-4">
-                              {/* Comment Button (Grid) - Opens Full Screen Page */}
-                              <Link
-                                href={`/articles/${article.slug}#comments`}
-                                className="inline-flex items-center gap-1.5 text-sm font-semibold text-slate-500 transition hover:text-[#cf5427]"
-                              >
-                                <MessageSquare size={15} /> {t("articles.comment", "Comment")}
+                            <p className="mt-2 text-xs text-slate-400">
+                              {formatDate(a.createdAt)}
+                            </p>
+                          </article>
+                        ))}
+                        {filtered.length < 3 && (
+                          <article className="group py-5">
+                            <p className="text-[11px] font-bold uppercase tracking-widest text-[#cf5427]">
+                              {categoryName(categories, filtered[0].category, language)}
+                            </p>
+                            <h3 className="mt-1.5 text-xl font-bold leading-snug text-slate-900 sm:text-2xl">
+                              <Link href={`/articles/${filtered[0].slug}`}>
+                                {localizedTitle(filtered[0], language)}
                               </Link>
+                            </h3>
+                            <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-600">
+                              {localizedDescription(filtered[0], language)}
+                            </p>
+                          </article>
+                        )}
+                      </div>
 
-                              <Link
-                                href={`/articles/${article.slug}`}
-                                className="inline-flex items-center gap-1 text-sm font-bold text-[#cf5427] transition hover:text-[#9c3d1a]"
-                              >
-                                {t("articles.read", "Read")} <ArrowRight size={15} />
-                              </Link>
+                      {/* Right: large hero story card */}
+                      {(() => {
+                        const hero = filtered[0];
+                        const thumb = articleThumb(hero);
+                        return (
+                          <Link
+                            href={`/articles/${hero.slug}`}
+                            className="group relative block min-h-[420px] overflow-hidden rounded-lg bg-slate-900 lg:col-span-2"
+                          >
+                            {thumb ? (
+                              <Image
+                                src={thumb}
+                                alt=""
+                                fill
+                                unoptimized
+                                priority
+                                className="object-cover transition duration-500 group-hover:scale-[1.03]"
+                              />
+                            ) : (
+                              <LogoPlaceholder className="h-full w-full" size={96} />
+                            )}
+                            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
+                            {hero.videoUrl && (
+                              <span className="absolute left-1/2 top-1/2 flex h-14 w-14 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-red-600 shadow-xl transition group-hover:scale-110">
+                                <Play size={24} className="ml-1 text-white" fill="white" />
+                              </span>
+                            )}
+                            <div className="absolute inset-x-0 bottom-0 p-6 text-white">
+                              <p className="text-[11px] font-bold uppercase tracking-widest text-[#F47822]">
+                                {categoryName(categories, hero.category, language)}
+                              </p>
+                              <h3 className="mt-2 text-2xl font-bold leading-tight sm:text-3xl">
+                                {localizedTitle(hero, language)}
+                              </h3>
+                              <p className="mt-2 line-clamp-2 text-sm leading-6 text-white/80">
+                                {localizedDescription(hero, language)}
+                              </p>
+                              <p className="mt-3 text-xs text-white/60">
+                                {formatDate(hero.createdAt)}
+                              </p>
                             </div>
-                          </div>
-                        </article>
-                      ))}
+                          </Link>
+                        );
+                      })()}
+                    </div>
+                  )}
+
+                  {/* Main grid: 4-column editorial */}
+                  {(showFeatured ? filtered.slice(3) : filtered).length > 0 && (
+                    <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                      {(showFeatured ? filtered.slice(3) : filtered).map((article) => {
+                        const thumb = articleThumb(article);
+                        return (
+                          <article
+                            key={article.id}
+                            className="group flex h-full flex-col border border-slate-200 bg-white"
+                          >
+                            <Link
+                              href={`/articles/${article.slug}`}
+                              className="relative block aspect-video w-full overflow-hidden bg-slate-100"
+                            >
+                              {thumb ? (
+                                <Image
+                                  src={thumb}
+                                  alt=""
+                                  fill
+                                  unoptimized
+                                  className="object-cover transition duration-300 group-hover:scale-[1.03]"
+                                />
+                              ) : (
+                                <LogoPlaceholder className="h-full w-full" size={64} />
+                              )}
+                              {article.videoUrl && (
+                                <span className="absolute inset-0 flex items-center justify-center">
+                                  <span className="flex h-11 w-11 items-center justify-center rounded-full bg-red-600 shadow-lg transition group-hover:scale-110">
+                                    <Play size={18} className="ml-0.5 text-white" fill="white" />
+                                  </span>
+                                </span>
+                              )}
+                            </Link>
+                            <div className="flex flex-1 flex-col p-4">
+                              <p className="text-[10px] font-bold uppercase tracking-widest text-[#cf5427]">
+                                {categoryName(categories, article.category, language)}
+                              </p>
+                              <h3 className="mt-1.5 text-base font-bold leading-snug text-slate-900 line-clamp-2">
+                                <Link href={`/articles/${article.slug}`} className="hover:text-[#cf5427]">
+                                  {localizedTitle(article, language)}
+                                </Link>
+                              </h3>
+                              <p className="mt-2 line-clamp-3 text-sm leading-6 text-slate-500">
+                                {localizedDescription(article, language)}
+                              </p>
+                              <p className="mt-auto pt-3 text-xs text-slate-400">
+                                {formatDate(article.createdAt)}
+                              </p>
+                            </div>
+                          </article>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
@@ -637,288 +635,6 @@ function ArticlesBrowser() {
         </div>
       </div>
 
-      {/* Quick preview Modal */}
-      {selected && (
-        <div
-          className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/60 p-4 backdrop-blur-sm"
-          onMouseDown={(e) => {
-            if (e.target === e.currentTarget) setSelected(null);
-          }}
-        >
-          <section
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="article-preview-title"
-            className="relative max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
-          >
-            <button
-              type="button"
-              onClick={() => setSelected(null)}
-              aria-label={t("articles.close_preview_aria", "Close article preview")}
-              className="absolute right-4 top-4 z-10 rounded-full bg-white/95 p-2 text-slate-700 shadow transition hover:bg-white hover:text-slate-950"
-            >
-              <X size={20} />
-            </button>
-            {selected.image ? (
-              <Image
-                src={selected.image}
-                alt=""
-                width={1200}
-                height={600}
-                unoptimized
-                className="h-52 w-full object-cover sm:h-64"
-              />
-            ) : (
-              <LogoPlaceholder className="h-40" size={80} />
-            )}
-            <div className="p-6 sm:p-8">
-              <p className="text-xs font-semibold uppercase tracking-wide text-[#cf5427]">
-                {categoryName(categories, selected.category, language)} · {formatDate(selected.createdAt)}
-              </p>
-              <h2
-                id="article-preview-title"
-                className="mt-2 text-2xl font-bold leading-tight text-slate-900 sm:text-3xl"
-              >
-                {localizedTitle(selected, language)}
-              </h2>
-              <p className="mt-4 border-b border-slate-100 pb-5 text-base leading-7 text-slate-600">
-                {localizedDescription(selected, language)}
-              </p>
-
-              {previewLoading ? (
-                <div className="flex min-h-32 items-center justify-center">
-                  <LoaderCircle className="h-7 w-7 animate-spin text-[#F47822]" />
-                </div>
-              ) : previewError ? (
-                <p role="alert" className="py-6 text-sm text-red-700">
-                  {previewError}
-                </p>
-              ) : preview ? (
-                <>
-                  <div className="whitespace-pre-wrap break-words py-5 text-sm leading-7 text-slate-700">
-                    <LinkifyText text={localizedContent(preview, language)} />
-                  </div>
-                  {(preview.videoUrl || selected.videoUrl) && (
-                    <div className="pb-5">
-                      <VideoPlayer
-                        url={(preview.videoUrl || selected.videoUrl) as string}
-                        title={preview.title}
-                      />
-                    </div>
-                  )}
-                  {localizedNote(preview, language) && (
-                    <aside className="rounded-xl border-l-4 border-[#EB6D3D] bg-[#EB6D3D]/10 p-4 text-sm leading-6 text-slate-700">
-                      {localizedNote(preview, language)}
-                    </aside>
-                  )}
-                </>
-              ) : null}
-
-              {/* Comments */}
-              <section
-                ref={commentsRef}
-                aria-labelledby="article-comments-title"
-                className="mt-8 border-t border-slate-100 pt-6"
-              >
-                <h3
-                  id="article-comments-title"
-                  className="text-lg font-bold text-slate-900"
-                >
-                  {t("articles.comments", "Comments")}{!commentsLoading && ` (${comments.length})`}
-                </h3>
-
-                <form onSubmit={submitComment} className="mt-4 space-y-3">
-                  <div>
-                    <label
-                      htmlFor="comment-name"
-                      className="mb-1 block text-sm font-semibold text-slate-700"
-                    >
-                      {t("articles.your_name", "Your name")}
-                    </label>
-                    <input
-                      id="comment-name"
-                      value={commentName}
-                      onChange={(e) => setCommentName(e.target.value)}
-                      maxLength={80}
-                      autoComplete="name"
-                      className="h-11 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none focus:border-[#EB6D3D] focus:ring-2 focus:ring-[#EB6D3D]/30"
-                    />
-                  </div>
-                  <div>
-                    <label
-                      htmlFor="comment-message"
-                      className="mb-1 block text-sm font-semibold text-slate-700"
-                    >
-                      {t("articles.your_comment", "Your comment")}
-                    </label>
-                    <textarea
-                      id="comment-message"
-                      value={commentMessage}
-                      onChange={(e) => setCommentMessage(e.target.value)}
-                      maxLength={MAX_COMMENT_LENGTH}
-                      rows={4}
-                      className="w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm leading-6 text-slate-900 outline-none focus:border-[#EB6D3D] focus:ring-2 focus:ring-[#EB6D3D]/30"
-                    />
-                    <p className="mt-1 text-right text-xs text-slate-400">
-                      {commentMessage.length}/{MAX_COMMENT_LENGTH}
-                    </p>
-                  </div>
-
-                  {/* Image upload */}
-                  <div>
-                    <label className="mb-1 block text-sm font-semibold text-slate-700">
-                      {t("articles.attach_image", "Attach image")} <span className="text-slate-400">{t("articles.optional", "(optional)")}</span>
-                    </label>
-                    {commentImagePreview ? (
-                      <div className="relative inline-block">
-                        <Image
-                          src={commentImagePreview}
-                          alt="Preview"
-                          width={150}
-                          height={100}
-                          className="rounded-lg object-cover border border-slate-300"
-                        />
-                        <button
-                          type="button"
-                          onClick={removeCommentImage}
-                          className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
-                        >
-                          <X size={14} />
-                        </button>
-                      </div>
-                    ) : (
-                      <div
-                        onClick={() => commentFileRef.current?.click()}
-                        className="border-2 border-dashed border-slate-300 rounded-lg p-4 text-center cursor-pointer hover:border-[#EB6D3D] transition-colors"
-                      >
-                        {uploadingImage ? (
-                          <LoaderCircle className="h-6 w-6 animate-spin text-[#EB6D3D] mx-auto" />
-                        ) : (
-                          <>
-                            <p className="text-sm text-slate-600">{t("articles.click_upload", "Click to upload image")}</p>
-                            <p className="text-xs text-slate-400 mt-1">{t("articles.upload_hint", "PNG, JPG up to 10MB")}</p>
-                          </>
-                        )}
-                      </div>
-                    )}
-                    <input
-                      ref={commentFileRef}
-                      type="file"
-                      accept="image/*"
-                      onChange={handleCommentImageUpload}
-                      className="hidden"
-                    />
-                  </div>
-
-                  {submitError && (
-                    <p role="alert" className="text-sm text-red-700">
-                      {submitError}
-                    </p>
-                  )}
-                  {submitNotice && (
-                    <p role="status" className="text-sm text-emerald-700">
-                      {submitNotice}
-                    </p>
-                  )}
-
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="inline-flex items-center gap-2 rounded-lg bg-[#EB6D3D] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#cf5427] disabled:cursor-not-allowed disabled:opacity-60"
-                  >
-                    {submitting && <LoaderCircle size={16} className="animate-spin" />}
-                    {submitting ? t("articles.posting", "Posting...") : t("articles.post_comment", "Post comment")}
-                  </button>
-                </form>
-
-                <div className="mt-6">
-                  {commentsLoading ? (
-                    <div className="flex min-h-20 items-center justify-center">
-                      <LoaderCircle className="h-6 w-6 animate-spin text-[#F47822]" />
-                    </div>
-                  ) : commentsError ? (
-                    <p role="alert" className="text-sm text-red-700">
-                      {commentsError}
-                    </p>
-                  ) : comments.length === 0 ? (
-                    <p className="text-sm text-slate-500">
-                      {t("articles.no_comments", "No comments yet. Be the first to comment.")}
-                    </p>
-                  ) : (
-                    <ul className="space-y-4">
-                      {comments.map((c) => (
-                        <li
-                          key={c.id}
-                          className="rounded-xl border border-slate-200 bg-slate-50 p-4"
-                        >
-                          <div className="flex flex-wrap items-center justify-between gap-2">
-                            <div className="flex items-center gap-2">
-                              {c.user?.avatar ? (
-                                <Image
-                                  src={c.user.avatar}
-                                  alt={c.name}
-                                  width={32}
-                                  height={32}
-                                  unoptimized={c.user.avatar.includes('googleusercontent.com')}
-                                  className="rounded-full object-cover"
-                                />
-                              ) : (
-                                <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center">
-                                  <span className="text-xs font-medium text-slate-600">
-                                    {c.name.charAt(0).toUpperCase()}
-                                  </span>
-                                </div>
-                              )}
-                              <p className="text-sm font-bold text-slate-900">{c.name}</p>
-                            </div>
-                            <p className="text-xs text-slate-400">{formatDate(c.createdAt)}</p>
-                          </div>
-                          <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
-                            {c.message}
-                          </p>
-                          {c.imageUrl && (
-                            <div className="mt-3">
-                              <Image
-                                src={c.imageUrl}
-                                alt="Comment attachment"
-                                width={300}
-                                height={200}
-                                className="rounded-lg object-cover border border-slate-200"
-                              />
-                            </div>
-                          )}
-                          {c.reply && (
-                            <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                              <p className="text-xs font-semibold text-blue-900 mb-1">{t("articles.admin_reply", "Admin Reply:")}</p>
-                              <p className="text-sm text-blue-800 whitespace-pre-wrap">{c.reply}</p>
-                            </div>
-                          )}
-                        </li>
-                      ))}
-                    </ul>
-                  )}
-                </div>
-              </section>
-
-              <div className="mt-6 flex flex-wrap items-center justify-between gap-3 border-t border-slate-100 pt-5">
-                <button
-                  type="button"
-                  onClick={() => setSelected(null)}
-                  className="rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:bg-slate-50"
-                >
-                  {t("articles.close_preview", "Close preview")}
-                </button>
-                <Link
-                  href={`/articles/${selected.slug}`}
-                  className="inline-flex items-center gap-2 rounded-lg bg-[#EB6D3D] px-4 py-2 text-sm font-semibold text-white transition hover:bg-[#cf5427]"
-                >
-                  {t("articles.open_full_article", "Open full article")} <ArrowRight size={16} />
-                </Link>
-              </div>
-            </div>
-          </section>
-        </div>
-      )}
     </main>
   );
 }
