@@ -1,14 +1,27 @@
-// lib/sms.js — Africa's Talking SMS notifications
-// Bypass TLS verification: some networks (antivirus/proxy) break the cert chain.
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
-const africastalking = require('africastalking');
+// lib/sms.js — AfroMessage SMS notifications (https://afromessage.com)
+// Uses the same request format as the working Afilas site:
+// POST https://api.afromessage.com/api/send  (JSON body, Bearer token)
+const axios = require('axios');
+const https = require('https');
+const fs = require('fs');
 
 const BRAND = {
   name: process.env.BRAND_NAME || 'Dream More',
 };
 
+const AFROMESSAGE_BASE_URL =
+  process.env.AFROMESSAGE_BASE_URL || 'https://api.afromessage.com/api';
+
+const TLS_ERROR_CODES = new Set([
+  'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
+  'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
+  'SELF_SIGNED_CERT_IN_CHAIN',
+  'DEPTH_ZERO_SELF_SIGNED_CERT',
+  'CERT_HAS_EXPIRED',
+]);
+
 // ─────────────────────────────────────────────────────────────
-// Normalize a phone number to international format (no +).
+// Normalize a phone number to international digits (no +).
 // Accepts: 0911..., +251911..., 251911..., 911...
 // ─────────────────────────────────────────────────────────────
 function normalizePhone(raw) {
@@ -22,26 +35,102 @@ function normalizePhone(raw) {
     // already international
   } else if (digits.startsWith('0')) {
     digits = '251' + digits.slice(1);
-  } else if (digits.length === 9 || (digits.length === 10 && digits.startsWith('9'))) {
+  } else if (digits.length === 9) {
     digits = '251' + digits;
   }
 
-  // Must look like an Ethiopian international number
   if (!/^251\d{9}$/.test(digits)) return null;
   return digits;
 }
 
-function getClient() {
-  const apiKey = process.env.AT_API_KEY;
-  if (!apiKey) {
-    throw new Error('AT_API_KEY is not set in environment');
-  }
-  const username = process.env.AT_USERNAME || 'sandbox';
-  return africastalking({ apiKey, username });
+// ─────────────────────────────────────────────────────────────
+// Remove markup / template symbols so the SMS shows clean text
+// ─────────────────────────────────────────────────────────────
+function sanitizeSmsText(text) {
+  return String(text ?? '')
+    .replace(/<<[^>]*>>/g, '')
+    .replace(/\{\{[^}]*\}\}/g, '')
+    .replace(/[*<>{}\[\]_`~#|\\]/g, '')
+    .replace(/\.{3,}|…/g, '')
+    .replace(/[\u0000-\u001F\u007F]/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 // ─────────────────────────────────────────────────────────────
-// sendSms — low-level send
+// Clean and validate the API key (a JWT has exactly 2 dots)
+// ─────────────────────────────────────────────────────────────
+function cleanApiKey(raw) {
+  return String(raw || '')
+    .trim()
+    .replace(/^['"]|['"]$/g, '')
+    .replace(/^Bearer\s+/i, '')
+    .replace(/\s+/g, '');
+}
+
+function getConfig() {
+  const apiKey = cleanApiKey(process.env.AFROMESSAGE_API_KEY);
+  if (!apiKey) {
+    throw new Error('AFROMESSAGE_API_KEY is not set in environment');
+  }
+
+  const dots = (apiKey.match(/\./g) || []).length;
+  if (dots !== 2) {
+    throw new Error(
+      `AFROMESSAGE_API_KEY is malformed: it has ${dots} periods but must have exactly 2. ` +
+        'Check .env: one token only, then restart the server.'
+    );
+  }
+
+  return {
+    apiKey,
+    senderId:
+      (process.env.AFROMESSAGE_SENDER_ID || process.env.AFROMESSAGE_SENDER_NAME || '').trim() ||
+      undefined,
+    identifierId: (process.env.AFROMESSAGE_IDENTIFIER_ID || '').trim() || undefined,
+  };
+}
+
+// ─────────────────────────────────────────────────────────────
+// HTTPS agent
+//  - AFROMESSAGE_CA_FILE=path/to/ca.pem → trust an extra CA (best fix)
+//  - insecure=true                      → skip verification (fallback)
+// ─────────────────────────────────────────────────────────────
+function buildAgent({ insecure }) {
+  if (insecure) {
+    return new https.Agent({ rejectUnauthorized: false });
+  }
+  const caFile = process.env.AFROMESSAGE_CA_FILE;
+  if (caFile && fs.existsSync(caFile)) {
+    return new https.Agent({ ca: fs.readFileSync(caFile) });
+  }
+  return undefined; // default Node verification
+}
+
+// ─────────────────────────────────────────────────────────────
+// Turn an AfroMessage error into a clear, short message
+// ─────────────────────────────────────────────────────────────
+function explainError(detail) {
+  const text = String(detail || '');
+  const lower = text.toLowerCase();
+
+  if (lower.includes('balance is too low') || lower.includes('401-9')) {
+    return 'AfroMessage account balance is too low. Top up the balance in the AfroMessage dashboard.';
+  }
+  if (lower.includes('invalid token') || lower.includes('401-11')) {
+    return 'AfroMessage API key is invalid. Copy a fresh token from the AfroMessage dashboard.';
+  }
+  if (lower.includes('unverified')) {
+    return 'Phone number is not verified in the AfroMessage dashboard (test account).';
+  }
+  return text;
+}
+
+const errorDetail = (e) =>
+  e.response?.data ? JSON.stringify(e.response.data) : e.message;
+
+// ─────────────────────────────────────────────────────────────
+// sendSms — POST via AfroMessage (same format as Afilas)
 // ─────────────────────────────────────────────────────────────
 async function sendSms({ to, message }) {
   const phone = normalizePhone(to);
@@ -49,43 +138,89 @@ async function sendSms({ to, message }) {
     throw new Error(`Invalid phone number: ${to}`);
   }
 
-  const at = getClient();
-  const options = { to: `+${phone}`, message };
-  if (process.env.AT_SENDER_ID) {
-    options.from = process.env.AT_SENDER_ID;
+  const finalMessage = sanitizeSmsText(message);
+  if (!finalMessage) {
+    throw new Error('SMS message cannot be empty');
   }
 
-  // Fail fast if the SMS provider is unreachable — never hang the caller
-  const SMS_TIMEOUT_MS = Number(process.env.AT_SMS_TIMEOUT_MS) || 15000;
-  const result = await Promise.race([
-    at.SMS.send(options),
-    new Promise((_, reject) =>
-      setTimeout(
-        () => reject(new Error(`Africa's Talking SMS timed out after ${SMS_TIMEOUT_MS}ms`)),
-        SMS_TIMEOUT_MS
-      )
-    ),
-  ]);
-  console.log(`✅ SMS sent via Africa's Talking to: ${phone}`);
-  return result;
+  const { apiKey, senderId, identifierId } = getConfig();
+
+  const body = {
+    to: phone, // no "+", exactly like Afilas
+    message: finalMessage,
+  };
+  if (senderId) body.sender_id = senderId;
+  if (identifierId) body.from = identifierId;
+
+  console.log('📤 Sending AfroMessage SMS:', {
+    to: phone,
+    sender_id: senderId || null,
+    message: finalMessage,
+  });
+
+  const SMS_TIMEOUT_MS = Number(process.env.AFROMESSAGE_TIMEOUT_MS) || 30000;
+
+  const request = (insecure) =>
+    axios.post(`${AFROMESSAGE_BASE_URL}/send`, body, {
+      timeout: SMS_TIMEOUT_MS,
+      httpsAgent: buildAgent({ insecure }),
+      headers: {
+        Authorization: `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+    });
+
+  const forceInsecure = process.env.AFROMESSAGE_INSECURE_TLS === 'true';
+  const strictTls = process.env.AFROMESSAGE_STRICT_TLS === 'true';
+
+  let res;
+  try {
+    res = await request(forceInsecure);
+  } catch (err) {
+    const code = err?.code || err?.cause?.code;
+    if (!forceInsecure && !strictTls && TLS_ERROR_CODES.has(code)) {
+      console.warn(`⚠️ TLS check failed (${code}). Retrying without certificate verification.`);
+      try {
+        res = await request(true);
+      } catch (retryErr) {
+        throw new Error(explainError(errorDetail(retryErr)));
+      }
+    } else {
+      throw new Error(explainError(errorDetail(err)));
+    }
+  }
+
+  const data = res.data;
+  console.log('📥 AfroMessage response:', JSON.stringify(data));
+
+  if (String(data?.acknowledge).toLowerCase() !== 'success') {
+    const errors = data?.response?.errors;
+    const reason = Array.isArray(errors)
+      ? errors.join(', ')
+      : data?.message || JSON.stringify(data);
+    throw new Error(explainError(reason));
+  }
+
+  console.log(`✅ SMS sent via AfroMessage to: ${phone}`);
+  return data;
 }
 
 // ─────────────────────────────────────────────────────────────
-// sendOrderApprovalSms — order confirmed notification
+// sendOrderApprovalSms — order confirmed notification (short)
 // ─────────────────────────────────────────────────────────────
 async function sendOrderApprovalSms(order) {
   if (!order) {
     throw new Error('sendOrderApprovalSms: order is required');
   }
 
-  const name = order.customerName || 'Customer';
-  const orderNumber = order.orderNumber || '';
+  const name = sanitizeSmsText(order.customerName) || 'Customer';
+  const orderNumber = sanitizeSmsText(order.orderNumber);
   const total = Number(order.total) || 0;
 
   const message =
-    `Dear ${name}, your order ${orderNumber} at ${BRAND.name} has been APPROVED. ` +
-    `Total: ETB ${total.toFixed(2)}. ` +
-    `We will contact you shortly for delivery. Thank you!`;
+    `${BRAND.name}: Hi ${name}, your order${orderNumber ? ` ${orderNumber}` : ''} is confirmed. ` +
+    `Total: ETB ${total.toFixed(2)}. We will contact you for delivery. Thank you!`;
 
   return sendSms({ to: order.customerPhone, message });
 }
@@ -94,4 +229,5 @@ module.exports = {
   sendSms,
   sendOrderApprovalSms,
   normalizePhone,
+  sanitizeSmsText,
 };

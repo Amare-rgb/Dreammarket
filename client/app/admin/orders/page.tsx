@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Image from "next/image";
+import Link from "next/link";
 import {
   Check,
   ExternalLink,
@@ -53,6 +54,8 @@ interface Order {
     name: string;
     rewardType: string;
     rewardValue: string;
+    currency?: string;
+    payoutMethod?: string;
     promoCode: string | null;
     triggerType: string;
     threshold: number;
@@ -600,8 +603,13 @@ export default function AdminOrdersPage() {
                             </p>
                             <p className="text-xs text-slate-600">
                               {order.qualifiedRule.rewardValue}
+                              {["FIXED_CASHBACK", "MOBILE_AIRTIME"].includes(order.qualifiedRule.rewardType) &&
+                                ` ${order.qualifiedRule.currency || "ETB"}`}
                               {order.qualifiedRule.promoCode
                                 ? ` · Code: ${order.qualifiedRule.promoCode}`
+                                : ""}
+                              {order.qualifiedRule.payoutMethod && order.qualifiedRule.payoutMethod !== "AUTO"
+                                ? ` · via ${order.qualifiedRule.payoutMethod.replace(/_/g, " ")}`
                                 : ""}
                             </p>
                             {(order.rewardDispatches || []).length > 0 && (
@@ -625,6 +633,13 @@ export default function AdminOrdersPage() {
                               )}
                               Send Reward (SMS + Email)
                             </button>
+                            <Link
+                              href={`/admin/rewards?order=${order.id}`}
+                              className="mt-2 ml-2 inline-flex h-8 items-center gap-1.5 rounded-lg border border-amber-300 bg-white px-3 text-xs font-bold text-amber-800 hover:bg-amber-50"
+                            >
+                              <ExternalLink className="h-3.5 w-3.5" />
+                              Open in Rewards
+                            </Link>
                           </div>
                         )}
                       </div>

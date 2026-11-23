@@ -36,7 +36,9 @@ export interface Product {
     threshold: number;
     rewardType: string;
     rewardValue: string;
+    currency?: string | null;
     promoCode: string | null;
+    expiresAt?: string | null;
   }[];
 }
 
@@ -100,7 +102,9 @@ interface RawProduct {
     threshold: number;
     rewardType: string;
     rewardValue: string;
+    currency?: string | null;
     promoCode: string | null;
+    expiresAt?: string | null;
   }[] | null;
 }
 
@@ -231,6 +235,8 @@ export default async function ProductDetailsPage({
               threshold: Number(r.threshold) || 0,
               rewardType: r.rewardType,
               rewardValue: r.rewardValue,
+              currency: r.currency ?? null,
+              expiresAt: r.expiresAt ?? null,
               promoCode: r.promoCode ?? null,
             })
           ),

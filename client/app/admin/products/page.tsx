@@ -579,8 +579,8 @@ const ProductsPage: React.FC = () => {
 
       const token = getToken();
       if (!token) {
-        router.replace("/auth/signin");
-        return;
+        const t = setTimeout(() => router.replace("/auth/signin"), 0);
+        return () => clearTimeout(t);
       }
 
       const t = setTimeout(() => {

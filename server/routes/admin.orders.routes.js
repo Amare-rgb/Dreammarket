@@ -1,8 +1,8 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-const { sendOrderApprovalEmail } = require('../lib/email');
-const { sendOrderApprovalSms } = require('../lib/sms');
+const { sendOrderApprovalEmail, sendEmail } = require('../lib/email');
+const { sendOrderApprovalSms, sendSms } = require('../lib/sms');
 
 const router = express.Router();
 const ORDER_STATUSES = [
@@ -58,7 +58,7 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
         qualifiedRule: {
           select: {
             id: true, name: true, rewardType: true, rewardValue: true,
-            promoCode: true, triggerType: true, threshold: true, scope: true,
+            currency: true, payoutMethod: true, promoCode: true, triggerType: true, threshold: true, scope: true,
           },
         },
         deliveryRegion: {
@@ -185,6 +185,12 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
                 product: { select: { name: true, images: true } },
               },
             },
+            qualifiedRule: {
+              select: {
+                id: true, name: true, rewardType: true,
+                rewardValue: true, currency: true, payoutMethod: true, promoCode: true,
+              },
+            },
           },
         }),
         statusChanged: true,
@@ -214,6 +220,107 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
             smsError
           )
         );
+
+      // ── Auto-dispatch qualified reward via SMS + Email ──
+      const rule = updatedOrder.qualifiedRule;
+      if (updatedOrder.rewardQualified && rule) {
+        (async () => {
+          try {
+            // Skip if this reward was already sent for this order
+            const alreadySent = await prisma.rewardDispatch.findFirst({
+              where: { orderId: updatedOrder.id, rewardRuleId: rule.id, status: 'SENT' },
+              select: { id: true },
+            });
+            if (alreadySent) return;
+
+            let message =
+              `Dream More: Reward unlocked - ${rule.name}: ${rule.rewardValue}` +
+              `${rule.promoCode ? ` (code ${rule.promoCode})` : ''}. Thank you for shopping with us!`;
+
+            // MOBILE_AIRTIME: attach an AVAILABLE voucher PIN
+            if (rule.rewardType === 'MOBILE_AIRTIME') {
+              const amount = Number(rule.rewardValue) || 0;
+              let voucher = amount > 0
+                ? await prisma.airtimeVoucher.findFirst({
+                    where: { status: 'AVAILABLE', amount },
+                    orderBy: { createdAt: 'asc' },
+                  })
+                : null;
+              if (!voucher) {
+                voucher = await prisma.airtimeVoucher.findFirst({
+                  where: { status: 'AVAILABLE' },
+                  orderBy: { amount: 'asc' },
+                });
+              }
+              if (voucher) {
+                voucher = await prisma.airtimeVoucher.update({
+                  where: { id: voucher.id },
+                  data: {
+                    status: 'USED',
+                    assignedOrderId: updatedOrder.id,
+                    usedAt: new Date(),
+                  },
+                });
+                message =
+                  `Dream More Airtime: You received ${Number(voucher.amount)} ETB ` +
+                  `${voucher.network || 'mobile'} airtime! Recharge PIN: ${voucher.pinCode}. ` +
+                  `Dial *805*${voucher.pinCode}# to redeem.`;
+              }
+            }
+
+            const results = { sms: null, email: null };
+            const errors = [];
+            if (updatedOrder.customerPhone) {
+              try {
+                results.sms = await sendSms({ to: updatedOrder.customerPhone, message });
+              } catch (e) {
+                errors.push(`SMS: ${e.message}`);
+                results.sms = { error: e.message };
+              }
+            }
+            if (updatedOrder.customerEmail) {
+              try {
+                results.email = await sendEmail({
+                  to: updatedOrder.customerEmail,
+                  subject: 'Your Dream More Reward',
+                  text: message,
+                  html: `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;"><p>${message}</p></div>`,
+                });
+              } catch (e) {
+                errors.push(`Email: ${e.message}`);
+                results.email = { error: e.message };
+              }
+            }
+
+            const anySent =
+              (results.sms && !results.sms.error) ||
+              (results.email && !results.email.error);
+            await prisma.rewardDispatch.create({
+              data: {
+                rewardRuleId: rule.id,
+                userId: updatedOrder.userId || null,
+                orderId: updatedOrder.id,
+                recipientEmail: updatedOrder.customerEmail,
+                recipientPhone: updatedOrder.customerPhone,
+                channel: 'BOTH',
+                status: anySent ? 'SENT' : 'FAILED',
+                message,
+                error: errors.length ? errors.join('; ') : null,
+                sentAt: anySent ? new Date() : null,
+                sentBy: req.user?.id || null,
+              },
+            });
+            console.log(
+              `Order ${updatedOrder.orderNumber} reward dispatch ${anySent ? 'sent' : 'failed'}.`
+            );
+          } catch (dispatchError) {
+            console.error(
+              `Reward dispatch failed for order ${updatedOrder.orderNumber}:`,
+              dispatchError
+            );
+          }
+        })();
+      }
     }
 
     return res.json({

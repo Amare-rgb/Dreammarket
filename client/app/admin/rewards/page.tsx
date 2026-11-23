@@ -16,60 +16,16 @@ interface RewardRule {
   minSpend: number | null;
   rewardType: string;
   rewardValue: string;
+  currency: string;
+  payoutMethod: string;
+  payoutDetails: string | null;
   promoCode: string | null;
   expiresAt: string | null;
   active: boolean;
   createdAt: string;
 }
 
-interface ProductOption {
-  id: string;
-  name: string;
-}
-
-interface EligibleReward {
-  id: string;
-  name: string;
-  minSpend: number;
-  rewardType: string;
-  rewardValue: string;
-}
-
-interface ProgressUser {
-  userId: string | null;
-  email: string;
-  name: string;
-  phone: string | null;
-  totalSpend: number;
-  eligibleRewards: EligibleReward[];
-}
-
-interface Dispatch {
-  id: string;
-  channel: string;
-  status: string;
-  message: string | null;
-  sentAt: string | null;
-  createdAt: string;
-  recipientEmail: string | null;
-  recipientPhone: string | null;
-  rewardRule: { id: string; name: string; rewardValue: string } | null;
-}
-
-interface PromoCode {
-  id: string;
-  code: string;
-  description: string | null;
-  discountType: string;
-  discountValue: number;
-  minOrderTotal: number | null;
-  active: boolean;
-  expiresAt: string | null;
-  usageLimit: number | null;
-  usedCount: number;
-}
-
-type Tab = "rules" | "progress" | "promos" | "airtime";
+type Tab = "rules" | "airtime";
 
 interface AirtimeVoucher {
   id: string;
@@ -82,103 +38,112 @@ interface AirtimeVoucher {
   createdAt: string;
 }
 
-const money = (n: number) =>
+interface AirtimeTransaction {
+  id: string;
+  phone: string;
+  network: string | null;
+  amount: number;
+  currency: string;
+  status: string;
+  requestId: string | null;
+  error: string | null;
+  createdAt: string;
+}
+
+interface OrderContext {
+  id: string;
+  orderNumber: string;
+  customerName: string;
+  customerEmail: string;
+  customerPhone: string;
+  total: number;
+  status: string;
+  rewardQualified: boolean;
+  qualifiedRule: {
+    id: string;
+    name: string;
+    rewardType: string;
+    rewardValue: string;
+    currency?: string;
+    payoutMethod?: string;
+    promoCode: string | null;
+    triggerType: string;
+    threshold: number;
+    scope: string;
+  } | null;
+  items: { productName: string; quantity: number; unitPrice?: number }[];
+  rewardDispatches?: { id: string; channel: string; status: string }[];
+}
+
+// Mobile Airtime removed from this list
+const PAYOUT_METHODS = [
+  ["TELEBIRR", "Telebirr"],
+  ["CBE", "CBE Birr"],
+  ["AWASH", "Awash Money"],
+  ["CHAPA", "Chapa"],
+  ["USD_TRANSFER", "USD Transfer"],
+  ["OTHER", "Other"],
+] as const;
+
+const money = (n: number, currency = "ETB") =>
   new Intl.NumberFormat("en-ET", {
     style: "currency",
-    currency: "ETB",
+    currency,
     maximumFractionDigits: 0,
   }).format(n);
 
-const statusBadge = (status: string) => {
-  const map: Record<string, string> = {
-    SENT: "bg-green-100 text-green-700",
-    PENDING: "bg-amber-100 text-amber-700",
-    FAILED: "bg-red-100 text-red-700",
-    REDEEMED: "bg-blue-100 text-blue-700",
-  };
-  return map[status] || "bg-slate-100 text-slate-600";
-};
-
 export default function RewardsPage() {
-  const [tab, setTab] = useState<Tab>("rules");
+  const [tab, setTab] = useState<Tab | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
   const [rules, setRules] = useState<RewardRule[]>([]);
-  const [users, setUsers] = useState<ProgressUser[]>([]);
-  const [dispatches, setDispatches] = useState<Dispatch[]>([]);
-  const [promos, setPromos] = useState<PromoCode[]>([]);
-  const [products, setProducts] = useState<ProductOption[]>([]);
   const [vouchers, setVouchers] = useState<AirtimeVoucher[]>([]);
+  const [airtimeHistory, setAirtimeHistory] = useState<AirtimeTransaction[]>([]);
   const [voucherForm, setVoucherForm] = useState({
     amount: "",
     network: "Ethio Telecom",
     pins: "",
   });
   const [savingVouchers, setSavingVouchers] = useState(false);
+  const [airtimeForm, setAirtimeForm] = useState({ phone: "", amount: "" });
+  const [sendingAirtime, setSendingAirtime] = useState(false);
+  const [airtimeResult, setAirtimeResult] = useState<{ network: string; phone: string; amount: number } | null>(null);
 
+  const detectNetworkClient = (raw: string) => {
+    const digits = raw.replace(/\D/g, "");
+    const local = digits.startsWith("251") ? digits.slice(3) : digits.replace(/^0+/, "");
+    if (local.startsWith("09") || local.startsWith("07")) return "Ethio Telecom";
+    if (local.startsWith("88") || local.startsWith("89")) return "Safaricom";
+    return digits.length >= 9 ? "Other" : "";
+  };
+  const detectedNetwork = detectNetworkClient(airtimeForm.phone);
+
+  // Simplified rule form: payment method, account, amount
   const [ruleForm, setRuleForm] = useState({
-    name: "",
-    description: "",
-    scope: "ALL_ORDERS",
-    productId: "",
-    triggerType: "MIN_SPEND",
-    threshold: "",
-    rewardType: "FIXED_CASHBACK",
-    rewardValue: "",
-    promoCode: "",
-    expiresAt: "",
-    active: true,
+    payoutMethod: "TELEBIRR",
+    payoutDetails: "",
+    amount: "",
   });
   const [savingRule, setSavingRule] = useState(false);
 
-  const [promoForm, setPromoForm] = useState({
-    code: "",
-    description: "",
-    discountType: "PERCENT",
-    discountValue: "",
-    minOrderTotal: "",
-    expiresAt: "",
-    usageLimit: "",
-    active: true,
-  });
-  const [savingPromo, setSavingPromo] = useState(false);
-
-  const [dispatchForm, setDispatchForm] = useState({
-    rewardRuleId: "",
-    userId: "",
-    orderId: "",
-    recipientEmail: "",
-    recipientPhone: "",
-    channel: "BOTH",
-    customMessage: "",
-  });
-  const [sending, setSending] = useState(false);
+  // ── Order context (from Admin Orders → "Open in Rewards") ──
+  const [orderContext, setOrderContext] = useState<OrderContext | null>(null);
+  const [loadingOrder, setLoadingOrder] = useState(false);
+  const [sendingReward, setSendingReward] = useState(false);
+  const [rewardSent, setRewardSent] = useState(false);
 
   const loadAll = useCallback(async () => {
     try {
-      const [rulesRes, progressRes, promosRes, productsRes, vouchersRes] = await Promise.all([
+      const [rulesRes, vouchersRes, airtimeRes] = await Promise.all([
         api.get("/api/admin/rewards/rules"),
-        api.get("/api/admin/rewards/progress"),
-        api.get("/api/admin/promo-codes"),
-        api.get("/api/products/admin/all", { params: { limit: 200 } }),
         api.get("/api/admin/airtime-vouchers"),
+        api.get("/api/admin/airtime/history"),
       ]);
       setRules(rulesRes.data.rules || []);
-      setUsers(progressRes.data.users || []);
-      setDispatches(progressRes.data.dispatches || []);
-      setPromos(promosRes.data.codes || []);
       setVouchers(vouchersRes.data?.vouchers || []);
-      const plist = productsRes.data?.products || productsRes.data || [];
-      setProducts(
-        (Array.isArray(plist) ? plist : [])
-          .map((p: { id?: unknown; name?: unknown }) => ({
-            id: String(p.id ?? ""),
-            name: String(p.name ?? ""),
-          }))
-          .filter((p) => p.id && p.name)
-      );
+      setAirtimeHistory(airtimeRes.data?.transactions || []);
     } catch {
       setError("Failed to load rewards data.");
     } finally {
@@ -193,33 +158,88 @@ export default function RewardsPage() {
     return () => clearTimeout(timer);
   }, [loadAll]);
 
+  // Load order context from ?order=<id> query param
+  useEffect(() => {
+    const orderId = new URLSearchParams(window.location.search).get("order");
+    if (!orderId) return;
+    let active = true;
+    const timer = setTimeout(() => {
+      if (active) setLoadingOrder(true);
+    }, 0);
+    api
+      .get("/api/admin/orders")
+      .then((res) => {
+        if (!active) return;
+        const list: OrderContext[] = res.data?.orders || res.data || [];
+        const found = list.find((o) => o.id === orderId) || null;
+        setOrderContext(found);
+        if (!found) setError("Linked order not found.");
+      })
+      .catch(() => {
+        if (active) setError("Could not load linked order.");
+      })
+      .finally(() => {
+        if (active) setLoadingOrder(false);
+      });
+    return () => {
+      active = false;
+      clearTimeout(timer);
+    };
+  }, []);
+
+  const sendOrderReward = async () => {
+    if (!orderContext?.qualifiedRule) return;
+    setSendingReward(true);
+    setError("");
+    setNotice("");
+    try {
+      const res = await api.post("/api/admin/rewards/dispatch", {
+        rewardRuleId: orderContext.qualifiedRule.id,
+        orderId: orderContext.id,
+        channel: "BOTH",
+      });
+      if (res.data.success) {
+        setRewardSent(true);
+        setNotice(`Reward sent for order ${orderContext.orderNumber}.`);
+      } else {
+        setError(res.data.error || "Reward dispatch failed.");
+      }
+    } catch (err) {
+      const e2 = err as { response?: { data?: { error?: string } } };
+      setError(e2?.response?.data?.error || "Could not send reward.");
+    } finally {
+      setSendingReward(false);
+    }
+  };
+
   const createRule = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingRule(true);
     setError("");
     try {
+      const amount = Number(ruleForm.amount);
+      const methodLabel =
+        PAYOUT_METHODS.find(([val]) => val === ruleForm.payoutMethod)?.[1] ||
+        ruleForm.payoutMethod;
+
       await api.post("/api/admin/rewards/rules", {
-        name: ruleForm.name,
-        description: ruleForm.description || null,
-        scope: ruleForm.scope,
-        productId: ruleForm.scope === "PRODUCT" ? ruleForm.productId : null,
-        triggerType: ruleForm.triggerType,
-        threshold: Number(ruleForm.threshold),
-        minSpend:
-          ruleForm.triggerType === "MIN_SPEND"
-            ? Number(ruleForm.threshold)
-            : null,
-        rewardType: ruleForm.rewardType,
-        rewardValue: ruleForm.rewardValue,
-        promoCode: ruleForm.promoCode || null,
-        expiresAt: ruleForm.expiresAt || null,
-        active: ruleForm.active,
+        name: `${methodLabel} ${amount} ETB`,
+        description: null,
+        scope: "ALL_ORDERS",
+        productId: null,
+        triggerType: "MIN_SPEND",
+        threshold: 0,
+        minSpend: 0,
+        rewardType: "FIXED_CASHBACK",
+        rewardValue: String(amount),
+        currency: "ETB",
+        payoutMethod: ruleForm.payoutMethod,
+        payoutDetails: ruleForm.payoutDetails.trim() || null,
+        promoCode: null,
+        expiresAt: null,
+        active: true,
       });
-      setRuleForm({
-        name: "", description: "", scope: "ALL_ORDERS", productId: "",
-        triggerType: "MIN_SPEND", threshold: "", rewardType: "FIXED_CASHBACK",
-        rewardValue: "", promoCode: "", expiresAt: "", active: true,
-      });
+      setRuleForm({ payoutMethod: "TELEBIRR", payoutDetails: "", amount: "" });
       setNotice("Reward rule created.");
       await loadAll();
     } catch (err) {
@@ -249,65 +269,6 @@ export default function RewardsPage() {
     }
   };
 
-  const createPromo = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSavingPromo(true);
-    setError("");
-    try {
-      await api.post("/api/admin/promo-codes", {
-        ...promoForm,
-        discountValue: Number(promoForm.discountValue),
-        minOrderTotal: promoForm.minOrderTotal ? Number(promoForm.minOrderTotal) : null,
-        expiresAt: promoForm.expiresAt || null,
-        usageLimit: promoForm.usageLimit ? Number(promoForm.usageLimit) : null,
-      });
-      setPromoForm({ code: "", description: "", discountType: "PERCENT", discountValue: "", minOrderTotal: "", expiresAt: "", usageLimit: "", active: true });
-      setNotice("Promo code created.");
-      await loadAll();
-    } catch (err) {
-      const e = err as { response?: { data?: { error?: string } } };
-      setError(e?.response?.data?.error || "Could not create promo code.");
-    } finally {
-      setSavingPromo(false);
-    }
-  };
-
-  const togglePromo = async (p: PromoCode) => {
-    try {
-      await api.patch(`/api/admin/promo-codes/${p.id}`, { active: !p.active });
-      setPromos((ps) => ps.map((x) => (x.id === p.id ? { ...x, active: !x.active } : x)));
-    } catch {
-      setError("Could not update promo code.");
-    }
-  };
-
-  const deletePromo = async (id: string) => {
-    if (!confirm("Delete this promo code?")) return;
-    try {
-      await api.delete(`/api/admin/promo-codes/${id}`);
-      setPromos((ps) => ps.filter((p) => p.id !== id));
-    } catch {
-      setError("Could not delete promo code.");
-    }
-  };
-
-  const sendReward = async (e: React.FormEvent) => {
-    e.preventDefault();
-    setSending(true);
-    setError("");
-    setNotice("");
-    try {
-      const res = await api.post("/api/admin/rewards/dispatch", dispatchForm);
-      setNotice(res.data.success ? "Reward dispatched successfully." : "Dispatch failed — check audit log.");
-      if (res.data.dispatch) setDispatches((ds) => [res.data.dispatch, ...ds]);
-    } catch (err) {
-      const e = err as { response?: { data?: { error?: string } } };
-      setError(e?.response?.data?.error || "Could not send reward.");
-    } finally {
-      setSending(false);
-    }
-  };
-
   const addVouchers = async (e: React.FormEvent) => {
     e.preventDefault();
     setSavingVouchers(true);
@@ -330,6 +291,34 @@ export default function RewardsPage() {
     }
   };
 
+  const sendAirtime = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setSendingAirtime(true);
+    setError("");
+    setNotice("");
+    setAirtimeResult(null);
+    try {
+      const res = await api.post("/api/admin/airtime/send", {
+        phone: airtimeForm.phone,
+        amount: Number(airtimeForm.amount),
+      });
+      setAirtimeResult({
+        network: res.data.network,
+        phone: res.data.phone,
+        amount: Number(res.data.amount),
+      });
+      setNotice(`Airtime sent to ${res.data.phone} (${res.data.network}).`);
+      setAirtimeForm({ phone: "", amount: "" });
+      const hist = await api.get("/api/admin/airtime/history");
+      setAirtimeHistory(hist.data?.transactions || []);
+    } catch (err) {
+      const e2 = err as { response?: { data?: { error?: string } } };
+      setError(e2?.response?.data?.error || "Could not send airtime.");
+    } finally {
+      setSendingAirtime(false);
+    }
+  };
+
   const deleteVoucher = async (id: string) => {
     if (!confirm("Delete this airtime voucher?")) return;
     try {
@@ -337,15 +326,6 @@ export default function RewardsPage() {
       setVouchers((vs) => vs.filter((v) => v.id !== id));
     } catch {
       setError("Could not delete voucher.");
-    }
-  };
-
-  const markRedeemed = async (id: string) => {
-    try {
-      await api.patch(`/api/admin/rewards/dispatch/${id}`, { status: "REDEEMED" });
-      setDispatches((ds) => ds.map((d) => (d.id === id ? { ...d, status: "REDEEMED" } : d)));
-    } catch {
-      setError("Could not update dispatch status.");
     }
   };
 
@@ -366,7 +346,7 @@ export default function RewardsPage() {
       <div>
         <h1 className="text-2xl font-bold text-slate-900">Rewards & Loyalty</h1>
         <p className="text-sm text-slate-500">
-          Manage reward rules, track customer spend, and dispatch rewards via SMS/Email.
+          Manage money reward rules and airtime vouchers.
         </p>
       </div>
 
@@ -377,28 +357,126 @@ export default function RewardsPage() {
         <p className="rounded-xl border border-green-200 bg-green-50 p-3 text-sm text-green-700">{notice}</p>
       )}
 
-      <div className="flex gap-2 border-b border-slate-200">
-        {(
-          [
-            ["rules", "Reward Rules"],
-            ["progress", "Customer Progress"],
-            ["promos", "Promo Codes"],
-            ["airtime", "Airtime Vouchers"],
-          ] as [Tab, string][]
-        ).map(([key, label]) => (
-          <button
-            key={key}
-            onClick={() => setTab(key)}
-            className={`border-b-2 px-4 py-2.5 text-sm font-semibold transition ${
-              tab === key
-                ? "border-[#cf5427] text-[#cf5427]"
-                : "border-transparent text-slate-500 hover:text-slate-800"
-            }`}
-          >
-            {label}
-          </button>
-        ))}
+      {/* Linked order context (from Admin Orders) */}
+      {loadingOrder && (
+        <div className="rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm font-semibold text-amber-800">
+          Loading linked order…
+        </div>
+      )}
+      {orderContext && !loadingOrder && (
+        <div className="rounded-2xl border border-amber-200 bg-gradient-to-br from-amber-50 to-orange-50 p-5 shadow-sm">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-xs font-bold uppercase tracking-wide text-amber-700">Linked Order</p>
+              <h2 className="mt-1 text-lg font-bold text-slate-900">{orderContext.orderNumber}</h2>
+              <p className="mt-1 text-sm text-slate-600">
+                {orderContext.customerName} · {orderContext.customerPhone} · {orderContext.customerEmail}
+              </p>
+              <p className="mt-1 text-xs text-slate-500">
+                {orderContext.items.map((i) => `${i.productName} ×${i.quantity}`).join(", ")} · Total {money(Number(orderContext.total))} · {orderContext.status}
+              </p>
+            </div>
+            {orderContext.rewardQualified && orderContext.qualifiedRule ? (
+              <div className="text-right">
+                <p className="text-xs font-bold uppercase tracking-wide text-emerald-700">Qualified Reward</p>
+                <p className="mt-1 text-sm font-bold text-slate-900">{orderContext.qualifiedRule.name}</p>
+                <p className="text-xs text-slate-600">
+                  {orderContext.qualifiedRule.rewardValue}
+                  {["FIXED_CASHBACK", "MOBILE_AIRTIME"].includes(orderContext.qualifiedRule.rewardType) &&
+                    ` ${orderContext.qualifiedRule.currency || "ETB"}`}
+                  {orderContext.qualifiedRule.promoCode ? ` · Code: ${orderContext.qualifiedRule.promoCode}` : ""}
+                  {orderContext.qualifiedRule.payoutMethod && orderContext.qualifiedRule.payoutMethod !== "AUTO" &&
+                    ` · via ${orderContext.qualifiedRule.payoutMethod.replace(/_/g, " ")}`}
+                </p>
+                {(orderContext.rewardDispatches || []).length > 0 && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Dispatched: {(orderContext.rewardDispatches || []).map((d) => `${d.channel} · ${d.status}`).join(", ")}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  disabled={sendingReward || rewardSent}
+                  onClick={() => void sendOrderReward()}
+                  className="mt-2 inline-flex h-9 items-center gap-2 rounded-lg bg-emerald-600 px-4 text-sm font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {sendingReward ? "Sending…" : rewardSent ? "Reward Sent ✓" : "Send Reward (SMS + Email)"}
+                </button>
+              </div>
+            ) : (
+              <p className="rounded-lg bg-slate-100 px-3 py-2 text-sm font-semibold text-slate-600">
+                This order has no qualified reward.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+
+      <div className="grid gap-3 sm:grid-cols-2">
+        <button
+          type="button"
+          onClick={() => setTab("rules")}
+          className="group relative flex items-center gap-3 overflow-hidden rounded-xl bg-gradient-to-br from-[#cf5427] to-[#f47822] px-4 py-3 text-left shadow-md shadow-orange-500/20 transition hover:shadow-lg hover:-translate-y-0.5"
+        >
+          <div className="absolute -right-4 -top-4 h-16 w-16 rounded-full bg-white/10 transition group-hover:scale-125" />
+          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/20 text-white">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+              <path d="M20 12v10H4V12" /><path d="M2 7h20v5H2z" /><path d="M12 22V7" /><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z" /><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z" />
+            </svg>
+          </div>
+          <div className="relative min-w-0 flex-1">
+            <p className="truncate text-sm font-bold text-white">Reward Rules</p>
+            <p className="truncate text-xs text-orange-100">
+              {rules.length} rule{rules.length === 1 ? "" : "s"} — money rewards
+            </p>
+          </div>
+          <span className="relative shrink-0 rounded-md bg-white px-3 py-1 text-xs font-bold text-[#cf5427] transition group-hover:bg-orange-50">
+            Open →
+          </span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setTab("airtime")}
+          className="group relative flex items-center gap-3 overflow-hidden rounded-xl bg-gradient-to-br from-[#0ea5e9] to-[#6366f1] px-4 py-3 text-left shadow-md shadow-sky-500/20 transition hover:shadow-lg hover:-translate-y-0.5"
+        >
+          <div className="absolute -right-4 -top-4 h-16 w-16 rounded-full bg-white/10 transition group-hover:scale-125" />
+          <div className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-white/20 text-white">
+            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="h-5 w-5">
+              <rect x="5" y="2" width="14" height="20" rx="2" ry="2" /><path d="M12 18h.01" />
+            </svg>
+          </div>
+          <div className="relative min-w-0 flex-1">
+            <p className="truncate text-sm font-bold text-white">Airtime Vouchers</p>
+            <p className="truncate text-xs text-sky-100">
+              {vouchers.length} voucher{vouchers.length === 1 ? "" : "s"} — airtime PINs
+            </p>
+          </div>
+          <span className="relative shrink-0 rounded-md bg-white px-3 py-1 text-xs font-bold text-[#0ea5e9] transition group-hover:bg-sky-50">
+            Open →
+          </span>
+        </button>
       </div>
+
+      {tab && (
+        <div
+          className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-slate-900/50 p-4 sm:p-8"
+          onClick={() => setTab(null)}
+        >
+          <div
+            className="w-full max-w-6xl rounded-2xl bg-slate-50 p-5 shadow-xl sm:p-6"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-5 flex items-center justify-between gap-3">
+              <h2 className="text-xl font-bold text-slate-900">
+                {tab === "rules" ? "Reward Rules" : "Airtime Vouchers"}
+              </h2>
+              <button
+                type="button"
+                onClick={() => setTab(null)}
+                className="rounded-lg px-3 py-1.5 text-sm font-bold text-slate-500 transition hover:bg-slate-200 hover:text-slate-800"
+              >
+                Close
+              </button>
+            </div>
 
       {tab === "rules" && (
         <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
@@ -409,159 +487,64 @@ export default function RewardsPage() {
             <h2 className="mb-4 text-lg font-bold text-slate-900">New Reward Rule</h2>
             <div className="space-y-3">
               <label className={labelCls}>
-                Campaign / rule title <span className="text-red-600">*</span>
-                <input required className={inputCls} value={ruleForm.name}
-                  onChange={(e) => setRuleForm({ ...ruleForm, name: e.target.value })}
-                  placeholder='e.g. "Buy 2+ Running Shoes & Get 300 ETB Bonus"' />
-              </label>
-              <label className={labelCls}>
-                Description
-                <input className={inputCls} value={ruleForm.description}
-                  onChange={(e) => setRuleForm({ ...ruleForm, description: e.target.value })}
-                  placeholder="Optional details shown to admin" />
-              </label>
-
-              <div>
-                <span className={labelCls}>Applies to</span>
-                <div className="mt-1 grid grid-cols-2 gap-2">
-                  {(
-                    [
-                      ["ALL_ORDERS", "All Store Orders"],
-                      ["PRODUCT", "Specific Product"],
-                    ] as const
-                  ).map(([val, label]) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() =>
-                        setRuleForm({ ...ruleForm, scope: val, productId: "" })
-                      }
-                      className={`rounded-lg border px-3 py-2 text-xs font-bold transition ${
-                        ruleForm.scope === val
-                          ? "border-[#cf5427] bg-[#cf5427]/10 text-[#cf5427]"
-                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                      }`}
-                    >
-                      {label}
-                    </button>
+                Payment method <span className="text-red-600">*</span>
+                <select
+                  required
+                  className={inputCls}
+                  value={ruleForm.payoutMethod}
+                  onChange={(e) => setRuleForm({ ...ruleForm, payoutMethod: e.target.value })}
+                >
+                  {PAYOUT_METHODS.map(([val, label]) => (
+                    <option key={val} value={val}>{label}</option>
                   ))}
-                </div>
-              </div>
-
-              {ruleForm.scope === "PRODUCT" && (
-                <label className={labelCls}>
-                  Product <span className="text-red-600">*</span>
-                  <select required className={inputCls} value={ruleForm.productId}
-                    onChange={(e) => setRuleForm({ ...ruleForm, productId: e.target.value })}>
-                    <option value="">Select a product…</option>
-                    {products.map((p) => (
-                      <option key={p.id} value={p.id}>{p.name}</option>
-                    ))}
-                  </select>
-                </label>
-              )}
-
-              <div>
-                <span className={labelCls}>Trigger condition</span>
-                <div className="mt-1 grid grid-cols-2 gap-2">
-                  {(
-                    [
-                      ["MIN_QUANTITY", "Min. quantity bought"],
-                      ["MIN_SPEND", "Min. amount spent"],
-                    ] as const
-                  ).map(([val, label]) => (
-                    <button
-                      key={val}
-                      type="button"
-                      onClick={() => setRuleForm({ ...ruleForm, triggerType: val })}
-                      className={`rounded-lg border px-3 py-2 text-xs font-bold transition ${
-                        ruleForm.triggerType === val
-                          ? "border-[#cf5427] bg-[#cf5427]/10 text-[#cf5427]"
-                          : "border-slate-200 bg-white text-slate-600 hover:border-slate-300"
-                      }`}
-                    >
-                      {label}
-                    </button>
-                  ))}
-                </div>
-              </div>
-
-              <label className={labelCls}>
-                {ruleForm.triggerType === "MIN_QUANTITY"
-                  ? "Minimum quantity"
-                  : "Minimum amount (ETB)"}{" "}
-                <span className="text-red-600">*</span>
-                <input required type="number" min="0" step={ruleForm.triggerType === "MIN_QUANTITY" ? "1" : "0.01"} className={inputCls}
-                  value={ruleForm.threshold}
-                  onChange={(e) => setRuleForm({ ...ruleForm, threshold: e.target.value })}
-                  placeholder={ruleForm.triggerType === "MIN_QUANTITY" ? "3" : "5000"} />
-              </label>
-
-              <label className={labelCls}>
-                Reward type
-                <select className={inputCls} value={ruleForm.rewardType}
-                  onChange={(e) => setRuleForm({ ...ruleForm, rewardType: e.target.value })}>
-                  <option value="FIXED_CASHBACK">Fixed Cashback / Voucher (ETB)</option>
-                  <option value="PERCENT_DISCOUNT">Percentage Discount (%)</option>
-                  <option value="FREE_ITEM">Free Bonus Item / Gift</option>
-                  <option value="CUSTOM">Custom Reward</option>
-                  <option value="MOBILE_AIRTIME">Mobile Airtime / Phone Card (ETB)</option>
                 </select>
               </label>
 
               <label className={labelCls}>
-                {ruleForm.rewardType === "PERCENT_DISCOUNT"
-                  ? "Discount percent (%)"
-                  : ruleForm.rewardType === "FREE_ITEM"
-                  ? "Free item / gift name"
-                  : ruleForm.rewardType === "CUSTOM"
-                  ? "Reward description"
-                  : ruleForm.rewardType === "MOBILE_AIRTIME"
-                  ? "Airtime amount (ETB)"
-                  : "Reward value (ETB)"}{" "}
+                {ruleForm.payoutMethod === "CBE"
+                  ? "CBE account number"
+                  : ruleForm.payoutMethod === "USD_TRANSFER"
+                  ? "Bank / SWIFT details"
+                  : ruleForm.payoutMethod === "OTHER"
+                  ? "Payout details"
+                  : "Account / phone number"}{" "}
                 <span className="text-red-600">*</span>
-                <input required className={inputCls} value={ruleForm.rewardValue}
-                  onChange={(e) => setRuleForm({ ...ruleForm, rewardValue: e.target.value })}
+                <input
+                  required
+                  className={inputCls}
+                  value={ruleForm.payoutDetails}
+                  onChange={(e) => setRuleForm({ ...ruleForm, payoutDetails: e.target.value })}
                   placeholder={
-                    ruleForm.rewardType === "PERCENT_DISCOUNT"
-                      ? "15"
-                      : ruleForm.rewardType === "FREE_ITEM"
-                      ? "Free Cotton Socks"
-                      : ruleForm.rewardType === "CUSTOM"
-                      ? "Free delivery on next order"
-                      : ruleForm.rewardType === "MOBILE_AIRTIME"
-                      ? "50"
-                      : "300"
-                  } />
+                    ruleForm.payoutMethod === "CBE"
+                      ? "1000xxxxxxxxx"
+                      : ruleForm.payoutMethod === "USD_TRANSFER"
+                      ? "Bank name, account no, SWIFT"
+                      : ruleForm.payoutMethod === "OTHER"
+                      ? "Where/how to send the reward"
+                      : "09xx xxx xxx"
+                  }
+                />
               </label>
 
-              {(ruleForm.rewardType === "FIXED_CASHBACK" ||
-                ruleForm.rewardType === "PERCENT_DISCOUNT") && (
-                <div className="grid grid-cols-2 gap-3">
-                  <label className={labelCls}>
-                    Promo code
-                    <input className={inputCls} value={ruleForm.promoCode}
-                      onChange={(e) =>
-                        setRuleForm({ ...ruleForm, promoCode: e.target.value.toUpperCase() })
-                      }
-                      placeholder="REWARD300" />
-                  </label>
-                  <label className={labelCls}>
-                    Code expiry
-                    <input type="date" className={inputCls} value={ruleForm.expiresAt}
-                      onChange={(e) => setRuleForm({ ...ruleForm, expiresAt: e.target.value })} />
-                  </label>
-                </div>
-              )}
-
-              <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                <input type="checkbox" checked={ruleForm.active}
-                  onChange={(e) => setRuleForm({ ...ruleForm, active: e.target.checked })}
-                  className="h-4 w-4 accent-[#cf5427]" />
-                Active immediately
+              <label className={labelCls}>
+                Amount (ETB) <span className="text-red-600">*</span>
+                <input
+                  required
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  className={inputCls}
+                  value={ruleForm.amount}
+                  onChange={(e) => setRuleForm({ ...ruleForm, amount: e.target.value })}
+                  placeholder="300"
+                />
               </label>
-              <button type="submit" disabled={savingRule}
-                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#cf5427] text-sm font-extrabold text-white transition hover:bg-[#9c3d1a] disabled:opacity-60">
+
+              <button
+                type="submit"
+                disabled={savingRule}
+                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#cf5427] text-sm font-extrabold text-white transition hover:bg-[#9c3d1a] disabled:opacity-60"
+              >
                 {savingRule ? "Creating…" : "Create Rule"}
               </button>
             </div>
@@ -587,18 +570,33 @@ export default function RewardsPage() {
                         <strong>{rule.product?.name || "Product"}</strong>
                         {rule.triggerType === "MIN_QUANTITY"
                           ? ` · buy ≥ ${Number(rule.threshold)} units`
-                          : ` · spend ≥ ${money(Number(rule.threshold))}`}
+                          : ` · spend ≥ ${money(Number(rule.threshold), rule.currency || "ETB")}`}
                       </>
                     ) : rule.triggerType === "MIN_QUANTITY" ? (
                       <>Any order · buy ≥ {Number(rule.threshold)} units total</>
+                    ) : Number(rule.threshold ?? rule.minSpend ?? 0) > 0 ? (
+                      <>Spend ≥ <strong>{money(Number(rule.threshold ?? rule.minSpend ?? 0), rule.currency || "ETB")}</strong></>
                     ) : (
-                      <>Spend ≥ <strong>{money(Number(rule.threshold ?? rule.minSpend ?? 0))}</strong></>
+                      <>Any order</>
                     )}
                     {" → "}
-                    <span className="font-semibold text-[#cf5427]">{rule.rewardValue}</span>
+                    <span className="font-semibold text-[#cf5427]">
+                      {rule.rewardValue}
+                      {["FIXED_CASHBACK", "MOBILE_AIRTIME"].includes(rule.rewardType) && ` ${rule.currency || "ETB"}`}
+                    </span>
                     <span className="ml-2 rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-500">
                       {rule.rewardType}
                     </span>
+                    {rule.payoutMethod && rule.payoutMethod !== "AUTO" && (
+                      <span className="ml-1 rounded-full bg-violet-50 px-2 py-0.5 text-xs font-bold text-violet-700">
+                        {rule.payoutMethod.replace(/_/g, " ")}
+                      </span>
+                    )}
+                    {rule.payoutDetails && (
+                      <span className="ml-1 rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-600">
+                        {rule.payoutDetails}
+                      </span>
+                    )}
                     {rule.promoCode && (
                       <span className="ml-1 rounded-full bg-blue-50 px-2 py-0.5 text-xs font-bold text-blue-700">
                         {rule.promoCode}
@@ -622,264 +620,49 @@ export default function RewardsPage() {
         </div>
       )}
 
-      {tab === "progress" && (
-        <div className="space-y-6">
-          <form onSubmit={sendReward}
-            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="mb-4 text-lg font-bold text-slate-900">Send Reward</h2>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-              <label className={labelCls}>
-                Reward rule
-                <select className={inputCls} value={dispatchForm.rewardRuleId}
-                  onChange={(e) => setDispatchForm({ ...dispatchForm, rewardRuleId: e.target.value })}>
-                  <option value="">— Custom message —</option>
-                  {rules.filter((r) => r.active).map((r) => (
-                    <option key={r.id} value={r.id}>{r.name} ({r.rewardValue})</option>
-                  ))}
-                </select>
-              </label>
-              <label className={labelCls}>
-                Customer email
-                <input type="email" className={inputCls} value={dispatchForm.recipientEmail}
-                  onChange={(e) => setDispatchForm({ ...dispatchForm, recipientEmail: e.target.value })} />
-              </label>
-              <label className={labelCls}>
-                Customer phone
-                <input className={inputCls} value={dispatchForm.recipientPhone}
-                  onChange={(e) => setDispatchForm({ ...dispatchForm, recipientPhone: e.target.value })}
-                  placeholder="+251..." />
-              </label>
-              <label className={labelCls}>
-                Channel
-                <select className={inputCls} value={dispatchForm.channel}
-                  onChange={(e) => setDispatchForm({ ...dispatchForm, channel: e.target.value })}>
-                  <option value="BOTH">SMS + Email</option>
-                  <option value="SMS">SMS only</option>
-                  <option value="EMAIL">Email only</option>
-                </select>
-              </label>
-              <label className={`${labelCls} sm:col-span-2`}>
-                Custom message (optional)
-                <input className={inputCls} value={dispatchForm.customMessage}
-                  onChange={(e) => setDispatchForm({ ...dispatchForm, customMessage: e.target.value })}
-                  placeholder="Overrides rule text" />
-              </label>
-            </div>
-            <button type="submit" disabled={sending}
-              className="mt-4 flex h-11 items-center gap-2 rounded-xl bg-[#20283a] px-6 text-sm font-extrabold text-white transition hover:bg-[#cf5427] disabled:opacity-60">
-              {sending ? "Sending…" : "Send Reward"}
-            </button>
-          </form>
-
-          <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <table className="w-full min-w-[720px] text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                  <th className="px-4 py-3">Customer</th>
-                  <th className="px-4 py-3">Total Spend</th>
-                  <th className="px-4 py-3">Eligible Rewards</th>
-                  <th className="px-4 py-3">Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {users.length === 0 && (
-                  <tr><td colSpan={4} className="px-4 py-8 text-center text-slate-500">
-                    No customer spend data yet.
-                  </td></tr>
-                )}
-                {users.map((u) => (
-                  <tr key={u.userId || u.email} className="border-b border-slate-100 last:border-0">
-                    <td className="px-4 py-3">
-                      <p className="font-semibold text-slate-900">{u.name}</p>
-                      <p className="text-xs text-slate-500">{u.email}{u.phone ? ` · ${u.phone}` : ""}</p>
-                    </td>
-                    <td className="px-4 py-3 font-bold text-slate-900">{money(u.totalSpend)}</td>
-                    <td className="px-4 py-3">
-                      {u.eligibleRewards.length === 0 ? (
-                        <span className="text-xs text-slate-400">None yet</span>
-                      ) : (
-                        <div className="flex flex-wrap gap-1">
-                          {u.eligibleRewards.map((r) => (
-                            <span key={r.id}
-                              className="rounded-full bg-[#cf5427]/10 px-2.5 py-1 text-xs font-semibold text-[#cf5427]">
-                              {r.name}
-                            </span>
-                          ))}
-                        </div>
-                      )}
-                    </td>
-                    <td className="px-4 py-3">
-                      {u.eligibleRewards.length > 0 ? (
-                        <span className="rounded-full bg-green-100 px-2.5 py-1 text-xs font-bold text-green-700">
-                          Eligible
-                        </span>
-                      ) : (
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-bold text-slate-500">
-                          In progress
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-
-          <div className="rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <h2 className="border-b border-slate-100 px-5 py-4 text-lg font-bold text-slate-900">
-              Dispatch Audit Log
-            </h2>
-            <div className="divide-y divide-slate-100">
-              {dispatches.length === 0 && (
-                <p className="px-5 py-6 text-sm text-slate-500">No rewards dispatched yet.</p>
-              )}
-              {dispatches.map((d) => (
-                <div key={d.id} className="flex flex-wrap items-center justify-between gap-2 px-5 py-3">
-                  <div className="min-w-0">
-                    <p className="text-sm font-semibold text-slate-900">
-                      {d.rewardRule?.name || "Custom reward"}
-                      <span className="ml-2 rounded bg-slate-100 px-1.5 py-0.5 text-xs text-slate-500">{d.channel}</span>
-                    </p>
-                    <p className="truncate text-xs text-slate-500">
-                      {d.recipientEmail || "—"} {d.recipientPhone ? `· ${d.recipientPhone}` : ""}
-                      {" · "}{new Date(d.createdAt).toLocaleString()}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${statusBadge(d.status)}`}>
-                      {d.status}
-                    </span>
-                    {d.status === "SENT" && (
-                      <button onClick={() => markRedeemed(d.id)}
-                        className="rounded-lg bg-blue-50 px-2.5 py-1 text-xs font-bold text-blue-700 hover:bg-blue-100">
-                        Mark Redeemed
-                      </button>
-                    )}
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-        </div>
-      )}
-
-      {tab === "promos" && (
+      {tab === "airtime" && (
         <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
-          <form onSubmit={createPromo}
-            className="h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
-            <h2 className="mb-4 text-lg font-bold text-slate-900">New Promo Code</h2>
-            <div className="space-y-3">
+          <div className="h-fit space-y-4">
+          <form onSubmit={sendAirtime}
+            className="rounded-2xl border border-sky-200 bg-gradient-to-br from-sky-50 to-indigo-50 p-5 shadow-sm">
+            <h2 className="text-base font-bold text-slate-900">Send Real Airtime</h2>
+            <p className="mt-1 text-xs text-slate-500">
+              Top up Ethio Telecom or Safaricom directly to a phone number via Africas Talking.
+            </p>
+            <div className="mt-4 space-y-3">
               <label className={labelCls}>
-                Code <span className="text-red-600">*</span>
-                <input required className={inputCls} value={promoForm.code}
-                  onChange={(e) => setPromoForm({ ...promoForm, code: e.target.value.toUpperCase() })}
-                  placeholder="SAVE10" />
+                Phone number <span className="text-red-600">*</span>
+                <input required type="tel" className={inputCls}
+                  value={airtimeForm.phone}
+                  onChange={(e) => setAirtimeForm({ ...airtimeForm, phone: e.target.value })}
+                  placeholder="0911 234 567" />
               </label>
+              {detectedNetwork && (
+                <p className="text-xs font-semibold text-sky-700">
+                  Detected network: <span className="rounded-full bg-sky-100 px-2 py-0.5">{detectedNetwork}</span>
+                </p>
+              )}
               <label className={labelCls}>
-                Description
-                <input className={inputCls} value={promoForm.description}
-                  onChange={(e) => setPromoForm({ ...promoForm, description: e.target.value })} />
+                Amount (ETB) <span className="text-red-600">*</span>
+                <input required type="number" min="1" step="0.01" className={inputCls}
+                  value={airtimeForm.amount}
+                  onChange={(e) => setAirtimeForm({ ...airtimeForm, amount: e.target.value })}
+                  placeholder="e.g. 50" />
               </label>
-              <div className="grid grid-cols-2 gap-3">
-                <label className={labelCls}>
-                  Type
-                  <select className={inputCls} value={promoForm.discountType}
-                    onChange={(e) => setPromoForm({ ...promoForm, discountType: e.target.value })}>
-                    <option value="PERCENT">Percent %</option>
-                    <option value="FIXED">Fixed ETB</option>
-                  </select>
-                </label>
-                <label className={labelCls}>
-                  Value <span className="text-red-600">*</span>
-                  <input required type="number" min="0" step="0.01" className={inputCls}
-                    value={promoForm.discountValue}
-                    onChange={(e) => setPromoForm({ ...promoForm, discountValue: e.target.value })} />
-                </label>
-              </div>
-              <label className={labelCls}>
-                Min. order total (optional)
-                <input type="number" min="0" step="0.01" className={inputCls}
-                  value={promoForm.minOrderTotal}
-                  onChange={(e) => setPromoForm({ ...promoForm, minOrderTotal: e.target.value })} />
-              </label>
-              <div className="grid grid-cols-2 gap-3">
-                <label className={labelCls}>
-                  Expires at
-                  <input type="date" className={inputCls} value={promoForm.expiresAt}
-                    onChange={(e) => setPromoForm({ ...promoForm, expiresAt: e.target.value })} />
-                </label>
-                <label className={labelCls}>
-                  Usage limit
-                  <input type="number" min="1" className={inputCls} value={promoForm.usageLimit}
-                    onChange={(e) => setPromoForm({ ...promoForm, usageLimit: e.target.value })} />
-                </label>
-              </div>
-              <label className="flex items-center gap-2 text-sm font-semibold text-slate-700">
-                <input type="checkbox" checked={promoForm.active}
-                  onChange={(e) => setPromoForm({ ...promoForm, active: e.target.checked })}
-                  className="h-4 w-4 accent-[#cf5427]" />
-                Active
-              </label>
-              <button type="submit" disabled={savingPromo}
-                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#cf5427] text-sm font-extrabold text-white transition hover:bg-[#9c3d1a] disabled:opacity-60">
-                {savingPromo ? "Creating…" : "Create Promo Code"}
+              {airtimeResult && (
+                <p className="rounded-lg bg-green-50 px-3 py-2 text-xs font-semibold text-green-700">
+                  Sent {money(airtimeResult.amount)} to {airtimeResult.phone} ({airtimeResult.network})
+                </p>
+              )}
+              <button type="submit" disabled={sendingAirtime}
+                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#0ea5e9] text-sm font-extrabold text-white transition hover:bg-[#0284c7] disabled:opacity-60">
+                {sendingAirtime ? "Sending…" : "Send Airtime"}
               </button>
             </div>
           </form>
 
-          <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
-            <table className="w-full min-w-[640px] text-sm">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
-                  <th className="px-4 py-3">Code</th>
-                  <th className="px-4 py-3">Discount</th>
-                  <th className="px-4 py-3">Usage</th>
-                  <th className="px-4 py-3">Status</th>
-                  <th className="px-4 py-3"></th>
-                </tr>
-              </thead>
-              <tbody>
-                {promos.length === 0 && (
-                  <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">No promo codes yet.</td></tr>
-                )}
-                {promos.map((p) => (
-                  <tr key={p.id} className="border-b border-slate-100 last:border-0">
-                    <td className="px-4 py-3">
-                      <p className="font-bold text-slate-900">{p.code}</p>
-                      {p.description && <p className="text-xs text-slate-500">{p.description}</p>}
-                    </td>
-                    <td className="px-4 py-3 font-semibold text-slate-700">
-                      {p.discountType === "PERCENT" ? `${p.discountValue}%` : money(Number(p.discountValue))}
-                    </td>
-                    <td className="px-4 py-3 text-slate-600">
-                      {p.usedCount}{p.usageLimit ? ` / ${p.usageLimit}` : ""}
-                    </td>
-                    <td className="px-4 py-3">
-                      <button onClick={() => togglePromo(p)}
-                        className={`rounded-full px-2.5 py-1 text-xs font-bold ${
-                          p.active ? "bg-green-100 text-green-700" : "bg-slate-100 text-slate-500"
-                        }`}>
-                        {p.active ? "Active" : "Inactive"}
-                      </button>
-                    </td>
-                    <td className="px-4 py-3 text-right">
-                      <button onClick={() => deletePromo(p.id)}
-                        className="rounded-lg px-2 py-1.5 text-xs font-bold text-slate-400 hover:bg-red-50 hover:text-red-600">
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
-
-      {tab === "airtime" && (
-        <div className="grid gap-6 lg:grid-cols-[380px_1fr]">
           <form onSubmit={addVouchers}
-            className="h-fit rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+            className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
             <h2 className="text-base font-bold text-slate-900">Add Airtime PINs</h2>
             <p className="mt-1 text-xs text-slate-500">
               Bulk-paste recharge PIN codes. When a MOBILE_AIRTIME reward is dispatched,
@@ -911,11 +694,56 @@ export default function RewardsPage() {
                   placeholder={"Paste PINs — one per line or comma-separated:\n123456789012\n987654321098"} />
               </label>
               <button type="submit" disabled={savingVouchers}
-                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-[#cf5427] text-sm font-extrabold text-white transition hover:bg-[#9c3d1a] disabled:opacity-60">
+                className="flex h-11 w-full items-center justify-center gap-2 rounded-xl bg-slate-700 text-sm font-extrabold text-white transition hover:bg-slate-900 disabled:opacity-60">
                 {savingVouchers ? "Adding…" : "Add Vouchers"}
               </button>
             </div>
           </form>
+          </div>
+
+          <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-4 py-3">
+              <h3 className="text-sm font-bold text-slate-900">Top-up History</h3>
+            </div>
+            <table className="w-full min-w-[560px] text-sm">
+              <thead>
+                <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs uppercase tracking-wide text-slate-500">
+                  <th className="px-4 py-3">Phone</th>
+                  <th className="px-4 py-3">Network</th>
+                  <th className="px-4 py-3">Amount</th>
+                  <th className="px-4 py-3">Status</th>
+                  <th className="px-4 py-3">Date</th>
+                </tr>
+              </thead>
+              <tbody>
+                {airtimeHistory.length === 0 && (
+                  <tr><td colSpan={5} className="px-4 py-8 text-center text-slate-500">
+                    No airtime sent yet.
+                  </td></tr>
+                )}
+                {airtimeHistory.map((t) => (
+                  <tr key={t.id} className="border-b border-slate-100 last:border-0">
+                    <td className="px-4 py-3 font-mono text-xs font-semibold text-slate-800">{t.phone}</td>
+                    <td className="px-4 py-3 text-slate-600">{t.network || "—"}</td>
+                    <td className="px-4 py-3 font-semibold text-[#9c3d1a]">{money(Number(t.amount))}</td>
+                    <td className="px-4 py-3">
+                      <span className={`rounded-full px-2.5 py-1 text-xs font-bold ${
+                        t.status === "SENT"
+                          ? "bg-green-100 text-green-700"
+                          : "bg-red-100 text-red-700"
+                      }`}>
+                        {t.status}
+                      </span>
+                      {t.error && <p className="mt-1 max-w-[200px] truncate text-xs text-red-500" title={t.error}>{t.error}</p>}
+                    </td>
+                    <td className="px-4 py-3 text-xs text-slate-500">
+                      {new Date(t.createdAt).toLocaleString("en-ET", { dateStyle: "medium", timeStyle: "short" })}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
 
           <div className="overflow-x-auto rounded-2xl border border-slate-200 bg-white shadow-sm">
             <table className="w-full min-w-[560px] text-sm">
@@ -960,6 +788,10 @@ export default function RewardsPage() {
                 ))}
               </tbody>
             </table>
+          </div>
+        </div>
+      )}
+
           </div>
         </div>
       )}

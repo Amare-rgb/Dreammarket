@@ -951,7 +951,7 @@ function HomeProducts() {
                             {" "}
                             <Link
                               href="/checkout"
-                              className="font-semibold underline underline-offset-2"
+                              className="ml-1 inline-block rounded-lg bg-[#cf5427] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#b84520]"
                             >
                               {t("checkout.go_to_checkout", "Checkout")}
                             </Link>

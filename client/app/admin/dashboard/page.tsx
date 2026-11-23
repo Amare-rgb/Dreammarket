@@ -281,8 +281,8 @@ export default function DashboardPage() {
 
     const authenticatedUser = getAuthenticatedUser();
     if (!authenticatedUser) {
-      router.replace("/auth/signin");
-      return;
+      const t = window.setTimeout(() => router.replace("/auth/signin"), 0);
+      return () => window.clearTimeout(t);
     }
 
     setTimeout(() => {

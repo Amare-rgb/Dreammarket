@@ -6,13 +6,9 @@ import { createElement, type ReactNode } from "react";
 import { vi } from "vitest";
 
 declare global {
-  // eslint-disable-next-line no-var
   var __testParams: Record<string, string> | undefined;
-  // eslint-disable-next-line no-var
   var __testPathname: string | undefined;
-  // eslint-disable-next-line no-var
   var __testSearch: string | undefined;
-  // eslint-disable-next-line no-var
   var __testAuth: Record<string, unknown> | undefined;
 }
 

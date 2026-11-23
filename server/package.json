@@ -24,7 +24,7 @@
       "prisma/**",
       ".env"
     ],
-    "delay": "500ms"
+    "delay": 500
   },
   "scripts": {
     "start": "node server.js",

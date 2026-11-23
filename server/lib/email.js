@@ -153,42 +153,64 @@ async function sendOrderApprovalEmail(order) {
   }).format(Number(order.total) || 0);
   
   const safeAddress = escapeHtml(order.shippingAddress || 'Bahir Dar, Ethiopia');
+  const safePhone = escapeHtml(order.customerPhone || '—');
+  const paymentLabel =
+    order.paymentMethod === 'CASH_ON_DELIVERY'
+      ? 'Cash on Delivery'
+      : escapeHtml(order.paymentMethod || '—');
   const ordersUrl = `${BRAND.website}/orders`;
 
   const html = `
     <div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#20283a;line-height:1.6;">
       <div style="background:#20283a;padding:24px;color:#fff;text-align:center;">
         <h1 style="margin:0;">${BRAND.name}</h1>
+        <p style="margin:6px 0 0;font-size:13px;opacity:.8;">${BRAND.tagline}</p>
       </div>
       <div style="padding:24px;background:#fff;">
-        <h2>Your order is confirmed</h2>
-        <p>Hello ${safeName},</p>
-        <p>Your order <strong>${safeOrderNumber}</strong> has been approved and confirmed. We will prepare it for delivery.</p>
-        <h3>Order summary</h3>
+        <div style="background:#f0fdf4;border:1px solid #bbf7d0;border-radius:10px;padding:14px 18px;margin-bottom:20px;text-align:center;">
+          <p style="margin:0;font-size:18px;font-weight:bold;color:#15803d;">Order Confirmed</p>
+          <p style="margin:4px 0 0;font-size:13px;color:#166534;">${safeOrderNumber}</p>
+        </div>
+        <p>Hello <strong>${safeName}</strong>,</p>
+        <p>Great news! Your order has been <strong>approved and confirmed</strong>. We will prepare it for delivery shortly.</p>
+        <h3 style="border-bottom:2px solid #f47822;padding-bottom:6px;">Order Summary</h3>
         <ul style="padding-left:20px;">${items.map((item) => item.html).join('')}</ul>
-        <p><strong>Order total: ${total}</strong></p>
-        <p><strong>Delivery address:</strong><br>${safeAddress}</p>
+        <table style="width:100%;border-collapse:collapse;margin-top:12px;font-size:14px;">
+          <tr><td style="padding:6px 0;color:#64748b;">Order total</td><td style="padding:6px 0;text-align:right;font-weight:bold;font-size:16px;color:#cf5427;">${total}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Payment method</td><td style="padding:6px 0;text-align:right;">${paymentLabel}</td></tr>
+          <tr><td style="padding:6px 0;color:#64748b;">Phone</td><td style="padding:6px 0;text-align:right;">${safePhone}</td></tr>
+        </table>
+        <div style="background:#f8fafc;border-radius:10px;padding:14px 18px;margin-top:16px;">
+          <p style="margin:0 0 4px;font-weight:bold;font-size:13px;color:#475569;">Delivery address</p>
+          <p style="margin:0;font-size:14px;">${safeAddress}</p>
+        </div>
         <p style="text-align:center;margin:28px 0;">
-          <a href="${ordersUrl}" style="display:inline-block;padding:12px 20px;background:#f47822;color:#20283a;text-decoration:none;border-radius:8px;font-weight:bold;">View your orders</a>
+          <a href="${ordersUrl}" style="display:inline-block;padding:12px 24px;background:#f47822;color:#fff;text-decoration:none;border-radius:8px;font-weight:bold;">View your orders</a>
         </p>
-        <p>If you have questions, contact our support team.</p>
+        <p style="font-size:13px;color:#64748b;">If you have any questions, just reply to this email or contact our support team.</p>
+        <p style="font-size:13px;color:#64748b;">Thank you for shopping with us!</p>
+      </div>
+      <div style="background:#20283a;padding:16px;color:#94a3b8;text-align:center;font-size:12px;">
+        ${BRAND.name} — ${BRAND.tagline}
       </div>
     </div>`;
     
   const text = [
     `Hello ${order.customerName || 'there'},`,
     '',
-    `Your order ${order.orderNumber || 'ORD-001'} has been approved and confirmed.`,
+    `Great news! Your order ${order.orderNumber || 'ORD-001'} has been CONFIRMED.`,
     '',
     'Order summary:',
     ...items.map((item) => item.text),
     `Order total: ETB ${(Number(order.total) || 0).toFixed(2)}`,
+    paymentLabel ? `Payment: ${paymentLabel}` : null,
+    `Phone: ${order.customerPhone || ''}`,
     `Delivery address: ${order.shippingAddress || ''}`,
     '',
     `View your orders: ${ordersUrl}`,
     '',
-    `— ${BRAND.name}`,
-  ].join('\n');
+    `Thank you for shopping with ${BRAND.name}!`,
+  ].filter(Boolean).join('\n');
 
   return sendEmail({
     to: order.customerEmail,

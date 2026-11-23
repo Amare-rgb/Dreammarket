@@ -77,6 +77,11 @@ export default function AdminLayout({
   const isAuthCheckedRef = useRef<boolean>(false);
   const redirectingRef = useRef<boolean>(false);
 
+  // Defer router actions until after Next.js router initialization
+  const safeReplace = (url: string): void => {
+    setTimeout(() => router.replace(url), 0);
+  };
+
   // Set mounted state once
   useEffect(() => {
     if (!isMountedRef.current) {
@@ -100,7 +105,7 @@ export default function AdminLayout({
 
       if (!token) {
         redirectingRef.current = true;
-        router.replace("/auth/signin");
+        safeReplace("/auth/signin");
         setLoading(false);
         return;
       }
@@ -111,7 +116,7 @@ export default function AdminLayout({
 
           if (parsedUser.role?.toUpperCase() !== "ADMIN") {
             redirectingRef.current = true;
-            router.replace("/");
+            safeReplace("/");
             setLoading(false);
             return;
           }
@@ -122,12 +127,12 @@ export default function AdminLayout({
         } catch (error) {
           console.error("Error parsing user data:", error);
           redirectingRef.current = true;
-          router.replace("/auth/signin");
+          safeReplace("/auth/signin");
           setLoading(false);
         }
       } else {
         redirectingRef.current = true;
-        router.replace("/auth/signin");
+        safeReplace("/auth/signin");
         setLoading(false);
       }
     };

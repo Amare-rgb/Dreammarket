@@ -141,7 +141,7 @@ export default function ProductCreateModal({
   const [rewardEnabled, setRewardEnabled] = useState(false);
   const [rewardTriggerType, setRewardTriggerType] = useState<"MIN_QUANTITY" | "MIN_SPEND">("MIN_QUANTITY");
   const [rewardThreshold, setRewardThreshold] = useState("");
-  const [rewardType, setRewardType] = useState<"FIXED_CASHBACK" | "PERCENT_DISCOUNT" | "FREE_ITEM" | "CUSTOM">("FIXED_CASHBACK");
+  const [rewardType, setRewardType] = useState<"FIXED_CASHBACK" | "PERCENT_DISCOUNT" | "FREE_ITEM" | "CUSTOM" | "MOBILE_AIRTIME">("FIXED_CASHBACK");
   const [rewardValue, setRewardValue] = useState("");
   const [rewardPromoCode, setRewardPromoCode] = useState("");
   const [rewardExpiresAt, setRewardExpiresAt] = useState("");
@@ -495,6 +495,7 @@ export default function ProductCreateModal({
             minSpend: rewardTriggerType === "MIN_SPEND" ? thresholdNum : null,
             rewardType,
             rewardValue: rewardValue.trim(),
+            currency: primary.currency,
             promoCode: rewardPromoCode.trim() || null,
             expiresAt: rewardExpiresAt || null,
             active: true,
@@ -1241,15 +1242,16 @@ export default function ProductCreateModal({
                       <option value="FIXED_CASHBACK">Fixed Cashback (ETB)</option>
                       <option value="PERCENT_DISCOUNT">Percentage Discount (%)</option>
                       <option value="FREE_ITEM">Free Bonus Item</option>
+                      <option value="MOBILE_AIRTIME">Mobile Airtime (ETB)</option>
                       <option value="CUSTOM">Custom</option>
                     </select>
                   </label>
                   <label className="text-xs font-semibold text-slate-600">
-                    {rewardType === "PERCENT_DISCOUNT" ? "Percent (%)" : rewardType === "FREE_ITEM" ? "Gift name" : "Value"}
+                    {rewardType === "PERCENT_DISCOUNT" ? "Percent (%)" : rewardType === "FREE_ITEM" ? "Gift name" : rewardType === "MOBILE_AIRTIME" ? "Airtime amount (ETB)" : "Value"}
                     <input
                       value={rewardValue}
                       onChange={(e) => setRewardValue(e.target.value)}
-                      placeholder={rewardType === "PERCENT_DISCOUNT" ? "15" : rewardType === "FREE_ITEM" ? "Free Socks" : "300"}
+                      placeholder={rewardType === "PERCENT_DISCOUNT" ? "15" : rewardType === "FREE_ITEM" ? "Free Socks" : rewardType === "MOBILE_AIRTIME" ? "50" : "300"}
                       className="mt-1 h-9 w-full rounded-lg border border-slate-200 px-2 text-sm"
                     />
                   </label>

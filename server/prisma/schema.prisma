@@ -256,8 +256,14 @@ model RewardRule {
   minSpend     Decimal? @db.Decimal(12, 2)
   // FIXED_CASHBACK | PERCENT_DISCOUNT | FREE_ITEM | CUSTOM
   rewardType   String   @default("FIXED_CASHBACK")
-  // Reward value: ETB amount, percent, free item name, or custom text
+  // Reward value: currency amount, percent, free item name, or custom text
   rewardValue  String
+  // Currency for threshold/reward amounts (ETB, USD, EUR, ...)
+  currency     String   @default("ETB")
+  // How the reward is delivered: AUTO (SMS/email) | MOBILE_AIRTIME | TELEBIRR | CBE | AWASH | CHAPA | USD_TRANSFER | OTHER
+  payoutMethod String   @default("AUTO")
+  // Payout account/details hint for transfer methods (phone, account no, bank info)
+  payoutDetails String? @db.Text
   // Optional promo code granted by this rule (auto-created in promo_codes)
   promoCode    String?
   expiresAt    DateTime?
@@ -323,6 +329,26 @@ model AirtimeVoucher {
 
   @@index([status, amount])
   @@map("airtime_vouchers")
+}
+
+// ============================================
+// AIRTIME TRANSACTIONS (real top-up history)
+// ============================================
+model AirtimeTransaction {
+  id          String   @id @default(cuid())
+  phone       String
+  network     String?
+  amount      Decimal  @db.Decimal(10, 2)
+  currency    String   @default("ETB")
+  status      String   @default("SENT") // SENT | FAILED
+  requestId   String?
+  error       String?  @db.Text
+  sentBy      String?  // admin user id
+  createdAt   DateTime @default(now())
+
+  @@index([createdAt])
+  @@index([phone])
+  @@map("airtime_transactions")
 }
 
 // ============================================

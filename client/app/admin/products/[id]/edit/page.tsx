@@ -713,7 +713,7 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
   const [rewardRuleId, setRewardRuleId] = useState<string | null>(null);
   const [rewardTriggerType, setRewardTriggerType] = useState<"MIN_QUANTITY" | "MIN_SPEND">("MIN_QUANTITY");
   const [rewardThreshold, setRewardThreshold] = useState("");
-  const [rewardType, setRewardType] = useState<"FIXED_CASHBACK" | "PERCENT_DISCOUNT" | "FREE_ITEM" | "CUSTOM">("FIXED_CASHBACK");
+  const [rewardType, setRewardType] = useState<"FIXED_CASHBACK" | "PERCENT_DISCOUNT" | "FREE_ITEM" | "CUSTOM" | "MOBILE_AIRTIME">("FIXED_CASHBACK");
   const [rewardValue, setRewardValue] = useState("");
   const [rewardPromoCode, setRewardPromoCode] = useState("");
   const [rewardExpiresAt, setRewardExpiresAt] = useState("");
@@ -756,8 +756,11 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
 
   // ── Auth redirect ────────────────────────────────────────
   useEffect(() => {
-    if (authStatus === "guest") router.replace("/auth/signin");
-    else if (authStatus === "forbidden") router.replace("/");
+    if (authStatus === "guest" || authStatus === "forbidden") {
+      const url = authStatus === "guest" ? "/auth/signin" : "/";
+      const t = window.setTimeout(() => router.replace(url), 0);
+      return () => window.clearTimeout(t);
+    }
   }, [authStatus, router]);
 
   // ── Load categories ──────────────────────────────────────
@@ -864,7 +867,7 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
           );
           setRewardThreshold(String(Number(existingRule.threshold ?? 0)));
           setRewardType(
-            (["FIXED_CASHBACK", "PERCENT_DISCOUNT", "FREE_ITEM", "CUSTOM"] as const).includes(
+            (["FIXED_CASHBACK", "PERCENT_DISCOUNT", "FREE_ITEM", "CUSTOM", "MOBILE_AIRTIME"] as const).includes(
               existingRule.rewardType as never
             )
               ? (existingRule.rewardType as typeof rewardType)
@@ -1122,6 +1125,7 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
           minSpend: rewardTriggerType === "MIN_SPEND" ? thresholdNum : null,
           rewardType,
           rewardValue: rewardValue.trim(),
+          currency: primary.currency,
           promoCode: rewardPromoCode.trim() || null,
           expiresAt: rewardExpiresAt || null,
           active: rewardEnabled,
@@ -1827,17 +1831,18 @@ const EditProductPage: React.FC<EditProductPageProps> = ({ params }) => {
                       <option value="FIXED_CASHBACK">Fixed Cashback (ETB)</option>
                       <option value="PERCENT_DISCOUNT">Percentage Discount (%)</option>
                       <option value="FREE_ITEM">Free Bonus Item</option>
+                      <option value="MOBILE_AIRTIME">Mobile Airtime (ETB)</option>
                       <option value="CUSTOM">Custom</option>
                     </select>
                   </div>
                   <div>
                     <label className="text-xs font-semibold text-gray-600">
-                      {rewardType === "PERCENT_DISCOUNT" ? "Percent (%)" : rewardType === "FREE_ITEM" ? "Gift name" : "Value"}
+                      {rewardType === "PERCENT_DISCOUNT" ? "Percent (%)" : rewardType === "FREE_ITEM" ? "Gift name" : rewardType === "MOBILE_AIRTIME" ? "Airtime amount (ETB)" : "Value"}
                     </label>
                     <input
                       value={rewardValue}
                       onChange={(e) => setRewardValue(e.target.value)}
-                      placeholder={rewardType === "PERCENT_DISCOUNT" ? "15" : rewardType === "FREE_ITEM" ? "Free Socks" : "300"}
+                      placeholder={rewardType === "PERCENT_DISCOUNT" ? "15" : rewardType === "FREE_ITEM" ? "Free Socks" : rewardType === "MOBILE_AIRTIME" ? "50" : "300"}
                       className="mt-1 h-9 w-full rounded-lg border border-gray-200 px-2 text-sm"
                     />
                   </div>

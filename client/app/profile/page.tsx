@@ -202,7 +202,8 @@ export default function ProfilePage() {
 
   useEffect(() => {
     if (status === "unauthenticated" && !loggingOut) {
-      router.replace("/");
+      const t = window.setTimeout(() => router.replace("/"), 0);
+      return () => window.clearTimeout(t);
     }
   }, [status, router, loggingOut]);
 

@@ -43,6 +43,7 @@ interface Order {
     name: string;
     rewardType: string;
     rewardValue: string;
+    currency?: string;
     promoCode: string | null;
   } | null;
 }
@@ -84,7 +85,8 @@ export default function OrdersPage() {
 
   useEffect(() => {
     if (status === "unauthenticated") {
-      router.replace("/auth/signin");
+      const t = window.setTimeout(() => router.replace("/auth/signin"), 0);
+      return () => window.clearTimeout(t);
     } else if (status === "authenticated") {
       const timer = window.setTimeout(() => {
         void loadOrders();

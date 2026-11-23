@@ -54,6 +54,7 @@ interface Order {
     name: string;
     rewardType: string;
     rewardValue: string;
+    currency?: string;
     promoCode: string | null;
   } | null;
 }
@@ -95,7 +96,8 @@ export default function OrderDetailPage() {
 
   useEffect(() => {
     if (authStatus === "unauthenticated") {
-      router.replace("/auth/signin");
+      const t = window.setTimeout(() => router.replace("/auth/signin"), 0);
+      return () => window.clearTimeout(t);
     } else if (authStatus === "authenticated") {
       const timer = window.setTimeout(() => {
         void loadOrder();
@@ -295,11 +297,11 @@ export default function OrderDetailPage() {
                     </p>
                     <p className="mt-0.5 text-xs text-emerald-700">
                       {order.qualifiedRule.rewardType === "MOBILE_AIRTIME"
-                        ? `${order.qualifiedRule.rewardValue} ETB airtime`
+                        ? `${order.qualifiedRule.rewardValue} ${order.qualifiedRule.currency || "ETB"} airtime`
                         : order.qualifiedRule.rewardType === "PERCENT_DISCOUNT"
                           ? `${order.qualifiedRule.rewardValue}% discount`
                           : order.qualifiedRule.rewardType === "FIXED_CASHBACK"
-                            ? `${order.qualifiedRule.rewardValue} ETB cashback`
+                            ? `${order.qualifiedRule.rewardValue} ${order.qualifiedRule.currency || "ETB"} cashback`
                             : order.qualifiedRule.rewardValue}
                       {order.qualifiedRule.promoCode &&
                         ` · Code: ${order.qualifiedRule.promoCode}`}

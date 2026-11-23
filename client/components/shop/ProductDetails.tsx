@@ -4,7 +4,7 @@
 import { useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import { ShoppingCart, Play, ChevronLeft, ChevronRight } from "lucide-react";
+import { ShoppingCart, Play, ChevronLeft, ChevronRight, Gift } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { readCart, writeCart } from "@/app/lib/cart";
 import { getVideoSource } from "@/lib/video";
@@ -48,7 +48,9 @@ export interface Product {
     threshold: number;
     rewardType: string;
     rewardValue: string;
+    currency?: string | null;
     promoCode: string | null;
+    expiresAt?: string | null;
   }[];
 }
 
@@ -161,17 +163,19 @@ function rewardBadgeText(r: {
   threshold: number;
   rewardType: string;
   rewardValue: string;
+  currency?: string | null;
 }): string {
+  const cur = r.currency || "ETB";
   const trigger =
     r.triggerType === "MIN_QUANTITY"
       ? `Buy ${Number(r.threshold)}+`
-      : `Spend ${Number(r.threshold).toLocaleString()}+ ETB`;
+      : `Spend ${Number(r.threshold).toLocaleString()}+ ${cur}`;
   const reward =
     r.rewardType === "PERCENT_DISCOUNT"
       ? `${r.rewardValue}% off`
       : r.rewardType === "FREE_ITEM"
       ? `Free ${r.rewardValue}`
-      : `${r.rewardValue} ETB reward`;
+      : `${r.rewardValue} ${cur} reward`;
   return `${trigger} → ${reward}`;
 }
 
@@ -514,6 +518,7 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
   const [lightboxOpen, setLightboxOpen] = useState(false);
   const [cartMessage, setCartMessage] = useState("");
   const [selectedSize, setSelectedSize] = useState<string | null>(null);
+  const [selectedReward, setSelectedReward] = useState<NonNullable<Product["rewards"]>[number] | null>(null);
 
   const sizeVariants = useMemo(
     () =>
@@ -861,18 +866,20 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
               {(product.rewards || []).length > 0 && (
                 <div className="mt-3 space-y-1.5">
                   {(product.rewards || []).map((r) => (
-                    <div
+                    <button
                       key={r.id}
-                      className="flex items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-sm font-semibold text-emerald-800"
+                      type="button"
+                      onClick={() => setSelectedReward(r)}
+                      className="flex w-full items-center gap-2 rounded-xl border border-emerald-200 bg-emerald-50 px-3 py-2 text-left text-sm font-semibold text-emerald-800 transition hover:bg-emerald-100 hover:border-emerald-300"
                     >
-                      <span aria-hidden="true">🎁</span>
+                      <Gift className="h-4 w-4 shrink-0 text-emerald-600" />
                       <span>{rewardBadgeText(r)}</span>
                       {r.promoCode && (
                         <span className="ml-auto rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-bold text-white">
                           {r.promoCode}
                         </span>
                       )}
-                    </div>
+                    </button>
                   ))}
                 </div>
               )}
@@ -1014,7 +1021,7 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
                   <span role="status">{cartMessage}</span>
                   <Link
                     href="/checkout"
-                    className="font-bold text-[#cf5427] underline underline-offset-2"
+                    className="rounded-xl bg-[#cf5427] px-4 py-2 text-sm font-bold text-white shadow-sm transition hover:bg-[#b84520]"
                   >
                     {t("checkout.go_to_checkout", "Go to checkout")}
                   </Link>
@@ -1076,6 +1083,87 @@ export default function ProductDetails({ product }: ProductDetailsProps) {
           onClose={() => setLightboxOpen(false)}
           onSelect={setSelectedImage}
         />
+      )}
+
+      {selectedReward && (
+        <div
+          className="fixed inset-0 z-[90] flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setSelectedReward(null)}
+        >
+          <div
+            className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-start justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <span className="flex h-10 w-10 items-center justify-center rounded-full bg-emerald-100 text-emerald-700">
+                  <Gift className="h-5 w-5" />
+                </span>
+                <div>
+                  <h3 className="text-base font-bold text-slate-900">Purchase Reward</h3>
+                  <p className="text-xs text-slate-500">{selectedReward.name}</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedReward(null)}
+                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-700"
+                aria-label="Close"
+              >
+                <CloseIcon />
+              </button>
+            </div>
+            <dl className="space-y-3 text-sm">
+              <div className="flex justify-between gap-4">
+                <dt className="text-slate-500">Condition</dt>
+                <dd className="text-right font-semibold text-slate-800">
+                  {selectedReward.triggerType === "MIN_QUANTITY"
+                    ? `Buy ${Number(selectedReward.threshold)} or more`
+                    : `Spend ${Number(selectedReward.threshold).toLocaleString()} ${selectedReward.currency || "ETB"} or more`}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-4">
+                <dt className="text-slate-500">Reward</dt>
+                <dd className="text-right font-semibold text-emerald-700">
+                  {selectedReward.rewardType === "PERCENT_DISCOUNT"
+                    ? `${selectedReward.rewardValue}% discount`
+                    : selectedReward.rewardType === "FREE_ITEM"
+                    ? `Free ${selectedReward.rewardValue}`
+                    : selectedReward.rewardType === "MOBILE_AIRTIME"
+                    ? `${selectedReward.rewardValue} ${selectedReward.currency || "ETB"} airtime`
+                    : selectedReward.rewardType === "CUSTOM"
+                    ? selectedReward.rewardValue
+                    : `${selectedReward.rewardValue} ${selectedReward.currency || "ETB"} cashback`}
+                </dd>
+              </div>
+              {selectedReward.promoCode && (
+                <div className="flex justify-between gap-4">
+                  <dt className="text-slate-500">Promo code</dt>
+                  <dd>
+                    <span className="rounded-full bg-emerald-600 px-3 py-1 text-xs font-bold text-white">
+                      {selectedReward.promoCode}
+                    </span>
+                  </dd>
+                </div>
+              )}
+              {selectedReward.expiresAt && (
+                <div className="flex justify-between gap-4">
+                  <dt className="text-slate-500">Valid until</dt>
+                  <dd className="font-semibold text-slate-800">
+                    {new Date(selectedReward.expiresAt).toLocaleDateString("en-ET", {
+                      year: "numeric",
+                      month: "short",
+                      day: "numeric",
+                    })}
+                  </dd>
+                </div>
+              )}
+            </dl>
+            <p className="mt-4 rounded-xl bg-emerald-50 px-3 py-2 text-xs text-emerald-800">
+              The reward is confirmed automatically when your order qualifies. Our team will contact you to deliver it.
+            </p>
+          </div>
+        </div>
       )}
     </main>
   );

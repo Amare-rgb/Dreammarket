@@ -161,8 +161,11 @@ export default function AdminProfilePage() {
       const userData =
         localStorage.getItem("user") || sessionStorage.getItem("user");
 
+      const safeReplace = (url: string) =>
+        window.setTimeout(() => router.replace(url), 0);
+
       if (!token) {
-        router.replace("/auth/signin");
+        safeReplace("/auth/signin");
         setAuthLoading(false);
         return;
       }
@@ -171,16 +174,16 @@ export default function AdminProfilePage() {
         try {
           const parsedUser = JSON.parse(userData);
           if (parsedUser.role?.toUpperCase() !== "ADMIN") {
-            router.replace("/");
+            safeReplace("/");
             setAuthLoading(false);
             return;
           }
           setIsAuthenticated(true);
         } catch {
-          router.replace("/auth/signin");
+          safeReplace("/auth/signin");
         }
       } else {
-        router.replace("/auth/signin");
+        safeReplace("/auth/signin");
       }
       setAuthLoading(false);
     };

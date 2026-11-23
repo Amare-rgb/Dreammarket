@@ -99,7 +99,8 @@ export default function CheckoutPage() {
 
   useEffect(() => {
     if (status === "unauthenticated") {
-      router.replace("/auth/signin");
+      const t = window.setTimeout(() => router.replace("/auth/signin"), 0);
+      return () => window.clearTimeout(t);
     } else if (status === "authenticated" && user) {
       const timer = window.setTimeout(() => {
         setForm((current) => ({

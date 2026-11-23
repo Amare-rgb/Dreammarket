@@ -1,6 +1,8 @@
 // routes/admin.routes.js
 const express = require('express');
 const router = express.Router();
+const https = require('https');
+const axios = require('axios');
 const prisma = require('../lib/prisma');
 const { requireAdmin } = require('../middleware/auth');
 const { sendSms: sendSmsLib } = require('../lib/sms');
@@ -105,35 +107,47 @@ const toNum = (v) => {
   return Number.isFinite(n) ? n : null;
 };
 
-// ── SMS via Africa's Talking (lib/sms.js — real provider) ──
+// ── SMS via AfroMessage (lib/sms.js — real provider) ──
 async function sendSms(phone, message) {
   return sendSmsLib({ to: phone, message });
 }
 
-// ── Africa's Talking Airtime API (optional top-up fallback) ──
+// ── Airtime top-up fallback (Africa's Talking airtime API — optional) ──
+// AfroMessage does not offer airtime top-up; PIN vouchers are the primary method.
+// This only runs if legacy AT_API_KEY/AT_USERNAME are still configured.
 async function sendAirtimeTopup(phone, amount) {
   const apiKey = process.env.AT_API_KEY;
   const username = process.env.AT_USERNAME;
   if (!apiKey || !username) {
-    throw new Error('Africa\'s Talking not configured (AT_API_KEY / AT_USERNAME missing).');
+    throw new Error(
+      'Direct airtime top-up is not available (AfroMessage has no top-up API). Add airtime PIN vouchers instead.'
+    );
   }
   const sandbox = (process.env.AT_SANDBOX || 'true').toLowerCase() !== 'false';
-  const host = sandbox ? 'sandbox' : 'api';
-  const recipients = [{ recipient: String(phone).replace(/\D/g, ''), amount: String(amount) }];
-  const res = await fetch(`https://${host}.africastalking.com/version1/airtime/send`, {
-    method: 'POST',
-    headers: {
-      apiKey,
-      'Content-Type': 'application/x-www-form-urlencoded',
-      Accept: 'application/json',
-    },
-    body: new URLSearchParams({
+  const host = sandbox ? 'api.sandbox.africastalking.com' : 'api.africastalking.com';
+  const phoneNumber = '+' + String(phone).replace(/\D/g, '');
+  const amountStr = `ETB ${Number(amount).toFixed(2)}`;
+  const recipients = [{ phoneNumber, amount: amountStr }];
+  // Scoped TLS bypass — same workaround as lib/sms.js for local cert inspection
+  const httpsAgent = new https.Agent({ rejectUnauthorized: false });
+  const res = await axios.post(`https://${host}/version1/airtime/send`,
+    {
       username,
-      recipients: JSON.stringify(recipients),
-    }).toString(),
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok || data?.error) {
+      recipients,
+    },
+    {
+      headers: {
+        apiKey,
+        'Content-Type': 'application/json',
+        Accept: 'application/json',
+      },
+      httpsAgent,
+      timeout: 30000,
+      validateStatus: () => true,
+    }
+  );
+  const data = res.data || {};
+  if (res.status < 200 || res.status >= 300 || data?.error) {
     throw new Error(data?.error || `Africa's Talking error (${res.status})`);
   }
   return data;
@@ -151,6 +165,7 @@ async function sendEmail(to, subject, text) {
 const REWARD_SCOPES = ['PRODUCT', 'ALL_ORDERS'];
 const TRIGGER_TYPES = ['MIN_QUANTITY', 'MIN_SPEND'];
 const REWARD_TYPES = ['FIXED_CASHBACK', 'PERCENT_DISCOUNT', 'FREE_ITEM', 'CUSTOM', 'MOBILE_AIRTIME'];
+const PAYOUT_METHODS = ['AUTO', 'MOBILE_AIRTIME', 'TELEBIRR', 'CBE', 'AWASH', 'CHAPA', 'USD_TRANSFER', 'OTHER'];
 
 function normalizeRulePayload(body, { partial = false } = {}) {
   const data = {};
@@ -172,6 +187,9 @@ function normalizeRulePayload(body, { partial = false } = {}) {
   });
   pick('rewardType', (v) => (REWARD_TYPES.includes(v) ? v : 'FIXED_CASHBACK'));
   pick('rewardValue', (v) => String(v).slice(0, 500));
+  pick('currency', (v) => String(v).trim().toUpperCase().slice(0, 8) || 'ETB');
+  pick('payoutMethod', (v) => (PAYOUT_METHODS.includes(v) ? v : 'AUTO'));
+  pick('payoutDetails', (v) => (v ? String(v).slice(0, 1000) : null));
   pick('promoCode', (v) => (v ? String(v).trim().toUpperCase().slice(0, 60) : null));
   pick('expiresAt', (v) => (v ? new Date(v) : null));
   pick('active', (v) => Boolean(v));
@@ -405,13 +423,17 @@ router.post('/rewards/dispatch', requireAdmin, async (req, res) => {
       }
     }
 
+    const rewardCurrency = rule?.currency || 'ETB';
+    const payoutLabel = rule?.payoutMethod && rule.payoutMethod !== 'AUTO'
+      ? ` via ${rule.payoutMethod.replace(/_/g, ' ')}`
+      : '';
     const rewardText = customMessage ||
-      (rule ? `Reward unlocked: ${rule.name} — ${rule.rewardValue}` : 'Your reward is ready!');
+      (rule ? `Reward unlocked: ${rule.name} — ${rule.rewardValue} ${rewardCurrency}${payoutLabel}` : 'Your reward is ready!');
     let message = `DreamMar: ${rewardText}`;
     if (airtimeInfo) {
       message = airtimeInfo.mode === 'PIN'
-        ? `DreamMar Airtime: You received ${airtimeInfo.amount} ETB ${airtimeInfo.network} airtime! Recharge PIN: ${airtimeInfo.pin}. Dial *805*${airtimeInfo.pin}# to redeem.`
-        : `DreamMar Airtime: ${airtimeInfo.amount} ETB mobile airtime has been sent to your phone. Check your balance.`;
+        ? `DreamMar Airtime: You received ${airtimeInfo.amount} ${rewardCurrency} ${airtimeInfo.network} airtime! Recharge PIN: ${airtimeInfo.pin}. Dial *805*${airtimeInfo.pin}# to redeem.`
+        : `DreamMar Airtime: ${airtimeInfo.amount} ${rewardCurrency} mobile airtime has been sent to your phone. Check your balance.`;
     }
 
     const results = { sms: null, email: null };
@@ -459,6 +481,95 @@ router.post('/rewards/dispatch', requireAdmin, async (req, res) => {
     });
   } catch (error) {
     console.error('Error dispatching reward:', error);
+    res.status(500).json({ success: false, error: 'Server error' });
+  }
+});
+
+// ── Detect Ethiopian network from phone prefix ──
+function detectNetwork(phone) {
+  const digits = String(phone || '').replace(/\D/g, '');
+  const local = digits.startsWith('251') ? digits.slice(3) : digits.replace(/^0+/, '');
+  if (local.startsWith('09') || local.startsWith('07')) return 'Ethio Telecom';
+  if (local.startsWith('88') || local.startsWith('89')) return 'Safaricom';
+  return 'Other';
+}
+
+// POST /api/admin/airtime/send — real airtime top-up via Africa's Talking
+// body: { phone, amount }
+router.post('/airtime/send', requireAdmin, async (req, res) => {
+  try {
+    const phone = String(req.body?.phone || '').trim();
+    const amount = toNum(req.body?.amount);
+    const digits = phone.replace(/\D/g, '');
+    const normalized = digits.startsWith('251')
+      ? digits
+      : digits.startsWith('0')
+        ? '251' + digits.slice(1)
+        : '251' + digits;
+
+    if (!/^251\d{9}$/.test(normalized)) {
+      return res.status(400).json({ success: false, error: 'Enter a valid Ethiopian phone number (e.g. 0911...).' });
+    }
+    if (amount == null || amount <= 0) {
+      return res.status(400).json({ success: false, error: 'Enter a valid amount (ETB).' });
+    }
+    if (amount > 10000) {
+      return res.status(400).json({ success: false, error: 'Amount too large (max 10,000 ETB per send).' });
+    }
+
+    const network = detectNetwork(normalized);
+    let result;
+    try {
+      result = await sendAirtimeTopup(normalized, amount);
+    } catch (sendErr) {
+      await prisma.airtimeTransaction.create({
+        data: {
+          phone: normalized,
+          network,
+          amount,
+          status: 'FAILED',
+          error: String(sendErr.message || sendErr).slice(0, 1000),
+          sentBy: req.user?.id || null,
+        },
+      }).catch(() => {});
+      throw sendErr;
+    }
+
+    const requestId = result?.responses?.[0]?.requestId || null;
+    await prisma.airtimeTransaction.create({
+      data: {
+        phone: normalized,
+        network,
+        amount,
+        status: 'SENT',
+        requestId,
+        sentBy: req.user?.id || null,
+      },
+    }).catch((e) => console.warn('Airtime log failed:', e.message));
+
+    res.json({
+      success: true,
+      network,
+      phone: normalized,
+      amount,
+      result,
+    });
+  } catch (error) {
+    console.error('Error sending airtime:', error);
+    res.status(502).json({ success: false, error: error.message || 'Airtime send failed.' });
+  }
+});
+
+// GET /api/admin/airtime/history — recent top-up transactions
+router.get('/airtime/history', requireAdmin, async (req, res) => {
+  try {
+    const transactions = await prisma.airtimeTransaction.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+    });
+    res.json({ success: true, transactions });
+  } catch (error) {
+    console.error('Error fetching airtime history:', error);
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
