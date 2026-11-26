@@ -190,6 +190,9 @@ const { publicRouter: deliveryPublicRoutes, adminRouter: deliveryAdminRoutes } =
 const rewardsRoutes = require('./routes/rewards.routes');
 const { publicRouter: pagesPublicRoutes, adminRouter: pagesAdminRoutes } = require('./routes/pages.routes');
 const { publicRouter: mediaPublicRoutes, adminRouter: mediaAdminRoutes } = require('./routes/media.routes');
+const reviewRewardRoutes = require('./routes/reviewReward.routes');
+const { router: paymentsRoutes, adminRouter: paymentsAdminRoutes } = require('./routes/payments.routes');
+const smartEditRoutes = require('./routes/smartEdit.routes');
 
 // ═══════════════════════════════════════════════════════════
 // API ROUTER
@@ -217,6 +220,10 @@ apiRouter.use('/pages', pagesPublicRoutes);
 apiRouter.use('/admin/pages', pagesAdminRoutes);
 apiRouter.use('/media', mediaPublicRoutes);
 apiRouter.use('/admin/media', mediaAdminRoutes);
+apiRouter.use('/admin/review-reward', reviewRewardRoutes);
+apiRouter.use('/payments', paymentsRoutes);
+apiRouter.use('/admin/payments', paymentsAdminRoutes);
+apiRouter.use('/admin/smart-edit', smartEditRoutes);
 
 // ═══════════════════════════════════════════════════════════
 // HEALTH CHECK

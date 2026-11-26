@@ -6,9 +6,11 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
   ArrowLeft,
+  BadgeCheck,
   LoaderCircle,
   MapPin,
   Navigation,
+  ShieldAlert,
   ShoppingBag,
   Trash2,
 } from "lucide-react";
@@ -67,8 +69,47 @@ export default function CheckoutPage() {
   const [error, setError] = useState("");
   const [paymentProofUrl, setPaymentProofUrl] = useState("");
   const [paymentProofName, setPaymentProofName] = useState("");
+  const [paymentProofFile, setPaymentProofFile] = useState<File | null>(null);
   const [uploadingProof, setUploadingProof] = useState(false);
   const [paymentProofError, setPaymentProofError] = useState("");
+
+  // ── Post-order payment verification (shown on this page) ──
+  const [placedOrderNumber, setPlacedOrderNumber] = useState("");
+  const [verifyResult, setVerifyResult] = useState<Record<string, unknown> | null>(null);
+  const [verifying, setVerifying] = useState(false);
+  const [transactionRef, setTransactionRef] = useState("");
+  const [shotVerify, setShotVerify] = useState<{
+    status: "idle" | "loading" | "done" | "error";
+    message: string;
+    amount: number | null;
+    ref: string | null;
+    duplicateOf: string | null;
+  }>({ status: "idle", message: "", amount: null, ref: null, duplicateOf: null });
+
+  // ── Admin verification escalation (inline chat) ──
+  const [verifyTicket, setVerifyTicket] = useState<{
+    id: string;
+    status: string;
+    messages: { id: string; senderRole: string; body: string; createdAt: string }[];
+  } | null>(null);
+  const [chatInput, setChatInput] = useState("");
+  const [chatSending, setChatSending] = useState(false);
+  const [requestingAdmin, setRequestingAdmin] = useState(false);
+
+  // ── Nearest admin-posted delivery location ──
+  const [nearestLocation, setNearestLocation] = useState<{
+    id: string;
+    name: string;
+    country: string | null;
+    region: string | null;
+    woreda: string | null;
+    kebele: string | null;
+    landmark: string | null;
+    latitude: number | null;
+    longitude: number | null;
+    fee: number;
+    distanceKm: number | null;
+  } | null>(null);
 
   // ── Verified GPS location ──
   const [gps, setGps] = useState<GpsFix | null>(null);
@@ -150,6 +191,81 @@ export default function CheckoutPage() {
     );
   };
 
+  const verifyScreenshot = async (file: File) => {
+    const allowedTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+      "image/avif",
+      "application/pdf",
+    ];
+    if (!allowedTypes.includes(file.type)) {
+      setShotVerify({
+        status: "error",
+        message: "Choose a JPG, PNG, WEBP, AVIF, or PDF screenshot.",
+        amount: null,
+        ref: null,
+        duplicateOf: null,
+      });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      setShotVerify({
+        status: "error",
+        message: "The screenshot must be 10 MB or smaller.",
+        amount: null,
+        ref: null,
+        duplicateOf: null,
+      });
+      return;
+    }
+
+    setShotVerify({ status: "loading", message: "Reading screenshot…", amount: null, ref: null, duplicateOf: null });
+    try {
+      const data = new FormData();
+      data.append("screenshot", file);
+      const res = await api.post("/api/payments/verify-screenshot", data, {
+        timeout: 120000,
+        transformRequest: [
+          (payload: FormData, headers: Record<string, unknown>) => {
+            if (headers && typeof headers === "object") {
+              delete headers["Content-Type"];
+              delete headers["content-type"];
+            }
+            return payload;
+          },
+        ],
+      });
+      const d = res.data || {};
+      // The verified screenshot doubles as the required payment proof
+      if (d.url) {
+        setPaymentProofUrl(d.url);
+        setPaymentProofName(d.fileName || file.name);
+        setPaymentProofFile(file);
+        setPaymentProofError("");
+      }
+      if (d.transactionRef) setTransactionRef(d.transactionRef);
+      setShotVerify({
+        status: "done",
+        message: d.message || "Screenshot verified.",
+        amount: d.extractedAmount ?? null,
+        ref: d.transactionRef ?? null,
+        duplicateOf: d.duplicateOf ?? null,
+      });
+    } catch (err) {
+      const ax = err as { response?: { data?: { error?: string } } };
+      setShotVerify({
+        status: "error",
+        message:
+          ax.response?.data?.error ||
+          "Could not verify the screenshot. Try again or upload below.",
+        amount: null,
+        ref: null,
+        duplicateOf: null,
+      });
+    }
+  };
+
   const uploadPaymentProof = async (
     event: ChangeEvent<HTMLInputElement>
   ) => {
@@ -159,6 +275,7 @@ export default function CheckoutPage() {
 
     setPaymentProofUrl("");
     setPaymentProofName("");
+    setPaymentProofFile(null);
     const allowedTypes = [
       "image/jpeg",
       "image/png",
@@ -176,6 +293,7 @@ export default function CheckoutPage() {
     }
 
     setPaymentProofName(file.name);
+    setPaymentProofFile(file);
     setPaymentProofUrl("");
     setPaymentProofError("");
     setUploadingProof(true);
@@ -188,6 +306,7 @@ export default function CheckoutPage() {
     } catch (uploadError) {
       console.error("Could not upload payment information:", uploadError);
       setPaymentProofName("");
+      setPaymentProofFile(null);
       setPaymentProofError(
         "The file could not be uploaded. Please try again."
       );
@@ -271,6 +390,68 @@ export default function CheckoutPage() {
     );
   };
 
+  // Fetch nearest admin-posted delivery location whenever GPS locks
+  useEffect(() => {
+    if (!gps) {
+      const timer = setTimeout(() => setNearestLocation(null), 0);
+      return () => clearTimeout(timer);
+    }
+    let cancelled = false;
+    api
+      .get("/api/delivery-regions/nearest", {
+        params: { lat: gps.lat, lng: gps.lng },
+      })
+      .then((res) => {
+        if (!cancelled && res.data?.success) {
+          setNearestLocation(res.data.nearest || null);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setNearestLocation(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [gps]);
+
+  // Poll verification-request messages while a ticket is open
+  const verifyTicketId = verifyTicket?.id;
+  const verifyTicketStatus = verifyTicket?.status;
+  useEffect(() => {
+    if (!verifyTicketId || verifyTicketStatus !== "PENDING") return;
+    const timer = setInterval(async () => {
+      try {
+        const res = await api.get(
+          `/api/payments/verification-requests/${verifyTicketId}`
+        );
+        if (res.data?.success) setVerifyTicket(res.data.request);
+      } catch {
+        /* ignore poll errors */
+      }
+    }, 5000);
+    return () => clearInterval(timer);
+  }, [verifyTicketId, verifyTicketStatus]);
+
+  const sendChat = async () => {
+    if (!verifyTicket || !chatInput.trim() || chatSending) return;
+    setChatSending(true);
+    try {
+      await api.post(
+        `/api/payments/verification-requests/${verifyTicket.id}/messages`,
+        { body: chatInput.trim() }
+      );
+      setChatInput("");
+      const res = await api.get(
+        `/api/payments/verification-requests/${verifyTicket.id}`
+      );
+      if (res.data?.success) setVerifyTicket(res.data.request);
+    } catch {
+      /* ignore */
+    } finally {
+      setChatSending(false);
+    }
+  };
+
   // Re-fetch the GPS delivery quote whenever the subtotal changes so the
   // displayed fee (incl. free-delivery thresholds) stays accurate.
   useEffect(() => {
@@ -332,6 +513,7 @@ export default function CheckoutPage() {
         note: form.note,
         paymentMethod: "CASH_ON_DELIVERY",
         paymentProofUrl: paymentProofUrl || undefined,
+        transactionRef: transactionRef.trim() || undefined,
         customerLat: gps?.lat ?? null,
         customerLng: gps?.lng ?? null,
         gpsAccuracy: gps?.accuracy ?? null,
@@ -342,6 +524,56 @@ export default function CheckoutPage() {
       });
       const order = response.data.order as { orderNumber?: string };
       updateCart([]);
+
+      // Run payment verification and show the real result right here.
+      // Priority: explicit transaction reference → provider API check;
+      // otherwise OCR-verify the uploaded screenshot.
+      const ref = transactionRef.trim();
+      if ((ref || paymentProofFile) && order?.orderNumber) {
+        setVerifying(true);
+        try {
+          if (ref) {
+            const verifyResponse = await api.post("/api/payments/verify", {
+              orderNumber: order.orderNumber,
+              transactionRef: ref,
+            });
+            setVerifyResult(verifyResponse.data);
+          } else if (paymentProofFile) {
+            const verifyData = new FormData();
+            verifyData.append("screenshot", paymentProofFile);
+            const verifyResponse = await api.post(
+              `/api/orders/${encodeURIComponent(order.orderNumber)}/verify-payment`,
+              verifyData,
+              {
+                timeout: 120000,
+                transformRequest: [
+                  (data: FormData, headers: Record<string, unknown>) => {
+                    if (headers && typeof headers === "object") {
+                      delete headers["Content-Type"];
+                      delete headers["content-type"];
+                    }
+                    return data;
+                  },
+                ],
+              }
+            );
+            setVerifyResult(verifyResponse.data);
+          }
+        } catch (verifyError) {
+          const data = (
+            verifyError as { response?: { data?: Record<string, unknown> } }
+          )?.response?.data;
+          setVerifyResult(
+            data || { success: false, verified: false, error: "Payment verification failed." }
+          );
+        } finally {
+          setVerifying(false);
+        }
+        setPlacedOrderNumber(order.orderNumber);
+        setSubmitting(false);
+        return;
+      }
+
       router.push(
         order?.orderNumber
           ? `/orders/${encodeURIComponent(order.orderNumber)}`
@@ -363,6 +595,251 @@ export default function CheckoutPage() {
   }
 
   if (status === "unauthenticated") return null;
+
+  // ── Order placed + payment verification result ──
+  if (placedOrderNumber) {
+    const result = (verifyResult || {}) as {
+      success?: boolean;
+      verified?: boolean;
+      paymentStatus?: string;
+      comparison?: {
+        status?: string;
+        expected?: number;
+        paid?: number | null;
+        shortfall?: number | null;
+        extra?: number | null;
+      };
+      transactionRef?: string | null;
+      message?: string;
+      error?: string;
+      errorAm?: string;
+      canEscalate?: boolean;
+      reason?: string;
+    };
+    const cmp = result.comparison;
+    const ok = result.success === true || result.verified === true;
+
+    return (
+      <main className="min-h-screen bg-[var(--cream)] px-4 pb-16 pt-28 sm:px-6">
+        <div className="mx-auto max-w-xl">
+          <section className="rounded-2xl border border-[#f0e8d8] bg-white p-6 shadow-sm sm:p-8">
+            <div className="flex items-center gap-3">
+              {ok ? (
+                <BadgeCheck className="h-9 w-9 text-emerald-600" />
+              ) : (
+                <ShieldAlert className="h-9 w-9 text-amber-600" />
+              )}
+              <div>
+                <h1 className="text-xl font-bold text-[#20283a]">
+                  Order {placedOrderNumber} placed
+                </h1>
+                <p className="text-sm text-slate-500">
+                  {verifying
+                    ? "Verifying your payment receipt…"
+                    : ok
+                    ? "Payment verification complete."
+                    : "Payment verification finished — review below."}
+                </p>
+              </div>
+            </div>
+
+            {verifying && (
+              <div className="mt-6 flex items-center gap-3 rounded-xl bg-slate-50 p-4 text-sm text-slate-600">
+                <LoaderCircle className="h-5 w-5 animate-spin text-[#EB6D3D]" />
+                Reading your receipt with OCR — this can take up to a minute on first use…
+              </div>
+            )}
+
+            {!verifying && verifyResult && (
+              <div
+                className={`mt-6 rounded-xl border p-4 text-sm ${
+                  ok
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-900"
+                    : "border-amber-200 bg-amber-50 text-amber-900"
+                }`}
+              >
+                <p className="font-bold">
+                  {result.paymentStatus?.replaceAll("_", " ") ||
+                    cmp?.status?.replaceAll("_", " ") ||
+                    "UNVERIFIED"}
+                </p>
+                {cmp && (
+                  <dl className="mt-2 space-y-1 text-xs">
+                    <div className="flex justify-between">
+                      <dt className="text-slate-500">Order total</dt>
+                      <dd className="font-semibold">
+                        {cmp.expected != null ? money(cmp.expected) : "—"}
+                      </dd>
+                    </div>
+                    <div className="flex justify-between">
+                      <dt className="text-slate-500">Amount detected</dt>
+                      <dd className="font-semibold">
+                        {cmp.paid != null ? money(cmp.paid) : "Could not read"}
+                      </dd>
+                    </div>
+                    {cmp.shortfall != null && cmp.shortfall > 0 && (
+                      <div className="flex justify-between">
+                        <dt className="text-slate-500">Shortfall</dt>
+                        <dd className="font-semibold text-red-700">
+                          {money(cmp.shortfall)}
+                        </dd>
+                      </div>
+                    )}
+                    {cmp.extra != null && cmp.extra > 0 && (
+                      <div className="flex justify-between">
+                        <dt className="text-slate-500">Extra paid</dt>
+                        <dd className="font-semibold">{money(cmp.extra)}</dd>
+                      </div>
+                    )}
+                  </dl>
+                )}
+                {result.transactionRef && (
+                  <p className="mt-2 text-xs">
+                    Transaction ref:{" "}
+                    <span className="font-mono font-semibold">
+                      {result.transactionRef}
+                    </span>
+                  </p>
+                )}
+                <p className="mt-2 font-semibold">
+                  {result.message || result.error || result.errorAm}
+                </p>
+                {result.paymentStatus === "PENDING_ADMIN_REVIEW" && (
+                  <p className="mt-1 text-xs opacity-80">
+                    Your receipt was flagged for admin review — no action needed.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {/* ── Admin escalation + inline chat ── */}
+            {!verifying && !ok && (
+              <div className="mt-4">
+                {!verifyTicket ? (
+                  <button
+                    type="button"
+                    disabled={requestingAdmin}
+                    onClick={async () => {
+                      setRequestingAdmin(true);
+                      try {
+                        const res = await api.post(
+                          "/api/payments/verification-requests",
+                          {
+                            orderNumber: placedOrderNumber,
+                            transactionRef:
+                              transactionRef.trim() ||
+                              (result.transactionRef as string) ||
+                              "",
+                            receiptUrl: paymentProofUrl || undefined,
+                          }
+                        );
+                        if (res.data?.success) {
+                          const ticketRes = await api.get(
+                            `/api/payments/verification-requests/${res.data.request.id}`
+                          );
+                          setVerifyTicket(ticketRes.data.request);
+                        }
+                      } catch {
+                        // surfaced via chat absence; user can retry
+                      } finally {
+                        setRequestingAdmin(false);
+                      }
+                    }}
+                    className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl border border-amber-300 bg-amber-50 px-4 text-sm font-bold text-amber-800 transition hover:bg-amber-100 disabled:opacity-60"
+                  >
+                    {requestingAdmin && (
+                      <LoaderCircle size={15} className="animate-spin" />
+                    )}
+                    Request Admin Verification / Chat with Admin
+                  </button>
+                ) : (
+                  <div className="rounded-xl border border-slate-200 bg-slate-50 p-3">
+                    <p className="flex items-center justify-between text-xs font-bold text-slate-700">
+                      <span>Admin verification chat</span>
+                      <span
+                        className={`rounded-full px-2 py-0.5 text-[10px] font-bold ${
+                          verifyTicket.status === "PENDING"
+                            ? "bg-amber-100 text-amber-800"
+                            : verifyTicket.status === "APPROVED"
+                            ? "bg-emerald-100 text-emerald-800"
+                            : "bg-red-100 text-red-800"
+                        }`}
+                      >
+                        {verifyTicket.status}
+                      </span>
+                    </p>
+                    <div className="mt-2 max-h-56 space-y-2 overflow-y-auto">
+                      {verifyTicket.messages.map((m) => (
+                        <div
+                          key={m.id}
+                          className={`rounded-lg px-3 py-2 text-xs ${
+                            m.senderRole === "ADMIN" || m.senderRole === "SYSTEM"
+                              ? "bg-white border border-slate-200 text-slate-700"
+                              : "bg-[#EB6D3D]/15 text-slate-800 ml-6"
+                          }`}
+                        >
+                          <p className="mb-0.5 text-[10px] font-bold uppercase tracking-wide text-slate-400">
+                            {m.senderRole === "USER" ? "You" : m.senderRole === "ADMIN" ? "Admin" : "System"}
+                          </p>
+                          {m.body}
+                        </div>
+                      ))}
+                    </div>
+                    {verifyTicket.status === "PENDING" ? (
+                      <div className="mt-2 flex gap-2">
+                        <input
+                          value={chatInput}
+                          onChange={(e) => setChatInput(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter" && !chatSending) {
+                              e.preventDefault();
+                              void sendChat();
+                            }
+                          }}
+                          placeholder="Type a message to admin…"
+                          maxLength={2000}
+                          className="h-9 flex-1 rounded-lg border border-slate-300 px-3 text-xs outline-none focus:border-[#EB6D3D]"
+                        />
+                        <button
+                          type="button"
+                          disabled={chatSending || !chatInput.trim()}
+                          onClick={() => void sendChat()}
+                          className="h-9 rounded-lg bg-[#1d4ed8] px-3 text-xs font-bold text-white disabled:opacity-60"
+                        >
+                          {chatSending ? "…" : "Send"}
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="mt-2 text-xs font-semibold text-slate-600">
+                        {verifyTicket.status === "APPROVED"
+                          ? "Payment approved — your order is PAID."
+                          : "This request was closed by admin."}
+                      </p>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link
+                href={`/orders/${encodeURIComponent(placedOrderNumber)}`}
+                className="inline-flex h-11 flex-1 items-center justify-center rounded-xl bg-[#EB6D3D] px-5 text-sm font-bold text-[#20283a] transition hover:bg-[#cf5427] hover:text-white"
+              >
+                View order details
+              </Link>
+              <Link
+                href="/shop"
+                className="inline-flex h-11 items-center justify-center rounded-xl border border-slate-200 px-5 text-sm font-semibold text-slate-700 hover:bg-slate-50"
+              >
+                Continue shopping
+              </Link>
+            </div>
+          </section>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="min-h-screen bg-[var(--cream)] px-4 pb-16 pt-28 sm:px-6">
@@ -557,6 +1034,39 @@ export default function CheckoutPage() {
                       </label>
                     </div>
                   )}
+
+                  {/* Nearest admin-posted delivery location */}
+                  {nearestLocation && (
+                    <div className="mt-3 rounded-xl border border-[#EB6D3D]/30 bg-[#EB6D3D]/5 p-3">
+                      <p className="flex items-center gap-1.5 text-xs font-bold text-[#9c3d1a]">
+                        <MapPin size={13} />
+                        Nearest delivery point
+                        {nearestLocation.distanceKm != null &&
+                          ` — ${nearestLocation.distanceKm} km away`}
+                      </p>
+                      <p className="mt-1 text-sm font-semibold text-slate-800">
+                        {nearestLocation.name}
+                      </p>
+                      <p className="text-xs text-slate-600">
+                        {[
+                          nearestLocation.country,
+                          nearestLocation.region,
+                          nearestLocation.woreda,
+                          nearestLocation.kebele,
+                        ]
+                          .filter(Boolean)
+                          .join(" / ") || "Location on file"}
+                        {nearestLocation.landmark
+                          ? ` — ${nearestLocation.landmark}`
+                          : ""}
+                      </p>
+                      {nearestLocation.fee != null && (
+                        <p className="mt-1 text-xs font-semibold text-[#9c3d1a]">
+                          Delivery fee there: {money(Number(nearestLocation.fee))}
+                        </p>
+                      )}
+                    </div>
+                  )}
                 </div>
                 <label className="text-sm font-semibold text-slate-700 sm:col-span-2">
                   Order note <span className="font-normal text-slate-400">(optional)</span>
@@ -595,6 +1105,65 @@ export default function CheckoutPage() {
                     </span>
                   </span>
                 </label>
+                <div className="mt-4">
+                  <label className="block text-sm font-semibold text-slate-700">
+                    Verify payment screenshot{" "}
+                    <span className="font-normal text-slate-400">
+                      (upload your receipt — we read the amount &amp; reference)
+                    </span>
+                  </label>
+                  <input
+                    type="file"
+                    accept="image/jpeg,image/png,image/webp,image/avif,application/pdf"
+                    disabled={shotVerify.status === "loading" || submitting}
+                    onChange={(event) => {
+                      const file = event.target.files?.[0];
+                      event.target.value = "";
+                      if (file) void verifyScreenshot(file);
+                    }}
+                    className="mt-1.5 block w-full rounded-lg border border-slate-300 p-2 text-sm font-normal file:mr-3 file:rounded-md file:border-0 file:bg-[#1d4ed8]/10 file:px-3 file:py-2 file:text-xs file:font-semibold file:text-[#1d4ed8] disabled:opacity-60"
+                  />
+                  {shotVerify.status === "loading" && (
+                    <span className="mt-2 flex items-center gap-2 text-xs text-slate-600">
+                      <LoaderCircle className="h-4 w-4 animate-spin" />
+                      {shotVerify.message}
+                    </span>
+                  )}
+                  {shotVerify.status === "done" && (
+                    <div
+                      className={`mt-2 rounded-lg border p-2.5 text-xs ${
+                        shotVerify.duplicateOf
+                          ? "border-red-200 bg-red-50 text-red-800"
+                          : "border-emerald-200 bg-emerald-50 text-emerald-800"
+                      }`}
+                    >
+                      <p className="font-semibold">{shotVerify.message}</p>
+                      {(shotVerify.amount != null || shotVerify.ref) && (
+                        <p className="mt-1">
+                          {shotVerify.amount != null && (
+                            <>Amount read: <strong>ETB {shotVerify.amount.toFixed(2)}</strong></>
+                          )}
+                          {shotVerify.ref && (
+                            <>
+                              {shotVerify.amount != null && " · "}
+                              Ref: <span className="font-mono">{shotVerify.ref}</span>
+                            </>
+                          )}
+                        </p>
+                      )}
+                      {shotVerify.duplicateOf && (
+                        <p className="mt-1 font-semibold">
+                          This receipt was already used for order {shotVerify.duplicateOf}.
+                        </p>
+                      )}
+                    </div>
+                  )}
+                  {shotVerify.status === "error" && (
+                    <p className="mt-1.5 text-xs font-semibold text-red-600">
+                      {shotVerify.message}
+                    </p>
+                  )}
+                </div>
                 <label className="mt-4 block text-sm font-semibold text-slate-700">
                   Upload payment information or receipt{" "}
                   <span className="text-red-600">(required)</span>
@@ -625,6 +1194,7 @@ export default function CheckoutPage() {
                         onClick={() => {
                           setPaymentProofUrl("");
                           setPaymentProofName("");
+                          setPaymentProofFile(null);
                           setPaymentProofError("");
                         }}
                         className="shrink-0 font-semibold underline"

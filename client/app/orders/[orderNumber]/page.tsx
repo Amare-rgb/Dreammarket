@@ -40,6 +40,11 @@ interface Order {
   status: OrderStatus;
   paymentMethod: string;
   paymentProofUrl: string | null;
+  paymentStatus?: string | null;
+  transactionRef?: string | null;
+  paymentScreenshotUrl?: string | null;
+  verificationNotes?: string | null;
+  verifiedAt?: string | null;
   total: number;
   createdAt: string;
   updatedAt?: string;

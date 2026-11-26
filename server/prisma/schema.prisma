@@ -43,16 +43,20 @@ model User {
   updatedAt DateTime @updatedAt
 
   // Relationships
-  adminProfile    AdminProfile?
-  profile         Profile?
-  reviews         Review[]
-  addresses       Address[]
-  categories      Category[]         @relation("CategoryCreator")
-  chatMessages    ChatMessage[]
-  articles        Article[]
-  articleComments ArticleComment[]
-  orders          Order[]
-  rewardDispatches RewardDispatch[]
+  adminProfile                AdminProfile?
+  profile                     Profile?
+  reviews                     Review[]
+  addresses                   Address[]
+  categories                  Category[]                   @relation("CategoryCreator")
+  chatMessages                ChatMessage[]
+  articles                    Article[]
+  articleComments             ArticleComment[]
+  orders                      Order[]
+  rewardDispatches            RewardDispatch[]
+  rewardTransactions          RewardTransaction[]
+  paymentVerificationRequests PaymentVerificationRequest[]
+  // Affiliate / referral code (used for commission crediting on paid orders)
+  affiliateCode               String?                      @unique
 
   @@index([role])
   @@index([createdAt])
@@ -144,57 +148,58 @@ model Category {
 }
 
 model Product {
-  id                String   @id @default(cuid())
+  id                 String        @id @default(cuid())
   // Optional side/add-on products linked to this main product
-  sideProductLinks  ProductSide[] @relation("MainProductSides")
-  sideOfLinks       ProductSide[] @relation("SideProductLink")
-  sizesList         ProductSize[]
-  rewardRules       RewardRule[]
-  name              String
-  slug              String   @unique
-  description       String   @db.Text
-  price             Decimal  @db.Decimal(10, 2)
-  currency          String   @default("ETB")
+  sideProductLinks   ProductSide[] @relation("MainProductSides")
+  sideOfLinks        ProductSide[] @relation("SideProductLink")
+  sizesList          ProductSize[]
+  rewardRules        RewardRule[]
+  name               String
+  slug               String        @unique
+  description        String        @db.Text
+  price              Decimal       @db.Decimal(10, 2)
+  currency           String        @default("ETB")
   // ✅ Multi-currency prices: [{ "currency": "ETB", "amount": 1500 }, ...]
-  prices            Json?
-  discountPrice     Decimal? @db.Decimal(10, 2)
+  prices             Json?
+  discountPrice      Decimal?      @db.Decimal(10, 2)
   // ✅ Multi-currency discount prices: [{ "currency": "ETB", "amount": 1200 }, ...]
-  discountPrices    Json?
-  stock             Int      @default(0)
+  discountPrices     Json?
+  stock              Int           @default(0)
   // ✅ Inventory availability status
-  availabilityStatus String   @default("AVAILABLE") // AVAILABLE | OUT_OF_STOCK_TEMPORARY
-  outOfStockAt      DateTime?
-  autoRestock       Boolean  @default(true)
-  restockAfterDays  Int      @default(2)
-  restockQuantity   Int      @default(10)
-  sku               String   @unique
-  images            String[]
-  categoryId        String
-  subCategoryId     String?
-  tags              String[]
-  warranty          String?
-  videoUrl          String?
-  unitOfMeasurement String   @default("pcs")
-  sizes             String?
-  colors            String?
-  brand             String?
-  weight            Float?
-  estimatedDelivery String?
-  durationTime      String?  @default("1h")
-  pricePerUnit      Decimal? @db.Decimal(10, 2)
+  availabilityStatus String        @default("AVAILABLE") // AVAILABLE | OUT_OF_STOCK_TEMPORARY
+  outOfStockAt       DateTime?
+  autoRestock        Boolean       @default(true)
+  restockAfterDays   Int           @default(2)
+  restockQuantity    Int           @default(10)
+  sku                String        @unique
+  images             String[]
+  categoryId         String
+  subCategoryId      String?
+  tags               String[]
+  warranty           String?
+  videoUrl           String?
+  unitOfMeasurement  String        @default("pcs")
+  sizes              String?
+  colors             String?
+  brand              String?
+  weight             Float?
+  estimatedDelivery  String?
+  durationTime       String?       @default("1h")
+  pricePerUnit       Decimal?      @db.Decimal(10, 2)
   // ✅ Stock & arrival countdown: upcoming availability, restock, and sale end
-  availableAt       DateTime?
-  restockDate       DateTime?
-  saleEndDate       DateTime?
+  availableAt        DateTime?
+  restockDate        DateTime?
+  saleEndDate        DateTime?
   // ✅ Approval workflow: new products start PENDING until an admin publishes them
-  status            ProductStatus @default(PUBLISHED)
-  createdAt         DateTime @default(now())
-  updatedAt         DateTime @updatedAt
+  status             ProductStatus @default(PUBLISHED)
+  createdAt          DateTime      @default(now())
+  updatedAt          DateTime      @updatedAt
 
-  category    Category    @relation(fields: [categoryId], references: [id])
-  subCategory Category?   @relation("ProductSubCategory", fields: [subCategoryId], references: [id])
-  reviews     Review[]
-  orderItems  OrderItem[]
+  category           Category            @relation(fields: [categoryId], references: [id])
+  subCategory        Category?           @relation("ProductSubCategory", fields: [subCategoryId], references: [id])
+  reviews            Review[]
+  orderItems         OrderItem[]
+  rewardTransactions RewardTransaction[]
 
   @@index([categoryId])
   @@index([sku])
@@ -242,38 +247,38 @@ model ProductSize {
 // LOYALTY & REWARD RULES
 // ============================================
 model RewardRule {
-  id           String   @id @default(cuid())
-  name         String
-  description  String?  @db.Text
+  id            String    @id @default(cuid())
+  name          String
+  description   String?   @db.Text
   // Scope: PRODUCT = tied to a specific product, ALL_ORDERS = store-wide
-  scope        String   @default("ALL_ORDERS")
-  productId    String?
+  scope         String    @default("ALL_ORDERS")
+  productId     String?
   // Trigger: MIN_QUANTITY = units bought, MIN_SPEND = amount spent
-  triggerType  String   @default("MIN_SPEND")
+  triggerType   String    @default("MIN_SPEND")
   // Threshold value (quantity or currency amount)
-  threshold    Decimal  @default(0) @db.Decimal(12, 2)
+  threshold     Decimal   @default(0) @db.Decimal(12, 2)
   // Legacy cumulative-spend threshold (kept for backward compatibility)
-  minSpend     Decimal? @db.Decimal(12, 2)
+  minSpend      Decimal?  @db.Decimal(12, 2)
   // FIXED_CASHBACK | PERCENT_DISCOUNT | FREE_ITEM | CUSTOM
-  rewardType   String   @default("FIXED_CASHBACK")
+  rewardType    String    @default("FIXED_CASHBACK")
   // Reward value: currency amount, percent, free item name, or custom text
-  rewardValue  String
+  rewardValue   String
   // Currency for threshold/reward amounts (ETB, USD, EUR, ...)
-  currency     String   @default("ETB")
+  currency      String    @default("ETB")
   // How the reward is delivered: AUTO (SMS/email) | MOBILE_AIRTIME | TELEBIRR | CBE | AWASH | CHAPA | USD_TRANSFER | OTHER
-  payoutMethod String   @default("AUTO")
+  payoutMethod  String    @default("AUTO")
   // Payout account/details hint for transfer methods (phone, account no, bank info)
-  payoutDetails String? @db.Text
+  payoutDetails String?   @db.Text
   // Optional promo code granted by this rule (auto-created in promo_codes)
-  promoCode    String?
-  expiresAt    DateTime?
-  active       Boolean  @default(true)
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
+  promoCode     String?
+  expiresAt     DateTime?
+  active        Boolean   @default(true)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
-  product     Product?        @relation(fields: [productId], references: [id], onDelete: Cascade)
-  dispatches  RewardDispatch[]
-  qualifiedOrders Order[]     @relation("OrderQualifiedRule")
+  product         Product?         @relation(fields: [productId], references: [id], onDelete: Cascade)
+  dispatches      RewardDispatch[]
+  qualifiedOrders Order[]          @relation("OrderQualifiedRule")
 
   @@index([active])
   @@index([productId])
@@ -284,21 +289,21 @@ model RewardRule {
 // REWARD DISPATCH AUDIT LOG (SMS / Email)
 // ============================================
 model RewardDispatch {
-  id          String    @id @default(cuid())
-  rewardRuleId String?
-  userId      String?
-  orderId     String?
+  id             String    @id @default(cuid())
+  rewardRuleId   String?
+  userId         String?
+  orderId        String?
   // Recipient contact
   recipientEmail String?
   recipientPhone String?
-  channel     String    // SMS | EMAIL | BOTH
-  status      String    @default("PENDING") // PENDING | SENT | FAILED | REDEEMED
-  message     String?   @db.Text
-  error       String?   @db.Text
-  sentAt      DateTime?
-  sentBy      String?   // admin user id
-  createdAt   DateTime  @default(now())
-  updatedAt   DateTime  @updatedAt
+  channel        String // SMS | EMAIL | BOTH
+  status         String    @default("PENDING") // PENDING | SENT | FAILED | REDEEMED
+  message        String?   @db.Text
+  error          String?   @db.Text
+  sentAt         DateTime?
+  sentBy         String? // admin user id
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 
   rewardRule RewardRule? @relation(fields: [rewardRuleId], references: [id], onDelete: SetNull)
   user       User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -314,18 +319,18 @@ model RewardDispatch {
 // AIRTIME VOUCHERS (manual PIN pool for MOBILE_AIRTIME rewards)
 // ============================================
 model AirtimeVoucher {
-  id             String    @id @default(cuid())
+  id              String    @id @default(cuid())
   // Face value in ETB
-  amount         Decimal   @db.Decimal(10, 2)
-  pinCode        String
+  amount          Decimal   @db.Decimal(10, 2)
+  pinCode         String
   // e.g. Ethio Telecom / Safaricom / Telebirr
-  network        String?
+  network         String?
   // AVAILABLE | USED
-  status         String    @default("AVAILABLE")
+  status          String    @default("AVAILABLE")
   assignedOrderId String?
-  usedAt         DateTime?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  usedAt          DateTime?
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
 
   @@index([status, amount])
   @@map("airtime_vouchers")
@@ -335,16 +340,16 @@ model AirtimeVoucher {
 // AIRTIME TRANSACTIONS (real top-up history)
 // ============================================
 model AirtimeTransaction {
-  id          String   @id @default(cuid())
-  phone       String
-  network     String?
-  amount      Decimal  @db.Decimal(10, 2)
-  currency    String   @default("ETB")
-  status      String   @default("SENT") // SENT | FAILED
-  requestId   String?
-  error       String?  @db.Text
-  sentBy      String?  // admin user id
-  createdAt   DateTime @default(now())
+  id        String   @id @default(cuid())
+  phone     String
+  network   String?
+  amount    Decimal  @db.Decimal(10, 2)
+  currency  String   @default("ETB")
+  status    String   @default("SENT") // SENT | FAILED
+  requestId String?
+  error     String?  @db.Text
+  sentBy    String? // admin user id
+  createdAt DateTime @default(now())
 
   @@index([createdAt])
   @@index([phone])
@@ -355,70 +360,87 @@ model AirtimeTransaction {
 // PROMO CODES (checkout redemption)
 // ============================================
 model PromoCode {
-  id             String    @id @default(cuid())
-  code           String    @unique
-  description    String?
+  id            String    @id @default(cuid())
+  code          String    @unique
+  description   String?
   // PERCENT | FIXED
-  discountType   String    @default("PERCENT")
-  discountValue  Decimal   @db.Decimal(12, 2)
-  minOrderTotal  Decimal?  @db.Decimal(12, 2)
-  active         Boolean   @default(true)
-  expiresAt      DateTime?
-  usageLimit     Int?
-  usedCount      Int       @default(0)
+  discountType  String    @default("PERCENT")
+  discountValue Decimal   @db.Decimal(12, 2)
+  minOrderTotal Decimal?  @db.Decimal(12, 2)
+  active        Boolean   @default(true)
+  expiresAt     DateTime?
+  usageLimit    Int?
+  usedCount     Int       @default(0)
   // Link back to the reward rule that generated this code (optional)
-  rewardRuleId   String?
-  createdAt      DateTime  @default(now())
-  updatedAt      DateTime  @updatedAt
+  rewardRuleId  String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
 
   @@index([active])
   @@map("promo_codes")
 }
 
 model Order {
-  id              String      @id @default(cuid())
-  orderNumber     String      @unique
+  id              String  @id @default(cuid())
+  orderNumber     String  @unique
   customerName    String
   customerEmail   String
   customerPhone   String
-  shippingAddress String      @db.Text
-  note            String?     @db.Text
-  paymentMethod   String      @default("CASH_ON_DELIVERY")
+  shippingAddress String  @db.Text
+  note            String? @db.Text
+  paymentMethod   String  @default("CASH_ON_DELIVERY")
   paymentProofUrl String?
-  status          OrderStatus @default(PENDING)
-  total           Decimal     @db.Decimal(12, 2)
+
+  // Payment verification (OCR receipt check)
+  transactionRef       String?   @unique
+  paymentScreenshotUrl String?
+  // UNVERIFIED | VERIFIED | PENDING_ADMIN_REVIEW | AMOUNT_MISMATCH | DUPLICATE_RECEIPT | REJECTED
+  paymentStatus        String?   @default("UNVERIFIED")
+  verificationMethod   String? // OCR | RECEIPT_URL | ADMIN
+  verificationNotes    String?   @db.Text
+  verifiedAt           DateTime?
+
+  status OrderStatus @default(PENDING)
+  total  Decimal     @db.Decimal(12, 2)
 
   // Linked customer account (for loyalty/spend tracking)
-  userId          String?
+  userId         String?
   // Promo / reward code applied at checkout
-  promoCode       String?
-  discountAmount  Decimal     @default(0) @db.Decimal(12, 2)
+  promoCode      String?
+  discountAmount Decimal @default(0) @db.Decimal(12, 2)
 
   // Delivery fee & geolocation
-  deliveryFee       Decimal?  @db.Decimal(10, 2)
+  deliveryFee        Decimal? @db.Decimal(10, 2)
   deliveryDistanceKm Float?
-  customerLat       Float?
-  customerLng       Float?
-  deliveryMapsUrl   String?
+  customerLat        Float?
+  customerLng        Float?
+  deliveryMapsUrl    String?
   // Verified GPS & reverse-geocoded delivery details
-  gpsAccuracy       Float?
-  geoAddress        String?   @db.Text
-  landmark          String?
-  deliveryVerified  Boolean   @default(false)
+  gpsAccuracy        Float?
+  geoAddress         String?  @db.Text
+  landmark           String?
+  deliveryVerified   Boolean  @default(false)
 
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
-  user    User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
-  items   OrderItem[]
+  user             User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  items            OrderItem[]
   rewardDispatches RewardDispatch[]
   // Reward rule this order qualified for (auto-evaluated at checkout)
-  rewardQualified   Boolean     @default(false)
-  qualifiedRule   RewardRule? @relation("OrderQualifiedRule", fields: [qualifiedRuleId], references: [id], onDelete: SetNull)
-  qualifiedRuleId String?
+  rewardQualified  Boolean          @default(false)
+  qualifiedRule    RewardRule?      @relation("OrderQualifiedRule", fields: [qualifiedRuleId], references: [id], onDelete: SetNull)
+  qualifiedRuleId  String?
   // Delivery region selected at checkout (fallback when GPS unavailable)
-  deliveryRegion   DeliveryRegion? @relation(fields: [deliveryRegionId], references: [id], onDelete: SetNull)
+  deliveryRegion   DeliveryRegion?  @relation(fields: [deliveryRegionId], references: [id], onDelete: SetNull)
   deliveryRegionId String?
+
+  // Affiliate attribution — commission credited when payment is verified
+  affiliateCode       String?
+  affiliateCommission Decimal? @db.Decimal(12, 2)
+
+  paymentVerificationRequests PaymentVerificationRequest[]
+  rewardTransactions          RewardTransaction[]
 
   @@index([status, createdAt])
   @@index([customerEmail])
@@ -463,10 +485,10 @@ model Article {
   note          String?  @db.Text
   noteAm        String?  @db.Text
   published     Boolean  @default(false)
-  views       Int      @default(0)
-  authorId    String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  views         Int      @default(0)
+  authorId      String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   author   User?            @relation(fields: [authorId], references: [id], onDelete: SetNull)
   comments ArticleComment[]
@@ -492,19 +514,19 @@ model ArticleCategory {
 }
 
 model ArticleComment {
-  id          String   @id @default(cuid())
-  articleId   String
-  userId      String?
-  name        String
-  message     String   @db.Text
-  imageUrl    String?
-  pdfUrl      String?
-  status      String   @default("PENDING") // PENDING | APPROVED | HIDDEN
-  reply       String?  @db.Text
-  repliedAt   DateTime?
-  repliedBy   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String    @id @default(cuid())
+  articleId String
+  userId    String?
+  name      String
+  message   String    @db.Text
+  imageUrl  String?
+  pdfUrl    String?
+  status    String    @default("PENDING") // PENDING | APPROVED | HIDDEN
+  reply     String?   @db.Text
+  repliedAt DateTime?
+  repliedBy String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
   article Article @relation(fields: [articleId], references: [id], onDelete: Cascade)
   user    User?   @relation(fields: [userId], references: [id], onDelete: SetNull)
@@ -515,21 +537,22 @@ model ArticleComment {
 }
 
 model Review {
-  id          String   @id @default(cuid())
-  userId      String
-  productId   String
-  rating      Int      @default(5)
-  comment     String?  @db.Text
-  imageUrl    String?
-  status      String   @default("PENDING") // PENDING | APPROVED | HIDDEN
-  reply       String?  @db.Text
-  repliedAt   DateTime?
-  repliedBy   String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  id        String    @id @default(cuid())
+  userId    String
+  productId String
+  rating    Int       @default(5)
+  comment   String?   @db.Text
+  imageUrl  String?
+  status    String    @default("PENDING") // PENDING | APPROVED | HIDDEN
+  reply     String?   @db.Text
+  repliedAt DateTime?
+  repliedBy String?
+  createdAt DateTime  @default(now())
+  updatedAt DateTime  @updatedAt
 
-  user    User    @relation(fields: [userId], references: [id])
-  product Product @relation(fields: [productId], references: [id])
+  user               User                @relation(fields: [userId], references: [id])
+  product            Product             @relation(fields: [productId], references: [id])
+  rewardTransactions RewardTransaction[]
 
   @@unique([userId, productId])
   @@index([productId, status])
@@ -561,7 +584,14 @@ model Address {
 model DeliveryRegion {
   id        String   @id @default(cuid())
   name      String
-  country   String?
+  country   String?  @default("Ethiopia")
+  // Structured admin location fields
+  region    String? // Region / Kilil
+  woreda    String?
+  kebele    String?
+  landmark  String? // Specific location / landmark text
+  latitude  Decimal? @db.Decimal(10, 7)
+  longitude Decimal? @db.Decimal(10, 7)
   // Flat delivery fee for this region (ETB)
   fee       Decimal  @default(0) @db.Decimal(10, 2)
   active    Boolean  @default(true)
@@ -614,15 +644,15 @@ model VideoRelease {
 // POPULAR ARTICLES (ranked lists by period)
 // ============================================
 model PopularArticle {
-  id          String   @id @default(cuid())
+  id          String    @id @default(cuid())
   title       String
   url         String
   // LAST_7_DAYS | LAST_30_DAYS
-  period      String   @default("LAST_7_DAYS")
-  rank        Int      @default(0)
+  period      String    @default("LAST_7_DAYS")
+  rank        Int       @default(0)
   publishedAt DateTime?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
 
   @@index([period, rank])
   @@map("popular_articles")
@@ -664,6 +694,94 @@ model NewsletterIssue {
 
   @@index([status, publishedAt])
   @@map("newsletter_issues")
+}
+
+// ============================================
+// REVIEW REWARD CONFIG (singleton — admin configurable)
+// ============================================
+model ReviewRewardConfig {
+  id        String   @id @default(cuid())
+  enabled   Boolean  @default(false)
+  // Minimum star rating that earns a reward (default 4)
+  minRating Int      @default(4)
+  // Reward amount credited to the user's wallet
+  amount    Decimal  @default(0) @db.Decimal(12, 2)
+  currency  String   @default("ETB")
+  note      String?  @db.Text
+  updatedAt DateTime @updatedAt
+  updatedBy String?
+
+  @@map("review_reward_configs")
+}
+
+// ============================================
+// REWARD TRANSACTIONS (user wallet ledger)
+// ============================================
+model RewardTransaction {
+  id        String   @id @default(cuid())
+  userId    String
+  // CREDIT | DEBIT
+  type      String   @default("CREDIT")
+  amount    Decimal  @db.Decimal(12, 2)
+  currency  String   @default("ETB")
+  // REVIEW | ORDER | COMMISSION | MANUAL | REFUND
+  source    String
+  reviewId  String?
+  productId String?
+  orderId   String?
+  note      String?  @db.Text
+  createdAt DateTime @default(now())
+
+  user    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  review  Review?  @relation(fields: [reviewId], references: [id], onDelete: SetNull)
+  product Product? @relation(fields: [productId], references: [id], onDelete: SetNull)
+  order   Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  // One reward per (user, product, source) — prevents review farming
+  @@unique([userId, productId, source])
+  @@index([userId, createdAt])
+  @@map("reward_transactions")
+}
+
+// ============================================
+// PAYMENT VERIFICATION REQUESTS (admin escalation + chat)
+// ============================================
+model PaymentVerificationRequest {
+  id             String    @id @default(cuid())
+  orderId        String
+  userId         String
+  transactionRef String
+  receiptUrl     String?
+  // PENDING | APPROVED | REJECTED | CLOSED
+  status         String    @default("PENDING")
+  adminNote      String?   @db.Text
+  resolvedBy     String?
+  resolvedAt     DateTime?
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+
+  order    Order                        @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  user     User                         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  messages PaymentVerificationMessage[]
+
+  @@index([status, createdAt])
+  @@index([userId])
+  @@map("payment_verification_requests")
+}
+
+model PaymentVerificationMessage {
+  id         String   @id @default(cuid())
+  requestId  String
+  senderId   String
+  // USER | ADMIN | SYSTEM
+  senderRole String
+  body       String   @db.Text
+  createdAt  DateTime @default(now())
+
+  request PaymentVerificationRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+
+  @@index([requestId, createdAt])
+  @@map("payment_verification_messages")
 }
 
 // ============================================
@@ -715,13 +833,13 @@ model Settings {
   darkMode             Boolean @default(false)
 
   // Store origin coordinates for distance-based delivery pricing
-  storeLatitude     Float?
-  storeLongitude    Float?
-  deliveryBaseFee   Float   @default(0)
-  deliveryPerKmRate Float   @default(0)
+  storeLatitude       Float?
+  storeLongitude      Float?
+  deliveryBaseFee     Float  @default(0)
+  deliveryPerKmRate   Float  @default(0)
   // Distance tiers: [{ "minKm": 0, "maxKm": 5, "fee": 50 }, ...]
-  deliveryTiers     Json?
-  freeDeliveryAbove Float?
+  deliveryTiers       Json?
+  freeDeliveryAbove   Float?
   // Maximum allowed delivery radius from store origin (km)
   maxDeliveryRadiusKm Float? @default(30)
 

@@ -1,0 +1,25 @@
+{
+  "name": "default",
+  "description": "Balanced rough-cut preset: trim dead air, keep scene changes, burn captions.",
+  "silence": {
+    "noise": "-35dB",
+    "minDuration": 0.6,
+    "mergeGap": 0.3,
+    "padding": 0.08
+  },
+  "scenes": {
+    "threshold": 0.35,
+    "highlightMinDuration": 4
+  },
+  "captions": {
+    "enabled": true,
+    "maxCharsPerLine": 42,
+    "maxLines": 2
+  },
+  "render": {
+    "crf": 20,
+    "preset": "medium",
+    "burnSubtitles": true,
+    "keepOriginal": true
+  }
+}

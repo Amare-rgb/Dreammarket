@@ -1,0 +1,72 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Smart Edit: Analyze video…",
+      "type": "shell",
+      "command": "node",
+      "args": [
+        "smart-editor/src/cli.js",
+        "analyze",
+        "${input:videoFile}",
+        "--out",
+        "smart-editor/out"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Smart Edit: Captions only…",
+      "type": "shell",
+      "command": "node",
+      "args": [
+        "smart-editor/src/cli.js",
+        "captions",
+        "${input:videoFile}",
+        "--out",
+        "smart-editor/out"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "Smart Edit: Render from plan…",
+      "type": "shell",
+      "command": "node",
+      "args": [
+        "smart-editor/src/cli.js",
+        "render",
+        "${input:planFile}"
+      ],
+      "group": "build",
+      "presentation": {
+        "reveal": "always",
+        "panel": "dedicated",
+        "clear": true
+      },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "videoFile",
+      "type": "promptString",
+      "description": "Path to the source video file (e.g. ./videos/talk.mp4)"
+    },
+    {
+      "id": "planFile",
+      "type": "promptString",
+      "description": "Path to edit-plan.json (e.g. smart-editor/out/talk/edit-plan.json)"
+    }
+  ]
+}

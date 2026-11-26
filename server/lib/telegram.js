@@ -396,4 +396,21 @@ async function sendArticleAnnouncement(article) {
   };
 }
 
-module.exports = { sendArticleAnnouncement };
+// Generic plain-text admin alert (payment verification requests, etc.)
+async function sendTelegramMessage(text) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  if (!token || !chatId) return { sent: false, reason: 'not_configured' };
+  try {
+    await telegramRequest(token, 'sendMessage', {
+      chat_id: chatId,
+      text: String(text).slice(0, 4000),
+    });
+    return { sent: true };
+  } catch (error) {
+    console.error('Telegram alert failed:', error.message);
+    return { sent: false, reason: error.message };
+  }
+}
+
+module.exports = { sendArticleAnnouncement, sendTelegramMessage };

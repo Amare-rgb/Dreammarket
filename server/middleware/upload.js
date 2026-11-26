@@ -13,6 +13,10 @@ const SUBFOLDERS = {
   documents: 'documents',
   document: 'documents',
   receipt: 'receipts',
+  receipts: 'receipts',
+  screenshot: 'payments',
+  payment: 'payments',
+  paymentproof: 'payments',
   article: 'articles',
   logo: 'settings',
 };

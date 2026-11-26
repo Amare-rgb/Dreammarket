@@ -10,11 +10,18 @@ import {
   X,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import LocationPicker from "@/components/admin/LocationPicker";
 
 interface DeliveryRegion {
   id: string;
   name: string;
   country: string | null;
+  region: string | null;
+  woreda: string | null;
+  kebele: string | null;
+  landmark: string | null;
+  latitude: number | null;
+  longitude: number | null;
   fee: number;
   active: boolean;
   sortOrder: number;
@@ -24,6 +31,12 @@ interface DeliveryRegion {
 interface RegionForm {
   name: string;
   country: string;
+  region: string;
+  woreda: string;
+  kebele: string;
+  landmark: string;
+  latitude: string;
+  longitude: string;
   fee: string;
   sortOrder: string;
   active: boolean;
@@ -31,7 +44,13 @@ interface RegionForm {
 
 const emptyForm: RegionForm = {
   name: "",
-  country: "",
+  country: "Ethiopia",
+  region: "",
+  woreda: "",
+  kebele: "",
+  landmark: "",
+  latitude: "",
+  longitude: "",
   fee: "",
   sortOrder: "0",
   active: true,
@@ -106,7 +125,13 @@ export default function AdminDeliveryPage() {
     setEditingId(region.id);
     setForm({
       name: region.name,
-      country: region.country || "",
+      country: region.country || "Ethiopia",
+      region: region.region || "",
+      woreda: region.woreda || "",
+      kebele: region.kebele || "",
+      landmark: region.landmark || "",
+      latitude: region.latitude != null ? String(region.latitude) : "",
+      longitude: region.longitude != null ? String(region.longitude) : "",
       fee: String(region.fee ?? ""),
       sortOrder: String(region.sortOrder ?? 0),
       active: region.active,
@@ -124,9 +149,23 @@ export default function AdminDeliveryPage() {
     }
     setSaving(true);
     try {
+      const latNum = form.latitude.trim() ? Number(form.latitude) : null;
+      const lngNum = form.longitude.trim() ? Number(form.longitude) : null;
+      if ((latNum != null && (Number.isNaN(latNum) || Math.abs(latNum) > 90)) ||
+          (lngNum != null && (Number.isNaN(lngNum) || Math.abs(lngNum) > 180))) {
+        setError("Invalid map coordinates.");
+        setSaving(false);
+        return;
+      }
       const payload = {
         name: form.name.trim(),
-        country: form.country.trim() || null,
+        country: form.country.trim() || "Ethiopia",
+        region: form.region.trim() || null,
+        woreda: form.woreda.trim() || null,
+        kebele: form.kebele.trim() || null,
+        landmark: form.landmark.trim() || null,
+        latitude: latNum,
+        longitude: lngNum,
         fee,
         sortOrder: Number(form.sortOrder) || 0,
         active: form.active,
@@ -228,12 +267,53 @@ export default function AdminDeliveryPage() {
               />
             </label>
             <label className="text-sm font-semibold text-gray-700">
-              Country / Zone
+              Country <span className="text-red-600">*</span>
               <input
+                required
                 maxLength={120}
                 value={form.country}
                 onChange={(e) => setForm({ ...form, country: e.target.value })}
                 placeholder="e.g. Ethiopia"
+                className="mt-1.5 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm font-normal outline-none focus:border-[#EB6D3D]"
+              />
+            </label>
+            <label className="text-sm font-semibold text-gray-700">
+              Region / Kilil
+              <input
+                maxLength={120}
+                value={form.region}
+                onChange={(e) => setForm({ ...form, region: e.target.value })}
+                placeholder="e.g. Amhara"
+                className="mt-1.5 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm font-normal outline-none focus:border-[#EB6D3D]"
+              />
+            </label>
+            <label className="text-sm font-semibold text-gray-700">
+              Woreda
+              <input
+                maxLength={120}
+                value={form.woreda}
+                onChange={(e) => setForm({ ...form, woreda: e.target.value })}
+                placeholder="e.g. Bahir Dar"
+                className="mt-1.5 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm font-normal outline-none focus:border-[#EB6D3D]"
+              />
+            </label>
+            <label className="text-sm font-semibold text-gray-700">
+              Kebele
+              <input
+                maxLength={120}
+                value={form.kebele}
+                onChange={(e) => setForm({ ...form, kebele: e.target.value })}
+                placeholder="e.g. Kebele 03"
+                className="mt-1.5 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm font-normal outline-none focus:border-[#EB6D3D]"
+              />
+            </label>
+            <label className="text-sm font-semibold text-gray-700 sm:col-span-2">
+              Specific Location / Landmark
+              <input
+                maxLength={300}
+                value={form.landmark}
+                onChange={(e) => setForm({ ...form, landmark: e.target.value })}
+                placeholder="e.g. Near Abay Park, main road"
                 className="mt-1.5 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm font-normal outline-none focus:border-[#EB6D3D]"
               />
             </label>
@@ -259,6 +339,18 @@ export default function AdminDeliveryPage() {
                 className="mt-1.5 h-10 w-full rounded-lg border border-gray-300 px-3 text-sm font-normal outline-none focus:border-[#EB6D3D]"
               />
             </label>
+          </div>
+          <div className="mt-4">
+            <p className="mb-2 text-sm font-semibold text-gray-700">
+              Google Maps Pin &amp; GPS Location
+            </p>
+            <LocationPicker
+              latitude={form.latitude}
+              longitude={form.longitude}
+              onChange={(lat, lng) =>
+                setForm({ ...form, latitude: lat, longitude: lng })
+              }
+            />
           </div>
           <label className="mt-4 flex items-center gap-2 text-sm font-semibold text-gray-700">
             <input
@@ -334,6 +426,13 @@ export default function AdminDeliveryPage() {
                 <tr key={region.id} className="hover:bg-gray-50">
                   <td className="px-5 py-3 text-sm font-semibold text-gray-900">
                     {region.name}
+                    {(region.region || region.woreda) && (
+                      <p className="text-xs font-normal text-gray-500">
+                        {[region.region, region.woreda, region.kebele]
+                          .filter(Boolean)
+                          .join(" / ")}
+                      </p>
+                    )}
                   </td>
                   <td className="px-5 py-3 text-sm text-gray-600">
                     {region.country || "—"}

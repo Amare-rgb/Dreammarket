@@ -44,6 +44,7 @@ export default function ProductFeedback({ productId }: ProductFeedbackProps) {
   const [uploading, setUploading] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
+  const [rewardEarned, setRewardEarned] = useState<{ amount: number; currency: string } | null>(null);
   const [showForm, setShowForm] = useState(false);
   
   // Form state
@@ -144,6 +145,12 @@ export default function ProductFeedback({ productId }: ProductFeedbackProps) {
 
       if (res.data?.success) {
         setSuccess("Thank you! Your feedback has been submitted for review.");
+        if (res.data?.reward?.earned) {
+          setRewardEarned({
+            amount: res.data.reward.amount,
+            currency: res.data.reward.currency || "ETB",
+          });
+        }
         setShowForm(false);
         setComment("");
         setImageUrl(null);
@@ -374,7 +381,6 @@ export default function ProductFeedback({ productId }: ProductFeedbackProps) {
               {success}
             </div>
           )}
-
           {/* Submit buttons */}
           <div className="flex gap-3">
             <button
@@ -393,6 +399,14 @@ export default function ProductFeedback({ productId }: ProductFeedbackProps) {
             </button>
           </div>
         </form>
+      )}
+
+      {/* Reward earned confirmation */}
+      {rewardEarned && (
+        <div className="mb-6 flex items-center gap-2 p-4 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-800 text-sm font-semibold">
+          <Star size={18} className="fill-emerald-500 text-emerald-500" />
+          Reward earned! {rewardEarned.amount} {rewardEarned.currency} added to your wallet.
+        </div>
       )}
 
       {/* Login prompt for non-authenticated users */}

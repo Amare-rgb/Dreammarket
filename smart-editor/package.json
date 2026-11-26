@@ -1,0 +1,19 @@
+{
+  "name": "dreammore-smart-editor",
+  "version": "1.0.0",
+  "private": true,
+  "description": "AI-assisted video editing pipeline: silence detection, scene/highlight detection, transcription, edit-plan export for FFmpeg and timeline editors.",
+  "type": "commonjs",
+  "bin": {
+    "smart-edit": "./src/cli.js"
+  },
+  "scripts": {
+    "analyze": "node src/cli.js analyze",
+    "plan": "node src/cli.js plan",
+    "render": "node src/cli.js render",
+    "captions": "node src/cli.js captions"
+  },
+  "engines": {
+    "node": ">=18"
+  }
+}

@@ -10,8 +10,7 @@ const {
   verifyResetToken,
 } = require('../lib/auth');
 const { requireAuth } = require('../middleware/auth');
-const { sendWelcomeEmail } = require('../lib/email');
-const { sendPasswordResetEmail } = require('../jobs/email.jobs');
+const { sendPasswordResetEmail, sendWelcomeEmail } = require('../jobs/email.jobs');
 
 // ============================================================
 // HELPERS & CONSTANTS

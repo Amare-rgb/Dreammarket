@@ -44,6 +44,12 @@ interface Order {
   note: string | null;
   paymentMethod: string;
   paymentProofUrl: string | null;
+  paymentScreenshotUrl?: string | null;
+  paymentStatus?: string | null;
+  transactionRef?: string | null;
+  verificationMethod?: string | null;
+  verificationNotes?: string | null;
+  verifiedAt?: string | null;
   status: OrderStatus;
   total: number;
   createdAt: string;
@@ -100,6 +106,7 @@ export default function AdminOrdersPage() {
   const [deletingId, setDeletingId] = useState("");
   const [expandedId, setExpandedId] = useState("");
   const [sendingRewardId, setSendingRewardId] = useState("");
+  const [paymentActionId, setPaymentActionId] = useState("");
   const [paymentPreview, setPaymentPreview] = useState<{
     url: string;
     orderNumber: string;
@@ -239,6 +246,56 @@ export default function AdminOrdersPage() {
     }
   };
 
+  const reviewPayment = async (order: Order, action: "approve" | "reject") => {
+    const note = window.prompt(
+      action === "approve"
+        ? `Approve payment for ${order.orderNumber}? Optional note:`
+        : `Reject payment for ${order.orderNumber}? Optional note:`
+    );
+    if (note === null) return; // cancelled
+    setPaymentActionId(order.id);
+    setError("");
+    setNotice(null);
+    try {
+      const response = await api.patch(
+        `/api/admin/orders/${order.id}/payment`,
+        { action, note: note.trim() || undefined }
+      );
+      const updated = response.data?.order;
+      if (updated) {
+        setOrders((current) =>
+          current.map((item) =>
+            item.id === order.id
+              ? {
+                  ...item,
+                  paymentStatus: updated.paymentStatus,
+                  transactionRef: updated.transactionRef,
+                  paymentScreenshotUrl: updated.paymentScreenshotUrl,
+                  verificationMethod: updated.verificationMethod,
+                  verificationNotes: updated.verificationNotes,
+                  verifiedAt: updated.verifiedAt,
+                }
+              : item
+          )
+        );
+      }
+      setNotice({
+        type: "success",
+        message:
+          action === "approve"
+            ? `Payment for ${order.orderNumber} approved — marked VERIFIED.`
+            : `Payment for ${order.orderNumber} rejected.`,
+      });
+    } catch (requestError) {
+      setError(
+        (requestError as { response?: { data?: { error?: string } } }).response
+          ?.data?.error || "Could not update payment verification."
+      );
+    } finally {
+      setPaymentActionId("");
+    }
+  };
+
   const paymentMethodLabel = (method: string) =>
     method
       .split("_")
@@ -291,7 +348,19 @@ export default function AdminOrdersPage() {
         ) : (
           <div className="divide-y divide-slate-100">
             {orders.map((order) => {
-              const paymentProofUrl = order.paymentProofUrl;
+              const paymentProofUrl =
+                order.paymentScreenshotUrl || order.paymentProofUrl;
+              const payStatus = order.paymentStatus || "UNVERIFIED";
+              const payBadge =
+                payStatus === "VERIFIED"
+                  ? "bg-emerald-100 text-emerald-800"
+                  : payStatus === "PENDING_ADMIN_REVIEW" ||
+                      payStatus === "AMOUNT_MISMATCH" ||
+                      payStatus === "DUPLICATE_RECEIPT"
+                    ? "bg-amber-100 text-amber-800"
+                    : payStatus === "REJECTED"
+                      ? "bg-red-100 text-red-800"
+                      : "bg-slate-100 text-slate-600";
               const statusLabel =
                 order.status === "CONFIRMED"
                   ? t("orders.status_approved", "Approved")
@@ -335,6 +404,12 @@ export default function AdminOrdersPage() {
                     <strong className="text-sm text-slate-800">
                       {money(order.total)}
                     </strong>
+                    <span
+                      className={`rounded-full px-2.5 py-1 text-[11px] font-bold ${payBadge}`}
+                      title={order.verificationNotes || undefined}
+                    >
+                      PAY: {payStatus.replaceAll("_", " ")}
+                    </span>
                     {order.rewardQualified && order.qualifiedRule && (
                       <span className="inline-flex items-center gap-1 rounded-full bg-amber-100 px-2.5 py-1 text-xs font-bold text-amber-800">
                         <Gift className="h-3 w-3" /> Reward Qualified
@@ -552,6 +627,62 @@ export default function AdminOrdersPage() {
                               No payment file was uploaded.
                             </p>
                           )}
+                          {(order.transactionRef ||
+                            order.verificationNotes ||
+                            order.verifiedAt) && (
+                            <div className="mt-2 rounded-lg border border-slate-200 bg-slate-50 p-2.5 text-xs text-slate-600">
+                              {order.transactionRef && (
+                                <p>
+                                  <span className="font-semibold">Ref:</span>{" "}
+                                  <span className="font-mono">
+                                    {order.transactionRef}
+                                  </span>
+                                </p>
+                              )}
+                              {order.verifiedAt && (
+                                <p>
+                                  <span className="font-semibold">Verified:</span>{" "}
+                                  {new Date(order.verifiedAt).toLocaleString()}
+                                  {order.verificationMethod
+                                    ? ` via ${order.verificationMethod}`
+                                    : ""}
+                                </p>
+                              )}
+                              {order.verificationNotes && (
+                                <p className="mt-1 text-slate-500">
+                                  {order.verificationNotes}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                          {paymentProofUrl &&
+                            payStatus !== "VERIFIED" &&
+                            payStatus !== "REJECTED" && (
+                              <div className="mt-2 flex items-center gap-2">
+                                <button
+                                  type="button"
+                                  disabled={paymentActionId === order.id}
+                                  onClick={() => void reviewPayment(order, "approve")}
+                                  className="inline-flex h-8 items-center gap-1.5 rounded-lg bg-emerald-600 px-3 text-xs font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
+                                >
+                                  {paymentActionId === order.id ? (
+                                    <LoaderCircle className="h-3.5 w-3.5 animate-spin" />
+                                  ) : (
+                                    <Check className="h-3.5 w-3.5" />
+                                  )}
+                                  Approve payment
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={paymentActionId === order.id}
+                                  onClick={() => void reviewPayment(order, "reject")}
+                                  className="inline-flex h-8 items-center gap-1.5 rounded-lg border border-red-200 bg-white px-3 text-xs font-bold text-red-700 hover:bg-red-50 disabled:opacity-60"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                  Reject payment
+                                </button>
+                              </div>
+                            )}
                         </div>
                       </div>
                       <div>

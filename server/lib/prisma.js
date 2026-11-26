@@ -33,7 +33,7 @@ globalForPrisma.__prisma = prisma;
 //    rejections if the DB is briefly unreachable.
 //    ⚠️ We never call process.exit(1) here: server.js reports DB status and
 //    /api/health must still be able to respond.
-if (!isServerless) {
+if (!isServerless && process.env.NODE_ENV !== 'test') {
   prisma
     .$connect()
     .then(() => {

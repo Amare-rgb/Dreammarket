@@ -345,6 +345,54 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
+// UPDATE PAYMENT VERIFICATION (Admin approve/reject uploaded screenshot)
+// PATCH /api/admin/orders/:id/payment  { action: 'approve' | 'reject', note? }
+router.patch('/:id/payment', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const action = normalizeText(req.body?.action).toLowerCase();
+    if (!['approve', 'reject'].includes(action)) {
+      return res.status(400).json({
+        success: false,
+        error: 'Action must be "approve" or "reject".',
+      });
+    }
+    const note = normalizeText(req.body?.note).slice(0, 1000) || null;
+
+    const order = await prisma.order.findUnique({ where: { id: req.params.id } });
+    if (!order) {
+      return res.status(404).json({ success: false, error: 'Order not found.' });
+    }
+
+    const paymentStatus = action === 'approve' ? 'VERIFIED' : 'REJECTED';
+    const updated = await prisma.order.update({
+      where: { id: order.id },
+      data: {
+        paymentStatus,
+        verificationMethod: 'ADMIN',
+        verificationNotes: note
+          ? `Admin ${action}${order.verificationNotes ? ` — prior: ${order.verificationNotes}` : ''} — ${note}`
+          : `Manually ${action === 'approve' ? 'approved' : 'rejected'} by admin after reviewing uploaded payment file.`,
+        verifiedAt: new Date(),
+      },
+    });
+
+    return res.json({
+      success: true,
+      order: {
+        ...updated,
+        total: Number(updated.total),
+        paymentStatus: updated.paymentStatus,
+        transactionRef: updated.transactionRef,
+        paymentScreenshotUrl: updated.paymentScreenshotUrl,
+        verifiedAt: updated.verifiedAt,
+      },
+    });
+  } catch (error) {
+    console.error('Failed to update payment verification:', error);
+    return res.status(500).json({ success: false, error: 'Failed to update payment verification' });
+  }
+});
+
 // DELETE ORDER (Admin)
 router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {

@@ -2,8 +2,14 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
-import { ArrowRight, LoaderCircle, Mail } from "lucide-react";
+import { ArrowRight, Code2, LoaderCircle, Mail, Scissors, Video } from "lucide-react";
 import { api } from "@/lib/api";
+import {
+  CAPCUT_REG_URL,
+  VSCODE_DOWNLOAD_URL,
+  launchCapCut,
+  launchVsCode,
+} from "@/lib/launchers";
 
 interface NewsletterIssue {
   id: string;
@@ -23,6 +29,27 @@ function formatDate(iso: string) {
 export default function NewsletterArchivePage() {
   const [issues, setIssues] = useState<NewsletterIssue[]>([]);
   const [loading, setLoading] = useState(true);
+  const [launchHint, setLaunchHint] = useState<"vscode" | "capcut" | null>(null);
+  const [launching, setLaunching] = useState<"vscode" | "capcut" | null>(null);
+
+  const handleVsEdit = async () => {
+    setLaunching("vscode");
+    setLaunchHint(null);
+    const opened = await launchVsCode();
+    setLaunching(null);
+    if (!opened) setLaunchHint("vscode");
+  };
+
+  const handleVideoEdit = () => {
+    setLaunchHint(null);
+    setLaunching("capcut");
+    launchCapCut();
+    // Give the OS protocol dialog a moment, then show the .reg hint
+    setTimeout(() => {
+      setLaunching(null);
+      setLaunchHint("capcut");
+    }, 1500);
+  };
 
   useEffect(() => {
     let active = true;
@@ -62,6 +89,70 @@ export default function NewsletterArchivePage() {
         >
           <Mail size={16} /> Subscribe on Articles page
         </Link>
+
+        {/* Smart Edit tools: VS Edit (VS Code) + Video Edit (CapCut) */}
+        <div className="mx-auto mt-8 flex max-w-lg flex-wrap items-center justify-center gap-3">
+          <button
+            type="button"
+            onClick={() => void handleVsEdit()}
+            disabled={launching === "vscode"}
+            className="inline-flex items-center gap-2 rounded-lg border border-white/40 bg-white/10 px-4 py-2 text-sm font-bold text-white backdrop-blur transition hover:bg-white/20 disabled:opacity-60"
+          >
+            {launching === "vscode" ? (
+              <LoaderCircle size={15} className="animate-spin" />
+            ) : (
+              <Code2 size={15} />
+            )}
+            VS Edit
+          </button>
+          <button
+            type="button"
+            onClick={handleVideoEdit}
+            disabled={launching === "capcut"}
+            className="inline-flex items-center gap-2 rounded-lg bg-white px-4 py-2 text-sm font-bold text-[#1d4ed8] transition hover:bg-blue-50 disabled:opacity-60"
+          >
+            {launching === "capcut" ? (
+              <LoaderCircle size={15} className="animate-spin" />
+            ) : (
+              <Video size={15} />
+            )}
+            Video Edit
+          </button>
+          <span className="inline-flex items-center gap-1.5 text-[11px] text-blue-200">
+            <Scissors size={12} /> Smart cuts + captions
+          </span>
+        </div>
+
+        {/* Fallback hints when the protocol handler is missing */}
+        {launchHint === "vscode" && (
+          <p className="mx-auto mt-3 max-w-md rounded-lg border border-amber-300/50 bg-amber-400/10 px-4 py-2 text-xs text-amber-100">
+            VS Code didn&apos;t open — it may not be installed.{" "}
+            <a
+              href={VSCODE_DOWNLOAD_URL}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="font-bold underline"
+            >
+              Download VS Code
+            </a>{" "}
+            and try again.
+          </p>
+        )}
+        {launchHint === "capcut" && (
+          <p className="mx-auto mt-3 max-w-md rounded-lg border border-amber-300/50 bg-amber-400/10 px-4 py-2 text-xs text-amber-100">
+            CapCut didn&apos;t open? Register the{" "}
+            <code className="rounded bg-black/20 px-1">capcut://</code> protocol
+            once:{" "}
+            <a
+              href={CAPCUT_REG_URL}
+              download
+              className="font-bold underline"
+            >
+              download capcut-protocol.reg
+            </a>
+            , right-click → Merge, then click Video Edit again.
+          </p>
+        )}
       </section>
 
       {/* Archive */}

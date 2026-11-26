@@ -2,6 +2,8 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
 const { requireAuth } = require('../middleware/auth');
+const { upload, handleUpload } = require('../middleware/upload');
+const { verifyPayment } = require('../services/paymentVerification.service');
 
 const router = express.Router();
 const normalizeText = (value) => typeof value === 'string' ? value.trim() : '';
@@ -228,8 +230,8 @@ router.get('/:orderNumber', requireAuth, async (req, res) => {
             name: true,
             rewardType: true,
             rewardValue: true,
-            cayoutMethod: true,
-            purrency: true,
+            payoutMethod: true,
+            currency: true,
             promoCode: true,
           },
         },
@@ -268,6 +270,7 @@ router.post('/', requireAuth, async (req, res) => {
     const note = normalizeText(req.body?.note);
     const paymentMethod = normalizeText(req.body?.paymentMethod);
     const paymentProofUrl = normalizeText(req.body?.paymentProofUrl);
+    const transactionRef = normalizeText(req.body?.transactionRef).slice(0, 120) || null;
     const promoCode = normalizeText(req.body?.promoCode).toUpperCase();
     const rawItems = Array.isArray(req.body?.items) ? req.body.items : [];
     const customerLat = toNumber(req.body?.customerLat);
@@ -538,6 +541,7 @@ router.post('/', requireAuth, async (req, res) => {
           note: note || null,
           paymentMethod,
           paymentProofUrl: validatedPaymentProofUrl,
+          transactionRef,
           userId: user.id,
           promoCode: appliedPromo ? appliedPromo.code : null,
           discountAmount: discountAmount.toFixed(2),
@@ -594,6 +598,40 @@ router.post('/', requireAuth, async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to create order.' });
   }
 });
+
+// POST /api/orders/:orderId/verify-payment — OCR-verify a payment screenshot
+// Accepts multipart/form-data with field "screenshot" (image/PDF, max 10MB).
+router.post(
+  '/:orderId/verify-payment',
+  requireAuth,
+  handleUpload(upload.single('screenshot')),
+  async (req, res) => {
+    try {
+      if (!req.file) {
+        return res.status(400).json({
+          success: false,
+          error: 'A payment screenshot is required.',
+          code: 'MISSING_FILE',
+        });
+      }
+
+      const result = await verifyPayment({
+        orderRef: req.params.orderId,
+        user: { id: req.user.id, email: req.user.email },
+        imagePath: req.file.path,
+        screenshotUrl: req.file.url || req.file.location || null,
+      });
+
+      return res.status(result.status).json(result.body);
+    } catch (error) {
+      console.error('Payment verification failed:', error);
+      return res.status(500).json({
+        success: false,
+        error: 'Payment verification failed. Please try again or contact support.',
+      });
+    }
+  }
+);
 
 // POST /api/orders/validate-promo { code, subtotal }
 router.post('/validate-promo', requireAuth, async (req, res) => {

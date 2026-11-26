@@ -2,6 +2,7 @@
 const express = require('express');
 const prisma = require('../lib/prisma');
 const { requireAuth, requireAdmin, optionalAuth } = require('../middleware/auth');
+const { creditReviewReward } = require('../services/reviewReward.service');
 
 const router = express.Router();
 
@@ -226,6 +227,13 @@ router.post('/products/:productId', requireAuth, async (req, res) => {
         },
       });
 
+      const reward = await creditReviewReward({
+        userId: req.user.id,
+        productId,
+        rating: ratingNum,
+        reviewId: updated.id,
+      });
+
       return res.json({
         success: true,
         review: {
@@ -236,6 +244,9 @@ router.post('/products/:productId', requireAuth, async (req, res) => {
           status: updated.status,
           createdAt: updated.createdAt,
         },
+        reward: reward.credited
+          ? { earned: true, amount: reward.amount, currency: reward.currency }
+          : null,
         message: 'Review updated successfully',
       });
     }
@@ -255,6 +266,13 @@ router.post('/products/:productId', requireAuth, async (req, res) => {
       },
     });
 
+    const reward = await creditReviewReward({
+      userId: req.user.id,
+      productId,
+      rating: ratingNum,
+      reviewId: review.id,
+    });
+
     return res.status(201).json({
       success: true,
       review: {
@@ -265,6 +283,9 @@ router.post('/products/:productId', requireAuth, async (req, res) => {
         status: review.status,
         createdAt: review.createdAt,
       },
+      reward: reward.credited
+        ? { earned: true, amount: reward.amount, currency: reward.currency }
+        : null,
       message: 'Review submitted successfully',
     });
   } catch (error) {

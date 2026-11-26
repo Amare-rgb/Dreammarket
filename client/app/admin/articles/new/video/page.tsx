@@ -2,7 +2,7 @@
 
 import { ChangeEvent, FormEvent, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
-import { LoaderCircle, Upload, Video, X, FileText } from "lucide-react";
+import { LoaderCircle, Upload, Video, X, FileText, Scissors, Download, Sparkles } from "lucide-react";
 import { api, uploadApi } from "@/lib/api";
 import { getVideoSource, isValidHttpUrl } from "@/lib/video";
 import {
@@ -35,6 +35,27 @@ export default function NewArticleVideoPage() {
   const [isOpen, setIsOpen] = useState(true);
   const fileRef = useRef<HTMLInputElement>(null);
   const pdfRef = useRef<HTMLInputElement>(null);
+
+  // ── Smart Edit (AI cuts, highlights, captions) ──
+  const [videoFile, setVideoFile] = useState<File | null>(null);
+  const [smartEditLoading, setSmartEditLoading] = useState(false);
+  const [smartEditError, setSmartEditError] = useState("");
+  const [smartEditResult, setSmartEditResult] = useState<{
+    jobId: string;
+    stats: {
+      silenceCuts: number;
+      silenceSecondsRemoved: number;
+      keepSegments: number;
+      keepSeconds: number;
+      highlights: number;
+      captions: number;
+    };
+    transcription: { provider: string; segmentCount: number; error: string | null };
+    files: Record<string, string>;
+  } | null>(null);
+  const [cupcutLoading, setCupcutLoading] = useState(false);
+  const [cupcutMsg, setCupcutMsg] = useState("");
+  const [copiedCmd, setCopiedCmd] = useState(false);
 
   const effectiveCategory =
     category ||
@@ -75,6 +96,9 @@ export default function NewArticleVideoPage() {
     }
 
     setError("");
+    setVideoFile(file);
+    setSmartEditResult(null);
+    setSmartEditError("");
     setUploading(true);
     try {
       const res = await uploadApi.uploadArticleVideo(file);
@@ -86,6 +110,74 @@ export default function NewArticleVideoPage() {
       setError(errorText(err, "Failed to upload the video file."));
     } finally {
       setUploading(false);
+    }
+  };
+
+  const runSmartEdit = async () => {
+    if (!videoFile) return;
+    setSmartEditLoading(true);
+    setSmartEditError("");
+    setSmartEditResult(null);
+    try {
+      const formData = new FormData();
+      formData.append("video", videoFile);
+      const res = await api.post("/api/admin/smart-edit/analyze", formData, {
+        timeout: 15 * 60 * 1000,
+        transformRequest: [
+          (data: FormData, headers: Record<string, unknown>) => {
+            if (headers && typeof headers === "object") {
+              delete headers["Content-Type"];
+              delete headers["content-type"];
+            }
+            return data;
+          },
+        ],
+      });
+      if (res.data?.success) {
+        setSmartEditResult(res.data);
+      } else {
+        setSmartEditError(res.data?.error || "Smart analysis failed.");
+      }
+    } catch (err) {
+      const data = (err as { response?: { data?: { error?: string } } })
+        ?.response?.data;
+      setSmartEditError(data?.error || "Smart analysis failed. Check that ffmpeg is installed on the server.");
+    } finally {
+      setSmartEditLoading(false);
+    }
+  };
+
+  const exportToCapCut = async () => {
+    if (!smartEditResult) return;
+    setCupcutLoading(true);
+    setCupcutMsg("");
+    try {
+      const res = await api.post(
+        `/api/admin/smart-edit/${smartEditResult.jobId}/export/cupcut`
+      );
+      if (res.data?.success) {
+        setCupcutMsg(res.data.message || "CapCut draft created.");
+      } else {
+        setCupcutMsg(res.data?.error || "CapCut export failed.");
+      }
+    } catch (err) {
+      const data = (err as { response?: { data?: { error?: string } } })
+        ?.response?.data;
+      setCupcutMsg(data?.error || "CapCut export failed.");
+    } finally {
+      setCupcutLoading(false);
+    }
+  };
+
+  const copyVsCodeCommand = async () => {
+    if (!videoFile) return;
+    const cmd = `node smart-editor/src/cli.js analyze "${videoFile.name}" --out smart-editor/out`;
+    try {
+      await navigator.clipboard.writeText(cmd);
+      setCopiedCmd(true);
+      setTimeout(() => setCopiedCmd(false), 2000);
+    } catch {
+      setCopiedCmd(false);
     }
   };
 
@@ -289,6 +381,21 @@ export default function NewArticleVideoPage() {
                   {uploading ? "Uploading..." : "Upload local video"}
                 </button>
                 <span className="text-xs text-slate-400">or paste a link below</span>
+                {videoFile && (
+                  <button
+                    type="button"
+                    onClick={() => void runSmartEdit()}
+                    disabled={smartEditLoading || uploading || saving}
+                    className="ml-auto inline-flex h-10 items-center gap-2 rounded-lg bg-gradient-to-r from-emerald-500 to-teal-600 px-3 text-sm font-bold text-white transition hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {smartEditLoading ? (
+                      <LoaderCircle size={16} className="animate-spin" />
+                    ) : (
+                      <Sparkles size={16} />
+                    )}
+                    {smartEditLoading ? "Analyzing…" : "Smart Edit (AI cuts & captions)"}
+                  </button>
+                )}
               </div>
               <input
                 type="url"
@@ -309,6 +416,96 @@ export default function NewArticleVideoPage() {
             {videoSource && (
               <div className="max-w-2xl overflow-hidden rounded-lg border border-slate-200">
                 <VideoPlayer url={videoUrl} title={title || "Video preview"} />
+              </div>
+            )}
+
+            {/* Smart Edit results */}
+            {smartEditError && (
+              <p className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                {smartEditError}
+              </p>
+            )}
+            {smartEditResult && (
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50/60 p-4">
+                <p className="flex items-center gap-2 text-sm font-bold text-emerald-900">
+                  <Scissors size={16} />
+                  Smart edit plan ready
+                </p>
+                <div className="mt-2 grid grid-cols-2 gap-2 text-xs text-emerald-900 sm:grid-cols-4">
+                  <div className="rounded-lg bg-white/70 p-2">
+                    <p className="font-bold">{smartEditResult.stats.keepSegments}</p>
+                    <p className="text-emerald-700">keep segments</p>
+                  </div>
+                  <div className="rounded-lg bg-white/70 p-2">
+                    <p className="font-bold">{smartEditResult.stats.silenceCuts}</p>
+                    <p className="text-emerald-700">silence cuts</p>
+                  </div>
+                  <div className="rounded-lg bg-white/70 p-2">
+                    <p className="font-bold">{smartEditResult.stats.captions}</p>
+                    <p className="text-emerald-700">captions</p>
+                  </div>
+                  <div className="rounded-lg bg-white/70 p-2">
+                    <p className="font-bold">{smartEditResult.stats.highlights}</p>
+                    <p className="text-emerald-700">highlights</p>
+                  </div>
+                </div>
+                <p className="mt-2 text-xs text-emerald-800">
+                  Removed {smartEditResult.stats.silenceSecondsRemoved.toFixed(1)}s of
+                  dead air · transcription:{" "}
+                  {smartEditResult.transcription.provider}
+                  {smartEditResult.transcription.error
+                    ? ` (${smartEditResult.transcription.error})`
+                    : ""}
+                </p>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => void exportToCapCut()}
+                    disabled={cupcutLoading}
+                    className="inline-flex items-center gap-1.5 rounded-lg bg-gradient-to-r from-violet-600 to-fuchsia-600 px-3 py-1.5 text-xs font-bold text-white hover:opacity-90 disabled:opacity-60"
+                  >
+                    {cupcutLoading ? (
+                      <LoaderCircle size={12} className="animate-spin" />
+                    ) : (
+                      <Video size={12} />
+                    )}
+                    {cupcutLoading ? "Creating draft…" : "Open in CapCut"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void copyVsCodeCommand()}
+                    className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100"
+                  >
+                    {copiedCmd ? "Copied!" : "Copy VS Code command"}
+                  </button>
+                  {(["captions.srt", "captions.vtt", "markers.csv", "markers.edl", "edit-plan.json", "render.sh"] as const).map(
+                    (name) =>
+                      smartEditResult.files[name] && (
+                        <a
+                          key={name}
+                          href={smartEditResult.files[name]}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-300 bg-white px-3 py-1.5 text-xs font-bold text-emerald-800 hover:bg-emerald-100"
+                        >
+                          <Download size={12} />
+                          {name}
+                        </a>
+                      )
+                  )}
+                </div>
+                {cupcutMsg && (
+                  <p className="mt-2 rounded-lg border border-violet-200 bg-violet-50 p-2 text-xs text-violet-800">
+                    {cupcutMsg}
+                  </p>
+                )}
+                <p className="mt-2 text-[11px] text-emerald-700">
+                  <strong>CapCut:</strong> click <em>Open in CapCut</em> — the draft
+                  appears in CapCut → Drafts with your smart cuts + captions on the
+                  timeline. <strong>VS Code:</strong> copy the command and run it in
+                  the integrated terminal, or use <em>Tasks: Run Task → Smart Edit</em>.
+                  Fine-tune pacing/audio/visuals there — the source video is never modified.
+                </p>
               </div>
             )}
 

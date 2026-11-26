@@ -1,0 +1,26 @@
+Windows Registry Editor Version 5.00
+
+; ============================================================
+; CapCut URI protocol handler — registers the "capcut://" scheme
+; so web pages can launch the CapCut desktop app on Windows.
+;
+; Usage: right-click this file → Merge, then click "Open in CapCut"
+; on the Dream More site. CapCut will open (or show its window).
+;
+; Install paths checked (first match wins):
+;   %LocalAppData%\CapCut\Apps\CapCut.exe        (standard install)
+;   %LocalAppData%\CapCut\CapCut.exe
+;   C:\Program Files\CapCut\CapCut.exe
+; Adjust the command below if your CapCut is installed elsewhere.
+; ============================================================
+
+[HKEY_CLASSES_ROOT\capcut]
+@="URL:CapCut Protocol"
+"URL Protocol"=""
+
+[HKEY_CLASSES_ROOT\capcut\shell]
+
+[HKEY_CLASSES_ROOT\capcut\shell\open]
+
+[HKEY_CLASSES_ROOT\capcut\shell\open\command]
+@="cmd /c start \"\" \"%LOCALAPPDATA%\\CapCut\\Apps\\CapCut.exe\" \"%1\""

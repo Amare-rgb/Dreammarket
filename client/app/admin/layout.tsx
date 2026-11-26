@@ -161,6 +161,7 @@ export default function AdminLayout({
     { name: "Media & News", href: "/admin/media", section: "Main" },
     { name: "Pages", href: "/admin/pages", section: "Main" },
     { name: "Feedback", href: "/admin/feedback", section: "Main" },
+    { name: "Payment Verification", href: "/admin/payment-verification", section: "Main" },
     { name: "Rewards & Loyalty", href: "/admin/rewards", section: "Main" },
     { name: "Users", href: "/admin/users", section: "Main" },
     { name: "Delivery Regions", href: "/admin/delivery", section: "Settings" },

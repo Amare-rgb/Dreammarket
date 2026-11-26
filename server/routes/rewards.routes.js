@@ -153,4 +153,51 @@ router.get('/me', requireAuth, async (req, res) => {
   }
 });
 
+// GET /api/rewards/me/wallet — reward wallet balance + transaction history
+router.get('/me/wallet', requireAuth, async (req, res) => {
+  try {
+    const transactions = await prisma.rewardTransaction.findMany({
+      where: { userId: req.user.id },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: {
+        product: { select: { id: true, name: true } },
+        review: { select: { id: true, rating: true } },
+        order: { select: { id: true, orderNumber: true } },
+      },
+    });
+
+    // Balance per currency
+    const balance = {};
+    for (const tx of transactions) {
+      const cur = tx.currency || 'ETB';
+      const amt = Number(tx.amount) || 0;
+      balance[cur] = (balance[cur] || 0) + (tx.type === 'CREDIT' ? amt : -amt);
+    }
+    for (const cur of Object.keys(balance)) {
+      balance[cur] = Math.round(balance[cur] * 100) / 100;
+    }
+
+    res.json({
+      success: true,
+      balance,
+      transactions: transactions.map((tx) => ({
+        id: tx.id,
+        type: tx.type,
+        amount: Number(tx.amount),
+        currency: tx.currency,
+        source: tx.source,
+        note: tx.note,
+        createdAt: tx.createdAt,
+        product: tx.product,
+        review: tx.review,
+        order: tx.order,
+      })),
+    });
+  } catch (error) {
+    console.error('Error fetching reward wallet:', error);
+    res.status(500).json({ success: false, error: 'Failed to load wallet.' });
+  }
+});
+
 module.exports = router;

@@ -25,7 +25,7 @@ interface RewardRule {
   createdAt: string;
 }
 
-type Tab = "rules" | "airtime";
+type Tab = "rules" | "airtime" | "review";
 
 interface AirtimeVoucher {
   id: string;
@@ -128,6 +128,56 @@ export default function RewardsPage() {
   });
   const [savingRule, setSavingRule] = useState(false);
 
+  // ── Review reward config ──
+  const [reviewConfig, setReviewConfig] = useState({
+    enabled: false,
+    minRating: 4,
+    amount: "",
+    currency: "ETB",
+  });
+  const [savingReviewConfig, setSavingReviewConfig] = useState(false);
+  const [reviewConfigMsg, setReviewConfigMsg] = useState("");
+
+  const loadReviewConfig = useCallback(async () => {
+    try {
+      const res = await api.get("/api/admin/review-reward");
+      const c = res.data?.config;
+      if (c) {
+        setReviewConfig({
+          enabled: Boolean(c.enabled),
+          minRating: c.minRating ?? 4,
+          amount: String(c.amount ?? ""),
+          currency: c.currency || "ETB",
+        });
+      }
+    } catch {
+      /* non-fatal */
+    }
+  }, []);
+
+  const saveReviewConfig = async () => {
+    setSavingReviewConfig(true);
+    setReviewConfigMsg("");
+    try {
+      const res = await api.put("/api/admin/review-reward", {
+        enabled: reviewConfig.enabled,
+        minRating: reviewConfig.minRating,
+        amount: Number(reviewConfig.amount) || 0,
+        currency: reviewConfig.currency,
+      });
+      if (res.data?.success) {
+        setReviewConfigMsg("Saved.");
+        await loadReviewConfig();
+      }
+    } catch (err) {
+      const msg = (err as { response?: { data?: { error?: string } } })
+        ?.response?.data?.error;
+      setReviewConfigMsg(msg || "Failed to save.");
+    } finally {
+      setSavingReviewConfig(false);
+    }
+  };
+
   // ── Order context (from Admin Orders → "Open in Rewards") ──
   const [orderContext, setOrderContext] = useState<OrderContext | null>(null);
   const [loadingOrder, setLoadingOrder] = useState(false);
@@ -154,9 +204,10 @@ export default function RewardsPage() {
   useEffect(() => {
     const timer = setTimeout(() => {
       void loadAll();
+      void loadReviewConfig();
     }, 0);
     return () => clearTimeout(timer);
-  }, [loadAll]);
+  }, [loadAll, loadReviewConfig]);
 
   // Load order context from ?order=<id> query param
   useEffect(() => {
@@ -436,6 +487,24 @@ export default function RewardsPage() {
         </button>
         <button
           type="button"
+          onClick={() => setTab("review")}
+          className="group relative flex w-full items-center gap-3 overflow-hidden rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 px-3 py-2.5 text-left shadow-md shadow-emerald-500/20 transition hover:-translate-y-0.5 hover:shadow-lg sm:w-72"
+        >
+          <div className="absolute -right-4 -top-4 h-14 w-14 rounded-full bg-white/10 transition group-hover:scale-125" />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-white/20 text-lg">
+            ⭐
+          </div>
+          <div className="min-w-0">
+            <p className="truncate text-sm font-bold text-white">
+              Review Rewards
+            </p>
+            <p className="truncate text-xs text-white/80">
+              Pay customers for good reviews
+            </p>
+          </div>
+        </button>
+        <button
+          type="button"
           onClick={() => setTab("airtime")}
           className="group relative flex w-full items-center gap-3 overflow-hidden rounded-xl bg-gradient-to-br from-[#0ea5e9] to-[#6366f1] px-3 py-2.5 text-left shadow-md shadow-sky-500/20 transition hover:-translate-y-0.5 hover:shadow-lg sm:w-72"
         >
@@ -468,7 +537,11 @@ export default function RewardsPage() {
           >
             <div className="mb-5 flex items-center justify-between gap-3">
               <h2 className="text-xl font-bold text-slate-900">
-                {tab === "rules" ? "Reward Rules" : "Airtime Vouchers"}
+                {tab === "rules"
+                  ? "Reward Rules"
+                  : tab === "review"
+                  ? "Review Rewards"
+                  : "Airtime Vouchers"}
               </h2>
               <button
                 type="button"
@@ -624,6 +697,85 @@ export default function RewardsPage() {
                     </div>
                   ))}
                 </div>
+              </div>
+            )}
+
+            {tab === "review" && (
+              <div className="max-w-xl space-y-4">
+                <p className="text-sm text-slate-600">
+                  Automatically credit wallet points when a customer submits a
+                  product review at or above the minimum rating. One reward per
+                  customer per product — farming is blocked.
+                </p>
+                <label className="flex items-center gap-3 rounded-xl border border-slate-200 bg-white p-4">
+                  <input
+                    type="checkbox"
+                    checked={reviewConfig.enabled}
+                    onChange={(e) =>
+                      setReviewConfig({ ...reviewConfig, enabled: e.target.checked })
+                    }
+                    className="h-5 w-5 accent-emerald-600"
+                  />
+                  <span className="text-sm font-bold text-slate-800">
+                    Enable review rewards
+                  </span>
+                </label>
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <label className={labelCls}>
+                    Min rating (1–5)
+                    <input
+                      type="number"
+                      min={1}
+                      max={5}
+                      value={reviewConfig.minRating}
+                      onChange={(e) =>
+                        setReviewConfig({
+                          ...reviewConfig,
+                          minRating: Number(e.target.value) || 4,
+                        })
+                      }
+                      className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm font-normal"
+                    />
+                  </label>
+                  <label className={labelCls}>
+                    Reward amount
+                    <input
+                      type="number"
+                      min={0}
+                      step="0.01"
+                      value={reviewConfig.amount}
+                      onChange={(e) =>
+                        setReviewConfig({ ...reviewConfig, amount: e.target.value })
+                      }
+                      placeholder="e.g. 50"
+                      className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm font-normal"
+                    />
+                  </label>
+                  <label className={labelCls}>
+                    Currency
+                    <input
+                      maxLength={8}
+                      value={reviewConfig.currency}
+                      onChange={(e) =>
+                        setReviewConfig({ ...reviewConfig, currency: e.target.value })
+                      }
+                      className="mt-1 h-10 w-full rounded-lg border border-slate-300 px-3 text-sm font-normal"
+                    />
+                  </label>
+                </div>
+                {reviewConfigMsg && (
+                  <p className="text-sm font-semibold text-emerald-700">
+                    {reviewConfigMsg}
+                  </p>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void saveReviewConfig()}
+                  disabled={savingReviewConfig}
+                  className="h-10 rounded-lg bg-emerald-600 px-5 text-sm font-bold text-white hover:bg-emerald-700 disabled:opacity-60"
+                >
+                  {savingReviewConfig ? "Saving…" : "Save Review Reward Settings"}
+                </button>
               </div>
             )}
 
