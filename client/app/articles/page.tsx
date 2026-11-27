@@ -4,7 +4,7 @@ import { Suspense, useEffect, useState } from "react";
 import Image from "next/image";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { LoaderCircle, Play, Search } from "lucide-react";
+import { ArrowDown, ArrowRight, LoaderCircle, Play, Search } from "lucide-react";
 import { api } from "@/lib/api";
 import ArticleSidebar from "@/components/articles/ArticleSidebar";
 import { useLanguage } from "@/context/LanguageContext";
@@ -104,21 +104,21 @@ function ArticlesBrowser() {
 
   const totalCount = categories.reduce((sum, c) => sum + c.count, 0);
   const q = urlSearch.trim().toLowerCase();
-const filtered = !q
-  ? articles
-  : articles.filter((a) => {
-      const title = (a.title ?? "").toLowerCase();
-      const description = (a.description ?? "").toLowerCase();
-      const titleAm = (a.titleAm ?? "").toLowerCase();
-      const descriptionAm = (a.descriptionAm ?? "").toLowerCase();
+  const filtered = !q
+    ? articles
+    : articles.filter((a) => {
+        const title = (a.title ?? "").toLowerCase();
+        const description = (a.description ?? "").toLowerCase();
+        const titleAm = (a.titleAm ?? "").toLowerCase();
+        const descriptionAm = (a.descriptionAm ?? "").toLowerCase();
 
-      return (
-        title.includes(q) ||
-        description.includes(q) ||
-        titleAm.includes(q) ||
-        descriptionAm.includes(q)
-      );
-    });
+        return (
+          title.includes(q) ||
+          description.includes(q) ||
+          titleAm.includes(q) ||
+          descriptionAm.includes(q)
+        );
+      });
   const showFeatured = !urlSearch.trim() && filtered.length > 0;
   const activeName = activeCategory === "all" ? "All articles" : categoryName(categories, activeCategory, language);
 
@@ -159,14 +159,68 @@ const filtered = !q
 
   return (
     <main className="min-h-screen bg-[var(--cream)] pb-20">
-      <section className="relative isolate flex min-h-[480px] items-center justify-center overflow-hidden bg-[#20283a] px-5 pb-20 pt-24 text-center text-white sm:px-8 md:min-h-[550px] md:pb-24 md:pt-28">
-        <video key={HERO_VIDEO_SRCS[heroVideoIndex]} src={HERO_VIDEO_SRCS[heroVideoIndex]} onEnded={() => setHeroVideoIndex((i) => (i + 1) % HERO_VIDEO_SRCS.length)} className="absolute inset-0 -z-10 h-full w-full object-cover object-top" autoPlay muted playsInline preload="metadata" aria-hidden="true" />
-        <div className="absolute inset-0 -z-10 bg-black/60" />
+      <section className="relative isolate flex min-h-screen min-h-[100dvh] w-full items-center justify-center overflow-hidden bg-[#20283a] px-5 pb-24 pt-28 text-center text-white sm:px-8 lg:px-10">
+        <video
+          key={HERO_VIDEO_SRCS[heroVideoIndex]}
+          src={HERO_VIDEO_SRCS[heroVideoIndex]}
+          onEnded={() => setHeroVideoIndex((i) => (i + 1) % HERO_VIDEO_SRCS.length)}
+          className="absolute inset-0 -z-10 h-full w-full object-cover object-center"
+          autoPlay
+          muted
+          playsInline
+          preload="metadata"
+          aria-hidden="true"
+        />
+        <div className="absolute inset-0 -z-10 bg-gradient-to-b from-[#20283a]/55 via-[#20283a]/30 to-[#20283a]/55" />
+        <div className="pointer-events-none absolute left-1/2 top-1/3 -z-10 h-80 w-80 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[#F47822]/15 blur-3xl" />
+
         <div className="relative mx-auto w-full max-w-4xl">
-          <p className="inline-flex items-center justify-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-1.5 text-xs font-bold uppercase tracking-[0.2em] text-[#F47822] backdrop-blur-md"><span className="h-1.5 w-1.5 rounded-full bg-[#F47822] animate-pulse" />{t("articles.hero_eyebrow", "Dream More Affiliate Market")}</p>
-          <h1 className="mt-6 text-4xl font-bold tracking-tight text-[#F47822] drop-shadow-lg sm:text-5xl lg:text-6xl">{t("articles.hero_title", "Dream More Articles")}</h1>
-          <p className="mx-auto mt-5 max-w-2xl text-base leading-relaxed text-white/90 drop-shadow sm:text-lg">{t("articles.hero_subtitle", "Discover marketplace news, in-depth product guides, and useful business updates curated directly by Dream More.")}</p>
+          <p className="inline-flex items-center justify-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.22em] text-[#ffad72] backdrop-blur-md">
+            <span className="h-1.5 w-1.5 rounded-full bg-[#F47822] animate-pulse" />
+            {t("articles.hero_eyebrow", "DREAM MORE INSIGHTS & MEDIA")}
+          </p>
+
+          <h1 className="mt-6 text-4xl font-extrabold leading-[1.08] tracking-tight text-white drop-shadow-lg sm:text-5xl lg:text-6xl">
+            {t("articles.hero_title_prefix", "Dream More")}{" "}
+            <span className="text-[#F47822]">
+              {t("articles.hero_title_accent", "Articles")}
+            </span>
+          </h1>
+
+          <p className="mx-auto mt-5 max-w-2xl text-base leading-7 text-white/85 sm:text-lg">
+            {t(
+              "articles.hero_subtitle",
+              "Stay ahead with expert product reviews, curated affiliate guides, and actionable business stories from the Dream More community."
+            )}
+          </p>
+
+          <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+            <a
+              href="#articles-feed"
+              className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#F47822] px-6 text-sm font-bold text-white shadow-lg transition hover:bg-[#df6417]"
+            >
+              {t("articles.hero_btn_read", "Explore Latest Articles")}
+              <ArrowDown size={16} />
+            </a>
+            <Link
+              href="/shop"
+              className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-6 text-sm font-bold text-white backdrop-blur-md transition hover:bg-white/20"
+            >
+              {t("articles.hero_btn_shop", "Browse Marketplace")}
+              <ArrowRight size={16} />
+            </Link>
+          </div>
         </div>
+
+        <a
+          href="#articles-feed"
+          className="absolute bottom-6 left-1/2 flex -translate-x-1/2 flex-col items-center gap-1.5 text-white/60 transition hover:text-white"
+        >
+          <span className="text-[10px] font-bold uppercase tracking-[0.25em]">
+            {t("articles.hero_scroll", "SCROLL TO READ")}
+          </span>
+          <ArrowDown size={15} className="animate-bounce" />
+        </a>
       </section>
 
       {showNewsletter && (
@@ -204,7 +258,7 @@ const filtered = !q
         </section>
       )}
 
-      <nav aria-label="Article categories" className="sticky top-0 z-30 border-b border-slate-200 bg-white/95 backdrop-blur">
+      <nav id="articles-feed" aria-label="Article categories" className="sticky top-0 z-30 scroll-mt-0 border-b border-slate-200 bg-white/95 backdrop-blur">
         <div className="mx-auto flex max-w-7xl flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:px-6">
           <div className="flex-1 overflow-x-auto">
             <ul className="flex min-w-max items-center gap-1">
@@ -283,7 +337,6 @@ const filtered = !q
     </main>
   );
 }
-
 export default function ArticlesPage() {
   return (
     <Suspense fallback={<main className="flex min-h-[60vh] items-center justify-center bg-[var(--cream)]"><LoaderCircle className="h-8 w-8 animate-spin text-[#F47822]" /></main>}>

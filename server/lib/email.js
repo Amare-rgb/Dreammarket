@@ -1,8 +1,5 @@
-// lib/email.js
 const https = require('https');
-
 const stripSlash = (s) => String(s || '').trim().replace(/\/+$/, '');
-
 const BRAND = {
   name: 'Dream More Affiliate Market',
   shortName: 'Dream More',
@@ -10,7 +7,6 @@ const BRAND = {
   supportEmail: process.env.SUPPORT_EMAIL || 'support@alemayehplastic.com',
   website: stripSlash(process.env.FRONTEND_URL || 'http://localhost:3000'),
 };
-
 const escapeHtml = (value) =>
   String(value == null ? '' : value)
     .replace(/&/g, '&amp;')
@@ -18,21 +14,15 @@ const escapeHtml = (value) =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-
-// ============================================================
-// sendEmail — Resend first, Gmail SMTP fallback
-// ============================================================
 function sendViaResend({ to, subject, html, text }) {
   return new Promise((resolve, reject) => {
     const resendKey = process.env.RESEND_API_KEY;
     if (!resendKey) {
       return reject(new Error('RESEND_API_KEY is not set'));
     }
-
     const from =
       process.env.RESEND_FROM || `${BRAND.shortName} <onboarding@resend.dev>`;
     const payload = JSON.stringify({ from, to: [to], subject, html, text });
-
     const req = https.request(
       {
         hostname: 'api.resend.com',
@@ -43,7 +33,6 @@ function sendViaResend({ to, subject, html, text }) {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(payload),
         },
-        // Bypass TLS verification (proxies/antivirus often break the chain)
         rejectUnauthorized: false,
       },
       (res) => {
@@ -62,13 +51,11 @@ function sendViaResend({ to, subject, html, text }) {
         });
       }
     );
-
     req.on('error', reject);
     req.write(payload);
     req.end();
   });
 }
-
 function sendViaSmtp({ to, subject, html, text }) {
   const nodemailer = require('nodemailer');
 
@@ -80,11 +67,9 @@ function sendViaSmtp({ to, subject, html, text }) {
       new Error('Gmail SMTP is not configured (EMAIL_HOST/EMAIL_USER/EMAIL_PASSWORD)')
     );
   }
-
   const port = Number(process.env.EMAIL_PORT) || 587;
   const from =
     process.env.EMAIL_FROM || `${BRAND.name} <${user}>`;
-
   const transporter = nodemailer.createTransport({
     host,
     port,
@@ -92,7 +77,6 @@ function sendViaSmtp({ to, subject, html, text }) {
     auth: { user, pass },
     tls: { rejectUnauthorized: false },
   });
-
   return transporter.sendMail({
     from,
     to,
@@ -101,7 +85,6 @@ function sendViaSmtp({ to, subject, html, text }) {
     html,
   });
 }
-
 async function sendEmail({ to, subject, html, text }) {
   if (!to) throw new Error('sendEmail: "to" is required');
 
@@ -114,23 +97,17 @@ async function sendEmail({ to, subject, html, text }) {
       `❌ Resend failed for ${to}: ${resendError.message}. Trying Gmail SMTP fallback...`
     );
   }
-
   const result = await sendViaSmtp({ to, subject, html, text });
   console.log(`✅ Email sent via Gmail SMTP to: ${to}`);
   return result;
 }
-
-// ============================================================
-// sendOrderApprovalEmail
-// ============================================================
 async function sendOrderApprovalEmail(order) {
   if (!order) {
     throw new Error('sendOrderApprovalEmail: order is required');
   }
-
   const safeName = escapeHtml(order.customerName || 'there');
   const safeOrderNumber = escapeHtml(order.orderNumber || 'ORD-001');
-  
+
   const items = (order.items || []).map((item) => {
     const quantity = Number(item.quantity) || 0;
     const unitPrice = Number(item.unitPrice) || 0;

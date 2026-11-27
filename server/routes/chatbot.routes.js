@@ -1,32 +1,19 @@
-// routes/chatbot.routes.js
 const express = require("express");
 const router = express.Router();
 const { PrismaClient } = require("@prisma/client");
 const { v4: uuidv4 } = require("uuid");
 const axios = require("axios");
-
-// Load environment variables
 require("dotenv").config();
 
 const prisma = new PrismaClient();
-
-// ============== OPENROUTER AI CONFIGURATION ==============
 const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY?.trim();
 const HAS_VALID_OPENROUTER_API_KEY =
   typeof OPENROUTER_API_KEY === "string" &&
   OPENROUTER_API_KEY.startsWith("sk-or-v1-");
-
-// OpenRouter API endpoint (OpenAI-compatible)
 const OPENROUTER_API_URL = "https://openrouter.ai/api/v1/chat/completions";
-
-// Optional: your site URL and name for OpenRouter rankings
-// (not required, but recommended by OpenRouter)
 const SITE_URL =
   process.env.NEXT_PUBLIC_SITE_URL || "https://alemayehplastic.com";
 const SITE_NAME = "Dream More Affiliate Market";
-
-// Free & fast models on OpenRouter (in priority order).
-// These are auto-tried until one works.
 const OPENROUTER_MODELS = [
   "openai/gpt-4o-mini",
   "anthropic/claude-3.5-haiku",
@@ -45,7 +32,6 @@ if (HAS_VALID_OPENROUTER_API_KEY) {
   );
 }
 
-// ============== OPTIONAL AUTH ==============
 const optionalAuth = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
@@ -63,7 +49,6 @@ const optionalAuth = async (req, res, next) => {
             req.userEmail = decoded.email;
           }
         } catch (e) {
-          // ignore decode errors
         }
       }
     }
@@ -103,8 +88,6 @@ const optionalAuth = async (req, res, next) => {
     }
   }
 };
-
-// ============== AI RESPONSE GENERATOR ==============
 class ChatbotAI {
   constructor() {
     this.contexts = {};
@@ -341,7 +324,6 @@ Generate helpful, friendly, and accurate responses to user queries.`;
         error.response?.data || error.message
       );
 
-      // If the model was rejected, try to find a new one
       if (
         error.response?.status === 400 ||
         error.response?.status === 404 ||
@@ -374,7 +356,6 @@ Generate helpful, friendly, and accurate responses to user queries.`;
     }
   }
 
-  // ========== FALLBACK: RULE-BASED RESPONSES ==========
   async processRuleBasedIntent(message, context) {
     if (
       this.matchesPattern(message, [
@@ -543,8 +524,6 @@ Generate helpful, friendly, and accurate responses to user queries.`;
   matchesPattern(message, patterns) {
     return patterns.some((pattern) => message.includes(pattern));
   }
-
-  // ========== RESPONSE GENERATORS ==========
 
   getGreetingResponse(context) {
     const hour = new Date().getHours();
@@ -828,15 +807,8 @@ Generate helpful, friendly, and accurate responses to user queries.`;
   }
 }
 
-// Initialize AI
 const chatbotAI = new ChatbotAI();
 chatbotAI.initialize();
-
-// ============== ROUTES ==============
-
-/**
- * POST /api/chatbot/message
- */
 router.post("/message", optionalAuth, async (req, res) => {
   try {
     const { message, conversationId } = req.body;
@@ -873,9 +845,6 @@ router.post("/message", optionalAuth, async (req, res) => {
   }
 });
 
-/**
- * GET /api/chatbot/history
- */
 router.get("/history", optionalAuth, async (req, res) => {
   try {
     const userId = req.userId;
@@ -923,9 +892,6 @@ router.get("/history", optionalAuth, async (req, res) => {
   }
 });
 
-/**
- * DELETE /api/chatbot/history
- */
 router.delete("/history", optionalAuth, async (req, res) => {
   try {
     const userId = req.userId;
@@ -954,9 +920,6 @@ router.delete("/history", optionalAuth, async (req, res) => {
   }
 });
 
-/**
- * GET /api/chatbot/unread/count
- */
 router.get("/unread/count", optionalAuth, async (req, res) => {
   try {
     res.json({ success: true, data: { unreadCount: 0 } });
@@ -966,10 +929,6 @@ router.get("/unread/count", optionalAuth, async (req, res) => {
       .json({ success: false, error: "Failed to fetch unread count" });
   }
 });
-
-/**
- * GET /api/chatbot/products
- */
 router.get("/products", optionalAuth, async (req, res) => {
   try {
     const products = await prisma.product.findMany({

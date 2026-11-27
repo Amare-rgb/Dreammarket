@@ -5,7 +5,7 @@ import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
-import { ArrowUpRight, Search, ShoppingCart, Trash2, Video, X } from "lucide-react";
+import { Search, ShoppingCart, Trash2, Video, X } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { readCart, writeCart } from "@/app/lib/cart";
 import ProductCountdown from "./ProductCountdown";
@@ -220,6 +220,33 @@ function getEffectivePrice(product: Product): number {
   return product.price;
 }
 
+function getDiscountMap(product: Product): Map<string, number> {
+  const map = new Map<string, number>();
+  if (Array.isArray(product.discountPrices)) {
+    for (const d of product.discountPrices) {
+      if (d && typeof d.currency === "string" && Number(d.amount) > 0) {
+        map.set(d.currency.toUpperCase(), Number(d.amount));
+      }
+    }
+  }
+  if (map.size === 0 && product.discountPrice != null) {
+    const dp = Number(product.discountPrice);
+    if (dp > 0) map.set(product.currency.toUpperCase(), dp);
+  }
+  return map;
+}
+
+function getPrimaryPricing(product: Product) {
+  const entries = (product.prices || []).filter((p) => p.amount > 0);
+  const primary = entries.find((e) => e.currency === "ETB") ?? entries[0] ?? { amount: product.price, currency: product.currency };
+  const discountMap = getDiscountMap(product);
+  const disc = discountMap.get(primary.currency.toUpperCase());
+  const hasDiscount = disc != null && disc > 0 && disc < primary.amount;
+  const effectivePrice = hasDiscount ? disc : primary.amount;
+  const otherPrices = entries.filter((e) => e.currency !== primary.currency);
+  return { primary, effectivePrice, hasDiscount, otherPrices, discountMap };
+}
+
 function ProductImage({
   src,
   videoUrl,
@@ -252,7 +279,7 @@ function ProductImage({
 
   if (!src || hasError) {
     return (
-      <div className="flex h-full w-full items-center justify-center bg-[#2a1f18] text-[#e0a83c]/40">
+      <div className="absolute inset-0 flex items-center justify-center bg-[#2a1f18] text-[#e0a83c]/40">
         <svg viewBox="0 0 24 24" fill="none" className="h-10 w-10" aria-hidden="true">
           <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
           <path d="m3.3 7 8.7 5 8.7-5M12 22V12" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
@@ -262,7 +289,7 @@ function ProductImage({
   }
 
   return (
-    <div className="relative h-full w-full" onMouseEnter={() => videoUrl && setHovering(true)} onMouseLeave={() => setHovering(false)} onTouchStart={() => videoUrl && setHovering(true)}>
+    <div className="absolute inset-0" onMouseEnter={() => videoUrl && setHovering(true)} onMouseLeave={() => setHovering(false)} onTouchStart={() => videoUrl && setHovering(true)}>
       <Image
         key={src}
         src={src}
@@ -567,6 +594,16 @@ export default function Products() {
           </aside>
 
           <div className="min-w-0">
+            <div className="mb-6">
+              <h2 className="text-[20px] font-semibold leading-tight text-[#2a1f18] sm:text-[22px]">
+                {t("shop.products_heading_prefix", "Find products")}{" "}
+                <span className="text-[#F47822]">{t("shop.products_heading_accent", "you will love.")}</span>
+              </h2>
+              <p className="mt-1 text-[12px] text-[#7a6a58]">
+                {t("shop.products_subtitle", "Explore marketplace listings, compare product details, and discover useful finds across a range of categories.")}
+              </p>
+            </div>
+
             <div className="mb-8 rounded-3xl border border-[#3a2a1e]/10 bg-white p-4 shadow-[0_15px_45px_rgba(58,42,30,.06)] sm:p-5">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div className="relative w-full lg:max-w-md">
@@ -640,15 +677,14 @@ export default function Products() {
               <div className="grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-3">
                 {filteredProducts.map((product, idx) => {
                   const img = product.images[0] || null;
-                  const effective = getEffectivePrice(product);
-                  const discounted = effective < product.price;
+                  const pricing = getPrimaryPricing(product);
                   const isTempOut = product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY";
                   const outOfStock = product.stock < 1 || isTempOut;
                   const fb = cartFeedback?.productId === product.id ? cartFeedback : null;
 
                   return (
-                    <article key={product.id} className="group flex flex-col overflow-hidden rounded-3xl border border-[#3a2a1e]/10 bg-white shadow-[0_12px_30px_rgba(58,42,30,.05)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_40px_rgba(58,42,30,.10)]">
-                      <Link href={`/products/${encodeURIComponent(product.slug || product.id)}`} className="relative aspect-square overflow-hidden bg-[#2a1f18]">
+                    <article key={product.id} className="group flex h-full flex-col overflow-hidden rounded-2xl border border-[#3a2a1e]/10 bg-white shadow-[0_10px_24px_rgba(58,42,30,.05)] transition hover:-translate-y-0.5 hover:shadow-[0_16px_36px_rgba(58,42,30,.10)]">
+                      <Link href={`/shop/${encodeURIComponent(product.slug || product.id)}`} className="relative block overflow-hidden bg-[#2a1f18]" style={{ aspectRatio: "5 / 4" }}>
                         <ProductImage src={img} videoUrl={product.videoUrl} alt={product.name} priority={idx < 3} />
                         {product.badge && (
                           <span className="absolute left-3 top-3 rounded-full bg-[#EB6D3D] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow">
@@ -662,15 +698,14 @@ export default function Products() {
                         )}
                       </Link>
 
-                      <div className="flex flex-1 flex-col p-4">
-                        <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#b98a3e]">{product.category}</span>
-                        <Link href={`/products/${encodeURIComponent(product.slug || product.id)}`} className="mt-1 line-clamp-1 font-serif-heading text-lg font-semibold text-[#1a1410] hover:text-[#cf5427]">
+                      <div className="flex flex-1 flex-col p-3">
+                        <span className="truncate text-[10px] font-bold uppercase tracking-[0.15em] text-[#b98a3e]">{product.category}</span>
+                        <Link href={`/shop/${encodeURIComponent(product.slug || product.id)}`} className="mt-0.5 line-clamp-2 min-h-[2.25rem] font-serif-heading text-sm font-semibold leading-snug text-[#1a1410] hover:text-[#cf5427]">
                           {product.name}
                         </Link>
-                        {product.description && <p className="mt-1 line-clamp-2 text-xs text-[#7a6a58]">{product.description}</p>}
 
                         {(product.rewards || []).length > 0 && (
-                          <div className="mt-2 flex flex-wrap gap-1">
+                          <div className="mt-1.5 flex flex-wrap gap-1">
                             {(product.rewards || []).slice(0, 2).map((r) => (
                               <span key={r.id} className="rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
                                 {rewardBadgeText(r)}
@@ -681,30 +716,45 @@ export default function Products() {
 
                         <ProductCountdown stock={product.stock} availableAt={product.availableAt} restockDate={product.restockDate} saleEndDate={product.saleEndDate} />
 
-                        <div className="mt-auto pt-3">
-                          <div className="flex items-baseline gap-2">
-                            <span className="text-base font-bold text-[#1a1410]">{formatMoney(effective, product.currency)}</span>
-                            {discounted && <span className="text-xs text-[#7a6a58] line-through">{formatMoney(product.price, product.currency)}</span>}
-                            <span className="text-[11px] text-[#7a6a58]">/ {product.unit}</span>
+                        <div className="mt-auto pt-2.5">
+                          <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5">
+                            <span className="text-sm font-bold text-[#1a1410]">{formatMoney(pricing.effectivePrice, pricing.primary.currency)}</span>
+                            {pricing.hasDiscount && <span className="text-[11px] text-[#7a6a58] line-through">{formatMoney(pricing.primary.amount, pricing.primary.currency)}</span>}
+                            <span className="text-[10px] text-[#7a6a58]">/ {product.unit}</span>
                           </div>
+                          {pricing.hasDiscount && (
+                            <p className="mt-0.5 text-[10px] font-semibold text-red-600">
+                              Save {formatMoney(pricing.primary.amount - pricing.effectivePrice, pricing.primary.currency)}
+                            </p>
+                          )}
+                          {pricing.otherPrices.length > 0 && (
+                            <div className="mt-1 space-y-0.5">
+                              {pricing.otherPrices.map((entry) => {
+                                const entryDisc = pricing.discountMap.get(entry.currency.toUpperCase());
+                                const hasEntryDisc = entryDisc != null && entryDisc > 0 && entryDisc < entry.amount;
+                                return (
+                                  <div key={entry.currency} className="flex items-center gap-1 text-[10px] text-[#7a6a58]">
+                                    <span className="font-semibold uppercase tracking-wide">{entry.currency}</span>
+                                    <span className="font-semibold">{formatMoney(hasEntryDisc ? entryDisc : entry.amount, entry.currency)}</span>
+                                    {hasEntryDisc && <span className="text-red-600">Save {formatMoney(entry.amount - entryDisc, entry.currency)}</span>}
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          )}
 
-                          <div className="mt-3 flex items-center gap-2">
-                            <button
-                              type="button"
-                              disabled={outOfStock}
-                              onClick={() => addToCart(product, img)}
-                              className={`flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl text-xs font-bold transition ${outOfStock ? "cursor-not-allowed bg-slate-200 text-slate-500" : "bg-[#20283a] text-white hover:bg-[#30384f]"}`}
-                            >
-                              <ShoppingCart size={13} />
-                              <span>{isTempOut ? t("product.out_of_stock_temp", "Temp out") : outOfStock ? t("product.out_of_stock", "Out") : t("checkout.add", "Add")}</span>
-                            </button>
-                            <Link href={`/products/${encodeURIComponent(product.slug || product.id)}`} aria-label={`View ${product.name}`} className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#3a2a1e]/15 bg-[#faf6ee] text-[#1a1410] transition hover:border-[#b98a3e]">
-                              <ArrowUpRight size={15} />
-                            </Link>
-                          </div>
+                          <button
+                            type="button"
+                            disabled={outOfStock}
+                            onClick={() => addToCart(product, img)}
+                            className={`mt-2.5 flex h-9 w-full items-center justify-center gap-1.5 rounded-lg text-[11px] font-bold transition ${outOfStock ? "cursor-not-allowed bg-slate-200 text-slate-500" : "bg-[#20283a] text-white hover:bg-[#30384f]"}`}
+                          >
+                            <ShoppingCart size={14} />
+                            <span>{isTempOut ? t("product.out_of_stock_temp", "Temp out") : outOfStock ? t("product.out_of_stock", "Out") : t("checkout.add", "Add")}</span>
+                          </button>
 
                           {fb && (
-                            <p className={`mt-2 text-[11px] font-semibold ${fb.isError ? "text-red-600" : "text-emerald-700"}`}>
+                            <p className={`mt-2 text-center text-[11px] font-semibold ${fb.isError ? "text-red-600" : "text-emerald-700"}`}>
                               {fb.message}
                             </p>
                           )}

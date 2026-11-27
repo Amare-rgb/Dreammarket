@@ -102,7 +102,7 @@ export default function VideosPage() {
           preload="metadata"
           aria-hidden="true"
         />
-        <div className="absolute inset-0 -z-10 bg-black/60" />
+        <div className="absolute inset-0 -z-10 bg-gradient-to-b from-black/45 via-black/25 to-black/45" />
         <div className="relative mx-auto w-full max-w-3xl">
           <p className="inline-flex items-center justify-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-1.5 text-xs font-bold uppercase tracking-[0.2em] text-[#F47822] backdrop-blur-md">
             <span className="h-1.5 w-1.5 rounded-full bg-[#F47822] animate-pulse" />

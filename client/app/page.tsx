@@ -240,7 +240,7 @@ export default function HomeStorefront() {
   const [error, setError] = useState<string | null>(null);
   const [cartFeedback, setCartFeedback] = useState<{ productId: string; message: string; isError: boolean } | null>(null);
 
- useEffect(() => {
+  useEffect(() => {
     let active = true;
 
     Promise.all([
@@ -301,6 +301,7 @@ export default function HomeStorefront() {
       active = false;
     };
   }, []);
+
   const addToCart = (product: HomeProductData, image: string | null) => {
     try {
       const cart = readCart();
@@ -308,7 +309,11 @@ export default function HomeStorefront() {
       const nextQty = (existing?.quantity || 0) + 1;
       const stock = Number(product.stock) || 0;
       if (nextQty > stock) {
-        return setCartFeedback({ productId: product.id, message: t("checkout.stock_limit", "There is not enough stock for another item."), isError: true });
+        return setCartFeedback({
+          productId: product.id,
+          message: t("checkout.stock_limit", "There is not enough stock for another item."),
+          isError: true,
+        });
       }
       const { effectivePrice } = getPrimaryPricing(product);
       const slug = product.slug || product.id;
@@ -316,7 +321,11 @@ export default function HomeStorefront() {
       writeCart(existing ? cart.map((item) => (item.productId === product.id ? nextItem : item)) : [...cart, nextItem]);
       setCartFeedback({ productId: product.id, message: t("checkout.added_to_cart", "Added to your order."), isError: false });
     } catch {
-      setCartFeedback({ productId: product.id, message: t("checkout.cart_save_error", "Could not save your order. Please try again."), isError: true });
+      setCartFeedback({
+        productId: product.id,
+        message: t("checkout.cart_save_error", "Could not save your order. Please try again."),
+        isError: true,
+      });
     }
   };
 
@@ -325,6 +334,56 @@ export default function HomeStorefront() {
 
   return (
     <>
+      <section className="relative flex min-h-screen min-h-[100dvh] w-full items-center overflow-hidden bg-[#20283a] px-4 pb-20 pt-28 sm:px-6 lg:px-10">
+        <video
+          src="/banners/dreahero.mp4"
+          className="absolute inset-0 h-full w-full object-cover object-center"
+          autoPlay
+          muted
+          loop
+          playsInline
+          preload="metadata"
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-[#20283a]/60 via-[#20283a]/30 to-[#20283a]/5" />
+        <div className="pointer-events-none absolute -left-24 top-1/4 h-72 w-72 rounded-full bg-[#F47822]/20 blur-3xl" />
+
+        <div className="relative mx-auto w-full max-w-7xl">
+          <div className="mx-auto max-w-2xl text-center">
+            <span className="inline-flex items-center rounded-full border border-white/20 bg-white/10 px-4 py-1.5 text-[11px] font-bold uppercase tracking-[0.2em] text-[#ffad72] backdrop-blur-md">
+              {t("home.hero_badge", "YOUR DIGITAL MARKETPLACE")}
+            </span>
+            <h1 className="mt-5 text-4xl font-bold leading-[1.05] tracking-tight text-white sm:text-5xl lg:text-6xl">
+              {t("home.hero_title_prefix", "Dream More")}{" "}
+              <span className="text-[#F47822]">{t("home.hero_title_accent", "Affiliate Market & Article Platform")}</span>
+              {t("home.hero_title_suffix", "")}
+            </h1>
+            <p className="mx-auto mt-5 max-w-xl text-base leading-7 text-white/75 sm:text-lg">
+              {t("home.hero_subtitle", "Discover products from a range of categories, compare listings, and shop with confidence—all in one convenient digital marketplace.")}
+            </p>
+            <div className="mt-8 flex flex-wrap items-center justify-center gap-3">
+              <Link
+                href="/shop"
+                className="inline-flex h-11 items-center gap-2 rounded-xl bg-[#F47822] px-6 text-sm font-bold text-white shadow-lg transition hover:bg-[#df6417]"
+              >
+                {t("home.hero_btn_explore", "Shop Collection")}
+                <ArrowRight size={16} />
+              </Link>
+              <Link
+                href="/contact"
+                className="inline-flex h-11 items-center gap-2 rounded-xl border border-white/25 bg-white/10 px-6 text-sm font-bold text-white backdrop-blur-md transition hover:bg-white/20"
+              >
+                {t("home.hero_btn_story", "Get Support")}
+              </Link>
+            </div>
+          </div>
+        </div>
+
+        <div className="absolute bottom-6 left-1/2 flex -translate-x-1/2 flex-col items-center gap-2 text-white/60">
+          <span className="text-[10px] font-bold uppercase tracking-[0.25em]">{t("home.hero_scroll", "SCROLL TO EXPLORE")}</span>
+          <ChevronRight size={16} className="rotate-90 animate-bounce" />
+        </div>
+      </section>
+
       <section id="products" className="w-full scroll-mt-20 overflow-hidden bg-[#fbf8f1] px-4 py-12 sm:px-6 lg:px-10">
         <div className="w-full">
           <div className="mb-6">

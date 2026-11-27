@@ -1,4 +1,3 @@
-// routes/admin.routes.js
 const express = require('express');
 const router = express.Router();
 const https = require('https');
@@ -7,15 +6,6 @@ const prisma = require('../lib/prisma');
 const { requireAdmin } = require('../middleware/auth');
 const { sendSms: sendSmsLib } = require('../lib/sms');
 const { sendEmail: sendEmailLib } = require('../lib/email');
-
-// ═══════════════════════════════════════════════════════════
-// NOTE: Order, OrderItem, Article, Cart, CartItem models were
-// REMOVED. This file no longer queries them.
-// ═══════════════════════════════════════════════════════════
-
-// ============================================================
-// GET /api/admin/users — list all users
-// ============================================================
 router.get('/users', requireAdmin, async (req, res) => {
   try {
     const users = await prisma.user.findMany({
@@ -30,33 +20,24 @@ router.get('/users', requireAdmin, async (req, res) => {
         createdAt: true,
       },
     });
-
     res.json(users);
   } catch (error) {
     console.error('Error fetching users:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
-
-// ============================================================
-// PATCH /api/admin/users — update a user's role
-// Only USER and ADMIN are valid roles.
-// ============================================================
 router.patch('/users', requireAdmin, async (req, res) => {
   try {
     const { userId, role } = req.body;
-
     if (!userId || !role) {
       return res.status(400).json({ error: 'Missing parameters' });
     }
-
     const normalizedRole = String(role).toUpperCase();
     if (normalizedRole !== 'USER' && normalizedRole !== 'ADMIN') {
       return res.status(400).json({
         error: 'Invalid role. Allowed values: USER, ADMIN',
       });
     }
-
     const updated = await prisma.user.update({
       where: { id: userId },
       data: { role: normalizedRole },
@@ -67,18 +48,12 @@ router.patch('/users', requireAdmin, async (req, res) => {
         role: true,
       },
     });
-
     res.json({ success: true, user: updated });
   } catch (error) {
     console.error('Error updating user:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
-
-// ============================================================
-// GET /api/admin/stats — dashboard overview counts
-// Orders removed — only counts that still exist.
-// ============================================================
 router.get('/stats', requireAdmin, async (req, res) => {
   try {
     const [totalUsers, totalProducts, totalCategories] = await Promise.all([
@@ -86,7 +61,6 @@ router.get('/stats', requireAdmin, async (req, res) => {
       prisma.product.count(),
       prisma.category.count(),
     ]);
-
     res.json({
       totalUsers,
       totalProducts,
@@ -97,24 +71,13 @@ router.get('/stats', requireAdmin, async (req, res) => {
     res.status(500).json({ error: 'Server error' });
   }
 });
-
-// ═══════════════════════════════════════════════════════════
-// LOYALTY & REWARDS
-// ═══════════════════════════════════════════════════════════
-
 const toNum = (v) => {
   const n = Number(v);
   return Number.isFinite(n) ? n : null;
 };
-
-// ── SMS via AfroMessage (lib/sms.js — real provider) ──
 async function sendSms(phone, message) {
   return sendSmsLib({ to: phone, message });
 }
-
-// ── Airtime top-up fallback (Africa's Talking airtime API — optional) ──
-// AfroMessage does not offer airtime top-up; PIN vouchers are the primary method.
-// This only runs if legacy AT_API_KEY/AT_USERNAME are still configured.
 async function sendAirtimeTopup(phone, amount) {
   const apiKey = process.env.AT_API_KEY;
   const username = process.env.AT_USERNAME;
@@ -128,7 +91,6 @@ async function sendAirtimeTopup(phone, amount) {
   const phoneNumber = '+' + String(phone).replace(/\D/g, '');
   const amountStr = `ETB ${Number(amount).toFixed(2)}`;
   const recipients = [{ phoneNumber, amount: amountStr }];
-  // Scoped TLS bypass — same workaround as lib/sms.js for local cert inspection
   const httpsAgent = new https.Agent({ rejectUnauthorized: false });
   const res = await axios.post(`https://${host}/version1/airtime/send`,
     {
@@ -152,8 +114,6 @@ async function sendAirtimeTopup(phone, amount) {
   }
   return data;
 }
-
-// ── Email via Resend → Gmail SMTP fallback (lib/email.js — real provider) ──
 async function sendEmail(to, subject, text) {
   const html = `<div style="font-family:Arial,sans-serif;max-width:600px;margin:0 auto;color:#20283a;line-height:1.6;">
     <div style="background:#20283a;padding:20px;color:#fff;text-align:center;"><h1 style="margin:0;font-size:20px;">Dream More Affiliate Market</h1></div>
@@ -161,12 +121,10 @@ async function sendEmail(to, subject, text) {
   </div>`;
   return sendEmailLib({ to, subject, text, html });
 }
-
 const REWARD_SCOPES = ['PRODUCT', 'ALL_ORDERS'];
 const TRIGGER_TYPES = ['MIN_QUANTITY', 'MIN_SPEND'];
 const REWARD_TYPES = ['FIXED_CASHBACK', 'PERCENT_DISCOUNT', 'FREE_ITEM', 'CUSTOM', 'MOBILE_AIRTIME'];
 const PAYOUT_METHODS = ['AUTO', 'MOBILE_AIRTIME', 'TELEBIRR', 'CBE', 'AWASH', 'CHAPA', 'USD_TRANSFER', 'OTHER'];
-
 function normalizeRulePayload(body, { partial = false } = {}) {
   const data = {};
   const pick = (key, fn) => {
@@ -195,8 +153,6 @@ function normalizeRulePayload(body, { partial = false } = {}) {
   pick('active', (v) => Boolean(v));
   return data;
 }
-
-// Auto-create / update a PromoCode row for discount-type rewards
 async function syncPromoForRule(rule) {
   if (!rule.promoCode) return null;
   const isDiscount = ['FIXED_CASHBACK', 'PERCENT_DISCOUNT'].includes(rule.rewardType);
@@ -219,8 +175,6 @@ async function syncPromoForRule(rule) {
     data: { code: rule.promoCode, ...payload },
   });
 }
-
-// GET /api/admin/rewards/rules — list reward rules
 router.get('/rewards/rules', requireAdmin, async (req, res) => {
   try {
     const rules = await prisma.rewardRule.findMany({
@@ -236,8 +190,6 @@ router.get('/rewards/rules', requireAdmin, async (req, res) => {
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
-
-// POST /api/admin/rewards/rules — create rule
 router.post('/rewards/rules', requireAdmin, async (req, res) => {
   try {
     const body = req.body || {};
@@ -245,7 +197,6 @@ router.post('/rewards/rules', requireAdmin, async (req, res) => {
       return res.status(400).json({ success: false, error: 'Name and rewardValue are required.' });
     }
     const data = normalizeRulePayload(body);
-    // Backfill threshold from legacy minSpend when not provided
     if (data.threshold == null) {
       data.threshold = data.minSpend != null ? data.minSpend : 0;
     }
@@ -264,8 +215,6 @@ router.post('/rewards/rules', requireAdmin, async (req, res) => {
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
-
-// PATCH /api/admin/rewards/rules/:id — update / toggle
 router.patch('/rewards/rules/:id', requireAdmin, async (req, res) => {
   try {
     const data = normalizeRulePayload(req.body || {}, { partial: true });
@@ -287,8 +236,6 @@ router.patch('/rewards/rules/:id', requireAdmin, async (req, res) => {
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
-
-// DELETE /api/admin/rewards/rules/:id
 router.delete('/rewards/rules/:id', requireAdmin, async (req, res) => {
   try {
     await prisma.rewardRule.delete({ where: { id: req.params.id } });
@@ -298,14 +245,11 @@ router.delete('/rewards/rules/:id', requireAdmin, async (req, res) => {
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
-
-// GET /api/admin/rewards/progress — users who crossed thresholds
 router.get('/rewards/progress', requireAdmin, async (req, res) => {
   try {
     const rules = await prisma.rewardRule.findMany({
       where: { active: true, scope: 'ALL_ORDERS', triggerType: 'MIN_SPEND' },
     });
-    // Aggregate delivered/confirmed order totals per user email & userId
     const orders = await prisma.order.findMany({
       where: { status: { not: 'CANCELLED' } },
       select: { userId: true, customerEmail: true, customerName: true, customerPhone: true, total: true, status: true },
@@ -358,8 +302,6 @@ router.post('/rewards/dispatch', requireAdmin, async (req, res) => {
       rule = await prisma.rewardRule.findUnique({ where: { id: rewardRuleId } });
       if (!rule) return res.status(404).json({ success: false, error: 'Reward rule not found.' });
     }
-
-    // Resolve recipient from user/order if not provided
     let email = recipientEmail ? String(recipientEmail) : null;
     let phone = recipientPhone ? String(recipientPhone) : null;
     if (userId) {
@@ -370,15 +312,12 @@ router.post('/rewards/dispatch', requireAdmin, async (req, res) => {
       const o = await prisma.order.findUnique({ where: { id: orderId }, select: { customerEmail: true, customerPhone: true, customerName: true } });
       if (o) { email = email || o.customerEmail; phone = phone || o.customerPhone; }
     }
-
-    // ── MOBILE_AIRTIME: resolve a voucher PIN or trigger Airtime API ──
     let airtimeInfo = null;
     if (rule && rule.rewardType === 'MOBILE_AIRTIME') {
       const amount = toNum(rule.rewardValue) || 0;
       if (amount <= 0) {
         return res.status(400).json({ success: false, error: 'Airtime reward amount is invalid.' });
       }
-      // Pick an AVAILABLE voucher matching the amount (exact, else nearest lower/higher available)
       let voucher = await prisma.airtimeVoucher.findFirst({
         where: { status: 'AVAILABLE', amount },
         orderBy: { createdAt: 'asc' },
@@ -405,7 +344,6 @@ router.post('/rewards/dispatch', requireAdmin, async (req, res) => {
           amount: Number(voucher.amount),
         };
       } else if (process.env.AT_API_KEY && process.env.AT_USERNAME && phone) {
-        // No manual PIN — top up directly via Africa's Talking
         try {
           await sendAirtimeTopup(phone, amount);
           airtimeInfo = { mode: 'API', amount, network: 'mobile' };
@@ -422,7 +360,6 @@ router.post('/rewards/dispatch', requireAdmin, async (req, res) => {
         });
       }
     }
-
     const rewardCurrency = rule?.currency || 'ETB';
     const payoutLabel = rule?.payoutMethod && rule.payoutMethod !== 'AUTO'
       ? ` via ${rule.payoutMethod.replace(/_/g, ' ')}`
@@ -435,7 +372,6 @@ router.post('/rewards/dispatch', requireAdmin, async (req, res) => {
         ? `DreamMar Airtime: You received ${airtimeInfo.amount} ${rewardCurrency} ${airtimeInfo.network} airtime! Recharge PIN: ${airtimeInfo.pin}. Dial *805*${airtimeInfo.pin}# to redeem.`
         : `DreamMar Airtime: ${airtimeInfo.amount} ${rewardCurrency} mobile airtime has been sent to your phone. Check your balance.`;
     }
-
     const results = { sms: null, email: null };
     const errors = [];
 
@@ -484,8 +420,6 @@ router.post('/rewards/dispatch', requireAdmin, async (req, res) => {
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
-
-// ── Detect Ethiopian network from phone prefix ──
 function detectNetwork(phone) {
   const digits = String(phone || '').replace(/\D/g, '');
   const local = digits.startsWith('251') ? digits.slice(3) : digits.replace(/^0+/, '');
@@ -493,9 +427,6 @@ function detectNetwork(phone) {
   if (local.startsWith('88') || local.startsWith('89')) return 'Safaricom';
   return 'Other';
 }
-
-// POST /api/admin/airtime/send — real airtime top-up via Africa's Talking
-// body: { phone, amount }
 router.post('/airtime/send', requireAdmin, async (req, res) => {
   try {
     const phone = String(req.body?.phone || '').trim();
@@ -534,7 +465,6 @@ router.post('/airtime/send', requireAdmin, async (req, res) => {
       }).catch(() => {});
       throw sendErr;
     }
-
     const requestId = result?.responses?.[0]?.requestId || null;
     await prisma.airtimeTransaction.create({
       data: {
@@ -546,7 +476,6 @@ router.post('/airtime/send', requireAdmin, async (req, res) => {
         sentBy: req.user?.id || null,
       },
     }).catch((e) => console.warn('Airtime log failed:', e.message));
-
     res.json({
       success: true,
       network,
@@ -559,8 +488,6 @@ router.post('/airtime/send', requireAdmin, async (req, res) => {
     res.status(502).json({ success: false, error: error.message || 'Airtime send failed.' });
   }
 });
-
-// GET /api/admin/airtime/history — recent top-up transactions
 router.get('/airtime/history', requireAdmin, async (req, res) => {
   try {
     const transactions = await prisma.airtimeTransaction.findMany({
@@ -573,12 +500,6 @@ router.get('/airtime/history', requireAdmin, async (req, res) => {
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
-
-// ═══════════════════════════════════════════════════════════
-// AIRTIME VOUCHERS (manual PIN pool)
-// ═══════════════════════════════════════════════════════════
-
-// GET /api/admin/airtime-vouchers
 router.get('/airtime-vouchers', requireAdmin, async (req, res) => {
   try {
     const { status, amount } = req.query;
@@ -600,9 +521,6 @@ router.get('/airtime-vouchers', requireAdmin, async (req, res) => {
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
-
-// POST /api/admin/airtime-vouchers/bulk — bulk paste PINs
-// body: { amount, network?, pins: "pin1\npin2, pin3" }
 router.post('/airtime-vouchers/bulk', requireAdmin, async (req, res) => {
   try {
     const amount = toNum(req.body?.amount);
@@ -631,8 +549,6 @@ router.post('/airtime-vouchers/bulk', requireAdmin, async (req, res) => {
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
-
-// DELETE /api/admin/airtime-vouchers/:id — only AVAILABLE vouchers
 router.delete('/airtime-vouchers/:id', requireAdmin, async (req, res) => {
   try {
     const voucher = await prisma.airtimeVoucher.findUnique({ where: { id: req.params.id } });
@@ -647,8 +563,6 @@ router.delete('/airtime-vouchers/:id', requireAdmin, async (req, res) => {
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
-
-// PATCH /api/admin/rewards/dispatch/:id — mark redeemed/failed
 router.patch('/rewards/dispatch/:id', requireAdmin, async (req, res) => {
   try {
     const { status } = req.body || {};
@@ -665,10 +579,6 @@ router.patch('/rewards/dispatch/:id', requireAdmin, async (req, res) => {
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
-
-// ═══════════════════════════════════════════════════════════
-// PROMO CODES
-// ═══════════════════════════════════════════════════════════
 router.get('/promo-codes', requireAdmin, async (req, res) => {
   try {
     const codes = await prisma.promoCode.findMany({ orderBy: { createdAt: 'desc' } });
@@ -678,7 +588,6 @@ router.get('/promo-codes', requireAdmin, async (req, res) => {
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
-
 router.post('/promo-codes', requireAdmin, async (req, res) => {
   try {
     const { code, description, discountType, discountValue, minOrderTotal, expiresAt, usageLimit, active, rewardRuleId } = req.body || {};
@@ -707,7 +616,6 @@ router.post('/promo-codes', requireAdmin, async (req, res) => {
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
-
 router.patch('/promo-codes/:id', requireAdmin, async (req, res) => {
   try {
     const { description, discountType, discountValue, minOrderTotal, expiresAt, usageLimit, active } = req.body || {};
@@ -730,7 +638,6 @@ router.patch('/promo-codes/:id', requireAdmin, async (req, res) => {
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
-
 router.delete('/promo-codes/:id', requireAdmin, async (req, res) => {
   try {
     await prisma.promoCode.delete({ where: { id: req.params.id } });
@@ -740,5 +647,4 @@ router.delete('/promo-codes/:id', requireAdmin, async (req, res) => {
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
-
 module.exports = router;

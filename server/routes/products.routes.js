@@ -1,4 +1,3 @@
-// routes/products.routes.js
 const express = require('express');
 const router = express.Router();
 const slugify = require('slugify');
@@ -7,14 +6,6 @@ const path = require('path');
 const prisma = require('../lib/prisma');
 const { requireAuth, requireAdmin, optionalAuth } = require('../middleware/auth');
 const UPLOAD_ROOT = path.resolve(__dirname, '..', 'uploads');
-
-// ═══════════════════════════════════════════════════════════
-// Dream More Affiliate Market — Products API
-//  • Storage: local disk (/uploads)
-//  • Database: Neon (PostgreSQL) via Prisma
-// ═══════════════════════════════════════════════════════════
-
-// ── Multi-currency helpers ──────────────────────────────────
 function normalizePrices(rawPrices, fallbackPrice, fallbackCurrency = 'ETB') {
   const list = [];
   if (Array.isArray(rawPrices)) {
@@ -27,7 +18,6 @@ function normalizePrices(rawPrices, fallbackPrice, fallbackCurrency = 'ETB') {
     }
   }
   
-  // Deduplicate by currency
   const seen = new Set();
   const deduped = list.filter((p) => {
     if (seen.has(p.currency)) return false;
@@ -35,7 +25,6 @@ function normalizePrices(rawPrices, fallbackPrice, fallbackCurrency = 'ETB') {
     return true;
   });
 
-  // If empty, fallback to the single price
   if (deduped.length === 0) {
     const amount = Number(fallbackPrice);
     const currency = String(fallbackCurrency || 'ETB').toUpperCase();
@@ -45,9 +34,6 @@ function normalizePrices(rawPrices, fallbackPrice, fallbackCurrency = 'ETB') {
   }
   return deduped;
 }
-
-// Normalize per-currency discount prices: [{ currency, amount }]
-// Amounts must be > 0 and < the corresponding price. Returns [] if none valid.
 function normalizeDiscountPrices(rawDiscounts, prices) {
   if (!Array.isArray(rawDiscounts) || rawDiscounts.length === 0) return [];
   const priceMap = new Map((prices || []).map((p) => [p.currency, p.amount]));
@@ -77,7 +63,6 @@ function serializeProduct(product) {
   const price = Number(product.price) || 0;
   const dbPrices = Array.isArray(product.prices) ? product.prices : [];
   
-  // If DB has prices, use them. Otherwise, build one from the base price.
   const prices = dbPrices.length > 0 ? dbPrices : [{ currency: product.currency || 'ETB', amount: price }];
 
   return {
@@ -91,8 +76,6 @@ function serializeProduct(product) {
     salePrice: product.discountPrice ? Number(product.discountPrice) : null,
   };
 }
-
-// ── Local upload cleanup ────────────────────────────────────
 function getLocalUploadPath(url) {
   if (typeof url !== 'string' || !url.trim()) return null;
   try {
@@ -135,10 +118,6 @@ async function deleteLocalImages(urls) {
     }
   }
 }
-
-// ============================================================
-// GET /api/products/admin/all — Admin view (all products)
-// ============================================================
 router.get('/admin/all', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { page = 1, limit = 12, search, categoryId, subCategoryId, status } = req.query;
@@ -149,8 +128,6 @@ router.get('/admin/all', requireAuth, requireAdmin, async (req, res) => {
     const take = limitNum;
 
     const where = {};
-
-    // Optional approval-status filter (PENDING / PUBLISHED)
     if (status === 'PENDING' || status === 'PUBLISHED') {
       where.status = status;
     }
@@ -197,9 +174,6 @@ router.get('/admin/all', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-// ============================================================
-// GET /api/products/public — Public product list
-// ============================================================
 router.get('/public', async (req, res) => {
   try {
     const { page = 1, limit = 12, search, categoryId, subCategoryId, sort } = req.query;
@@ -209,7 +183,6 @@ router.get('/public', async (req, res) => {
     const skip = (pageNum - 1) * limitNum;
     const take = limitNum;
 
-    // Public storefront only shows approved products
     const where = { status: 'PUBLISHED' };
 
     if (categoryId) where.categoryId = categoryId;
@@ -271,9 +244,6 @@ router.get('/public', async (req, res) => {
   }
 });
 
-// ============================================================
-// GET /api/products — Backward-compatible product list
-// ============================================================
 router.get('/', async (req, res) => {
   try {
     const {
@@ -291,8 +261,6 @@ router.get('/', async (req, res) => {
     const limitNum = Math.max(1, parseInt(limit, 10) || 12);
     const skip = (pageNum - 1) * limitNum;
     const take = limitNum;
-
-    // Public storefront only shows approved products
     const where = { status: 'PUBLISHED' };
 
     if (category) where.category = { slug: category };
@@ -358,9 +326,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// ============================================================
-// GET /api/products/:id — Single product
-// ============================================================
 router.get('/:id', optionalAuth, async (req, res) => {
   try {
     const { id } = req.params;
@@ -400,8 +365,6 @@ router.get('/:id', optionalAuth, async (req, res) => {
     if (!product) {
       return res.status(404).json({ error: 'Product not found' });
     }
-
-    // Pending products are hidden from the public; admins can still preview them
     const isAdmin = req.user?.role?.toUpperCase() === 'ADMIN';
     if (product.status !== 'PUBLISHED' && !isAdmin) {
       return res.status(404).json({ error: 'Product not found' });
@@ -413,10 +376,6 @@ router.get('/:id', optionalAuth, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch product' });
   }
 });
-
-// ============================================================
-// POST /api/products — Create product (ADMIN ONLY)
-// ============================================================
 router.post('/', requireAuth, requireAdmin, async (req, res) => {
   try {
     const body = req.body;
@@ -425,14 +384,10 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
     if (!userId) {
       return res.status(401).json({ error: 'User not authenticated' });
     }
-
-    // ── Normalise images ────────────────────────────────────
     const incomingImages = Array.isArray(body.images) ? body.images : [];
     const cleanImages = incomingImages.filter(
       (u) => typeof u === 'string' && u.trim().length > 0
     );
-
-    // ── Discount price ──────────────────────────────────────
     let discountPriceValue = body.discountPrice;
     if (
       body.salePrice !== undefined &&
@@ -448,15 +403,11 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
     ) {
       discountPriceValue = null;
     }
-
-    // ── Stock ───────────────────────────────────────────────
     let stockValue = 0;
     if (body.stock !== undefined && body.stock !== null && body.stock !== '') {
       stockValue =
         typeof body.stock === 'string' ? parseInt(body.stock, 10) : body.stock;
     }
-
-    // ── Availability status ─────────────────────────────────
     const VALID_STATUSES = ['AVAILABLE', 'OUT_OF_STOCK_TEMPORARY'];
     let availabilityStatus =
       typeof body.availabilityStatus === 'string' &&
@@ -465,10 +416,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
         : stockValue > 0
           ? 'AVAILABLE'
           : 'OUT_OF_STOCK_TEMPORARY';
-
-    // If admin explicitly set OUT_OF_STOCK_TEMPORARY, respect it even with stock
     if (availabilityStatus === 'OUT_OF_STOCK_TEMPORARY' && stockValue > 0) {
-      // Keep stock but mark as temporarily out of stock (admin override)
     }
 
     const outOfStockAt =
@@ -488,15 +436,9 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
       body.restockQuantity !== undefined && body.restockQuantity !== null && body.restockQuantity !== ''
         ? Math.max(1, parseInt(body.restockQuantity, 10) || 10)
         : 10;
-
-    // ── Normalize Prices ────────────────────────────────────
     const normalizedPrices = normalizePrices(body.prices, body.price, body.currency);
     const primaryPrice = normalizedPrices[0];
-
-    // ── Per-currency discount prices ─────────────────────────
     const normalizedDiscountPrices = normalizeDiscountPrices(body.discountPrices, normalizedPrices);
-    // Always derive discountPrice from the primary currency's discount
-    // Set to null when no primary discount exists — never leave stale
     const primaryDiscount = normalizedDiscountPrices.find(
       (d) => d.currency === (primaryPrice?.currency || 'ETB')
     );
@@ -507,7 +449,7 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
       description: body.description,
       price: primaryPrice ? primaryPrice.amount : (parseFloat(body.price) || 0),
       currency: primaryPrice ? primaryPrice.currency : 'ETB',
-      prices: normalizedPrices, // Save JSON array
+      prices: normalizedPrices, 
       discountPrice: effectiveDiscountPrice,
       discountPrices: normalizedDiscountPrices.length > 0 ? normalizedDiscountPrices : null,
       stock: stockValue,
@@ -537,15 +479,11 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
           ? parseFloat(body.pricePerUnit)
           : body.pricePerUnit
         : null,
-      // Stock & arrival countdown dates (optional)
       availableAt: body.availableAt ? new Date(body.availableAt) : null,
       restockDate: body.restockDate ? new Date(body.restockDate) : null,
       saleEndDate: body.saleEndDate ? new Date(body.saleEndDate) : null,
-      // New products always start as PENDING until an admin approves them
       status: 'PENDING',
     };
-
-    // ── Resolve category ────────────────────────────────────
     let resolvedCategory = await prisma.category.findFirst({
       where: { OR: [{ id: body.categoryId }, { slug: body.categoryId }] },
     });
@@ -562,8 +500,6 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
         });
       }
     }
-
-    // ── Resolve subcategory ─────────────────────────────────
     let resolvedSubCategoryId = null;
     if (body.subCategoryId) {
       const foundSub = await prisma.category.findFirst({
@@ -573,8 +509,6 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
       });
       if (foundSub) resolvedSubCategoryId = foundSub.id;
     }
-
-    // ── Unique slug ─────────────────────────────────────────
     const baseSlug =
       slugify(productData.name, { lower: true, strict: true, trim: true }) ||
       `product-${Date.now()}`;
@@ -584,8 +518,6 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
       slug = `${baseSlug}-${counter}`;
       counter++;
     }
-
-    // ── Save to Neon ────────────────────────────────────────
     const product = await prisma.product.create({
       data: {
         ...productData,
@@ -595,8 +527,6 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
       },
       include: { category: true, subCategory: true },
     });
-
-    // ── Side / add-on products ──────────────────────────────
     const sideProducts = Array.isArray(body.sideProducts) ? body.sideProducts : [];
     for (let i = 0; i < sideProducts.length; i++) {
       const sp = sideProducts[i];
@@ -617,8 +547,6 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
         },
       }).catch(() => {});
     }
-
-    // ── Per-size stock variants ─────────────────────────────
     const sizeVariants = Array.isArray(body.sizeVariants) ? body.sizeVariants : [];
     for (const sv of sizeVariants) {
       const sizeName = typeof sv === 'string' ? sv : sv?.size;
@@ -631,8 +559,6 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
         create: { productId: product.id, size: String(sizeName).slice(0, 60), stock: sizeStock, sku: sizeSku },
       }).catch(() => {});
     }
-
-    // ── Optionally set category image from first product image ──
     try {
       const firstImage = cleanImages[0];
       if (resolvedCategory && !resolvedCategory.image && firstImage) {
@@ -661,10 +587,6 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
     });
   }
 });
-
-// ============================================================
-// PUT /api/products/:id — Update product (ADMIN ONLY)
-// ============================================================
 router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;

@@ -13,7 +13,7 @@ interface CheckoutForm { customerName: string; customerPhone: string; shippingAd
 interface GpsFix { lat: number; lng: number; accuracy: number; }
 interface GeoAddress { display: string; }
 interface DeliveryRegion { id: string; name: string; country: string | null; fee: number; }
-interface NearestHub { id: string; name: string; distanceKm: number | null; }
+interface NearestHub { id: string; name: string; distanceKm: number | null; fee?: number | string | null; exactMatch?: boolean; etaHours?: number | null; }
 interface VerifyTicket { id: string; status: string; messages: { id: string; senderRole: string; body: string; createdAt: string }[]; }
 interface VerifyResult {
   success?: boolean;
@@ -95,7 +95,14 @@ export default function CheckoutPage() {
 
   const total = useMemo(() => items.reduce((s, i) => s + i.unitPrice * i.quantity, 0), [items]);
   const region = regions.find((r) => r.id === regionId) || null;
-  const deliveryFee = gps ? quote?.fee ?? 0 : region?.fee ?? 0;
+  // Fee priority: manual region pick > exact GPS region match > distance quote.
+  const deliveryFee = regionId
+    ? Number(region?.fee ?? 0)
+    : gps
+      ? nearestHub?.exactMatch
+        ? Number(nearestHub.fee ?? 0)
+        : quote?.fee ?? 0
+      : 0;
   const grandTotal = total + deliveryFee;
 
   const composedAddress = useMemo(() => {
@@ -510,7 +517,22 @@ export default function CheckoutPage() {
                       <p className="font-semibold text-emerald-700">GPS locked (±{Math.round(gps.accuracy)}m) — {gps.lat.toFixed(5)}, {gps.lng.toFixed(5)}</p>
                       {geo?.display && <p>Detected address: {geo.display}</p>}
                       {quote?.distanceKm != null && <p>Estimated distance: {quote.distanceKm.toFixed(1)} km</p>}
-                      {nearestHub && <p className="flex items-center gap-1 text-slate-500"><MapPin size={12} /> Nearest hub: {nearestHub.name}{nearestHub.distanceKm != null ? ` (${nearestHub.distanceKm.toFixed(1)} km)` : ""}</p>}
+                      {nearestHub && (
+                        <div className="mt-1.5 rounded-lg border border-slate-200 bg-white p-2.5">
+                          <p className="flex items-center gap-1 font-semibold text-slate-700">
+                            <MapPin size={12} className="text-[#EB6D3D]" />
+                            {nearestHub.exactMatch ? "Delivery region matched" : "Nearest delivery region"}: {nearestHub.name}
+                            {nearestHub.distanceKm != null ? ` (${nearestHub.distanceKm.toFixed(1)} km)` : ""}
+                            {nearestHub.exactMatch && (
+                              <span className="ml-1 rounded-full bg-emerald-100 px-1.5 py-0.5 text-[10px] font-bold text-emerald-700">Exact match</span>
+                            )}
+                          </p>
+                          <p className="mt-1 text-slate-500">
+                            Region fee: <span className="font-bold text-slate-700">{money(Number(nearestHub.fee ?? 0))}</span>
+                            {nearestHub.etaHours != null && <> · ETA ~{nearestHub.etaHours}h</>}
+                          </p>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

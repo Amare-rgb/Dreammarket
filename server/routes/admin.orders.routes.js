@@ -3,7 +3,6 @@ const prisma = require('../lib/prisma');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { sendOrderApprovalEmail, sendEmail } = require('../lib/email');
 const { sendOrderApprovalSms, sendSms } = require('../lib/sms');
-
 const router = express.Router();
 const ORDER_STATUSES = [
   'CONFIRMED',
@@ -13,7 +12,6 @@ const ORDER_STATUSES = [
   'DELIVERED',
   'CANCELLED',
 ];
-
 const allowedTransitions = {
   PENDING: ['CONFIRMED', 'CANCELLED'],
   CONFIRMED: ['PROCESSING', 'CANCELLED'],
@@ -23,11 +21,8 @@ const allowedTransitions = {
   DELIVERED: [],
   CANCELLED: [],
 };
-
 const normalizeText = (value) =>
   typeof value === 'string' ? value.trim() : '';
-
-// GET ALL ORDERS (Admin)
 router.get('/', requireAuth, requireAdmin, async (req, res) => {
   try {
     const orders = await prisma.order.findMany({
@@ -66,8 +61,6 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
         },
       },
     });
-
-    // ── Reward eligibility: cumulative spend per customer vs active rules ──
     const [activeRules, allOrders] = await Promise.all([
       prisma.rewardRule.findMany({
         where: { active: true, scope: 'ALL_ORDERS', triggerType: 'MIN_SPEND' },
@@ -82,7 +75,6 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
       const key = o.userId || o.customerEmail.toLowerCase();
       spendByCustomer.set(key, (spendByCustomer.get(key) || 0) + Number(o.total));
     }
-
     res.json({
       success: true,
       orders: orders.map((order) => {
@@ -121,8 +113,6 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to fetch orders' });
   }
 });
-
-// UPDATE ORDER STATUS (Approve / Cancel)
 router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
   try {
     const nextStatus = normalizeText(req.body?.status).toUpperCase();
@@ -132,7 +122,6 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
         error: 'Choose a valid order status.',
       });
     }
-
     const result = await prisma.$transaction(async (transaction) => {
       const order = await transaction.order.findUnique({
         where: { id: req.params.id },
@@ -153,7 +142,6 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
         error.statusCode = 409;
         throw error;
       }
-
       const updated = await transaction.order.updateMany({
         where: { id: order.id, status: order.status },
         data: { status: nextStatus },
@@ -163,8 +151,6 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
         error.statusCode = 409;
         throw error;
       }
-
-      // Restore stock if cancelled
       if (nextStatus === 'CANCELLED') {
         for (const item of order.items) {
           if (item.productId) {
@@ -175,7 +161,6 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
           }
         }
       }
-
       return {
         order: await transaction.order.findUnique({
           where: { id: order.id },
@@ -196,12 +181,7 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
         statusChanged: true,
       };
     });
-
     const updatedOrder = result.order;
-
-    // ✅ SEND EMAIL + SMS IF CONFIRMED — fire-and-forget so a slow or
-    // unreachable provider (e.g. Africa's Talking timeout) never blocks
-    // the order status update response.
     if (result.statusChanged && nextStatus === 'CONFIRMED') {
       sendOrderApprovalEmail(updatedOrder)
         .then(() => console.log(`Order ${updatedOrder.orderNumber} approval email sent.`))
@@ -211,7 +191,6 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
             notificationError
           )
         );
-
       sendOrderApprovalSms(updatedOrder)
         .then(() => console.log(`Order ${updatedOrder.orderNumber} approval SMS sent.`))
         .catch((smsError) =>
@@ -220,13 +199,10 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
             smsError
           )
         );
-
-      // ── Auto-dispatch qualified reward via SMS + Email ──
       const rule = updatedOrder.qualifiedRule;
       if (updatedOrder.rewardQualified && rule) {
         (async () => {
           try {
-            // Skip if this reward was already sent for this order
             const alreadySent = await prisma.rewardDispatch.findFirst({
               where: { orderId: updatedOrder.id, rewardRuleId: rule.id, status: 'SENT' },
               select: { id: true },
@@ -236,8 +212,6 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
             let message =
               `Dream More: Reward unlocked - ${rule.name}: ${rule.rewardValue}` +
               `${rule.promoCode ? ` (code ${rule.promoCode})` : ''}. Thank you for shopping with us!`;
-
-            // MOBILE_AIRTIME: attach an AVAILABLE voucher PIN
             if (rule.rewardType === 'MOBILE_AIRTIME') {
               const amount = Number(rule.rewardValue) || 0;
               let voucher = amount > 0
@@ -322,7 +296,6 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
         })();
       }
     }
-
     return res.json({
       success: true,
       order: {
@@ -344,9 +317,6 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to update order status' });
   }
 });
-
-// UPDATE PAYMENT VERIFICATION (Admin approve/reject uploaded screenshot)
-// PATCH /api/admin/orders/:id/payment  { action: 'approve' | 'reject', note? }
 router.patch('/:id/payment', requireAuth, requireAdmin, async (req, res) => {
   try {
     const action = normalizeText(req.body?.action).toLowerCase();
@@ -362,7 +332,6 @@ router.patch('/:id/payment', requireAuth, requireAdmin, async (req, res) => {
     if (!order) {
       return res.status(404).json({ success: false, error: 'Order not found.' });
     }
-
     const paymentStatus = action === 'approve' ? 'VERIFIED' : 'REJECTED';
     const updated = await prisma.order.update({
       where: { id: order.id },
@@ -375,7 +344,6 @@ router.patch('/:id/payment', requireAuth, requireAdmin, async (req, res) => {
         verifiedAt: new Date(),
       },
     });
-
     return res.json({
       success: true,
       order: {
@@ -392,8 +360,6 @@ router.patch('/:id/payment', requireAuth, requireAdmin, async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to update payment verification' });
   }
 });
-
-// DELETE ORDER (Admin)
 router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const order = await prisma.order.findUnique({
@@ -405,7 +371,6 @@ router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
     }
 
     await prisma.$transaction(async (transaction) => {
-      // Restore stock for every item that still references a product
       for (const item of order.items) {
         if (item.productId) {
           await transaction.product.updateMany({
@@ -414,7 +379,6 @@ router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
           });
         }
       }
-      // OrderItem rows cascade-delete with the order
       await transaction.order.delete({ where: { id: order.id } });
     });
 
@@ -424,5 +388,4 @@ router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to delete order' });
   }
 });
-
 module.exports = router;

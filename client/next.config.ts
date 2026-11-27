@@ -55,6 +55,26 @@ const nextConfig: NextConfig = {
     pollIntervalMs: 1000,
   },
 
+  webpack: (config) => {
+    config.watchOptions = {
+      ...config.watchOptions,
+      ignored: [
+        "**/node_modules/**",
+        "**/.git/**",
+        "**/.next/**",
+        "**/DumpStack.log.tmp",
+        "**/pagefile.sys",
+        "**/hiberfil.sys",
+        "**/swapfile.sys",
+        "D:\\DumpStack.log.tmp",
+        "D:\\pagefile.sys",
+        "D:\\hiberfil.sys",
+        "D:\\swapfile.sys",
+      ],
+    };
+    return config;
+  },
+
   images: {
     dangerouslyAllowLocalIP: !isProd,
 

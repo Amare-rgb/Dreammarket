@@ -1,4 +1,3 @@
-// routes/orders.routes.js
 const express = require('express');
 const prisma = require('../lib/prisma');
 const { requireAuth } = require('../middleware/auth');
@@ -7,14 +6,11 @@ const { verifyPayment } = require('../services/paymentVerification.service');
 
 const router = express.Router();
 const normalizeText = (value) => typeof value === 'string' ? value.trim() : '';
-
-// ── Helpers: distance & delivery fee ─────────────────────────
 const toNumber = (value) => {
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
 };
 
-// Haversine distance in km
 function haversineKm(lat1, lng1, lat2, lng2) {
   const R = 6371;
   const dLat = ((lat2 - lat1) * Math.PI) / 180;
@@ -27,7 +23,6 @@ function haversineKm(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// Calculate delivery fee from Settings (tiers or base+perKm)
 async function calculateDeliveryFee(distanceKm, orderTotal) {
   const settings = await prisma.settings.findFirst({
     orderBy: { updatedAt: 'desc' },
@@ -56,7 +51,7 @@ async function calculateDeliveryFee(distanceKm, orderTotal) {
       (t) => distanceKm >= t.minKm && (t.maxKm == null || distanceKm < t.maxKm)
     );
     if (tier) return { fee: tier.fee, distanceKm };
-    // Beyond last tier: use last tier fee
+  
     return { fee: validTiers[validTiers.length - 1].fee, distanceKm };
   }
 
@@ -66,7 +61,6 @@ async function calculateDeliveryFee(distanceKm, orderTotal) {
   return { fee: Math.round(fee * 100) / 100, distanceKm };
 }
 
-// Validate a promo code and return discount amount
 async function validatePromoCode(code, orderTotal) {
   const promo = await prisma.promoCode.findUnique({
     where: { code: code.toUpperCase() },
@@ -153,7 +147,6 @@ router.get('/', requireAuth, async (req, res) => {
   }
 });
 
-// GET /api/orders/delivery-quote?lat=..&lng=..&subtotal=.. — real-time delivery fee
 router.get('/delivery-quote', requireAuth, async (req, res) => {
   try {
     const lat = toNumber(req.query?.lat);
@@ -194,8 +187,6 @@ router.get('/delivery-quote', requireAuth, async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to calculate delivery fee.' });
   }
 });
-
-// GET /api/orders/:orderNumber — single order for the authenticated customer
 router.get('/:orderNumber', requireAuth, async (req, res) => {
   try {
     const user = await prisma.user.findUnique({
@@ -314,8 +305,6 @@ router.post('/', requireAuth, async (req, res) => {
         error: 'Provide valid contact, delivery, payment, and product details.',
       });
     }
-
-    // ── Location: verified GPS OR admin-defined delivery region ──
     const hasValidGps =
       customerLat != null && customerLng != null &&
       Math.abs(customerLat) <= 90 && Math.abs(customerLng) <= 180 &&
@@ -354,9 +343,6 @@ router.post('/', requireAuth, async (req, res) => {
       }
       quantities.set(productId, nextQuantity);
     }
-
-    // Generate unique order number before transaction to avoid race conditions
-    // Using timestamp + random component for uniqueness while maintaining readability
     const timestamp = Date.now();
     const randomSuffix = Math.floor(Math.random() * 1000).toString().padStart(3, '0');
     const orderNumber = `${timestamp}${randomSuffix}`;
@@ -366,13 +352,11 @@ router.post('/', requireAuth, async (req, res) => {
         where: { id: { in: [...quantities.keys()] } },
         select: { id: true, name: true, sku: true, price: true, discountPrice: true, stock: true },
       });
-
       if (products.length !== quantities.size) {
         const error = new Error('One or more selected products no longer exist.');
         error.statusCode = 400;
         throw error;
       }
-
       const orderItems = [];
       for (const product of products) {
         const quantity = quantities.get(product.id);
@@ -408,8 +392,6 @@ router.post('/', requireAuth, async (req, res) => {
       }
 
       const subtotal = orderItems.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
-
-      // ── Promo code discount ──
       let discountAmount = 0;
       let appliedPromo = null;
       if (promoCode) {
@@ -445,8 +427,6 @@ router.post('/', requireAuth, async (req, res) => {
         discountAmount = Math.min(Math.round(discountAmount * 100) / 100, subtotal);
         appliedPromo = promoResult;
       }
-
-      // ── Delivery fee: verified GPS distance OR region flat fee ──
       let deliveryFee = 0;
       let deliveryDistanceKm = null;
       let deliveryMapsUrl = null;
@@ -464,7 +444,6 @@ router.post('/', requireAuth, async (req, res) => {
         Math.abs(storeLng) <= 180;
       if (hasCoords) {
         deliveryDistanceKm = Math.round(haversineKm(storeLat, storeLng, customerLat, customerLng) * 100) / 100;
-        // Geofence: reject coordinates outside the allowed delivery radius
         const maxRadius = toNumber(settings?.maxDeliveryRadiusKm);
         if (maxRadius != null && maxRadius > 0 && deliveryDistanceKm > maxRadius) {
           const error = new Error(
@@ -477,7 +456,6 @@ router.post('/', requireAuth, async (req, res) => {
         deliveryFee = feeResult.fee;
         deliveryMapsUrl = `https://www.google.com/maps?q=${customerLat},${customerLng}`;
       } else if (deliveryRegionId) {
-        // Region fallback: flat fee set by admin
         selectedRegion = await transaction.deliveryRegion.findFirst({
           where: { id: deliveryRegionId, active: true },
         });
@@ -488,10 +466,7 @@ router.post('/', requireAuth, async (req, res) => {
         }
         deliveryFee = Number(selectedRegion.fee) || 0;
       }
-
       const total = Math.max(0, subtotal - discountAmount) + deliveryFee;
-
-      // ── Automatic reward qualification ──
       const productIds = [...quantities.keys()];
       const activeRules = await transaction.rewardRule.findMany({
         where: {
@@ -503,7 +478,6 @@ router.post('/', requireAuth, async (req, res) => {
         },
         orderBy: { createdAt: 'asc' },
       });
-
       const totalQty = orderItems.reduce((s, i) => s + i.quantity, 0);
       let qualifiedRule = null;
       let bestScore = -1;
@@ -530,7 +504,6 @@ router.post('/', requireAuth, async (req, res) => {
           qualifiedRule = rule;
         }
       }
-
       const created = await transaction.order.create({
         data: {
           orderNumber,
@@ -566,18 +539,14 @@ router.post('/', requireAuth, async (req, res) => {
           },
         },
       });
-
-      // Increment promo usage
       if (appliedPromo) {
         await transaction.promoCode.update({
           where: { id: appliedPromo.id },
           data: { usedCount: { increment: 1 } },
         });
       }
-
       return created;
     });
-
     return res.status(201).json({
       success: true,
       order: {
@@ -598,9 +567,6 @@ router.post('/', requireAuth, async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to create order.' });
   }
 });
-
-// POST /api/orders/:orderId/verify-payment — OCR-verify a payment screenshot
-// Accepts multipart/form-data with field "screenshot" (image/PDF, max 10MB).
 router.post(
   '/:orderId/verify-payment',
   requireAuth,
@@ -614,14 +580,12 @@ router.post(
           code: 'MISSING_FILE',
         });
       }
-
       const result = await verifyPayment({
         orderRef: req.params.orderId,
         user: { id: req.user.id, email: req.user.email },
         imagePath: req.file.path,
         screenshotUrl: req.file.url || req.file.location || null,
       });
-
       return res.status(result.status).json(result.body);
     } catch (error) {
       console.error('Payment verification failed:', error);
@@ -632,8 +596,6 @@ router.post(
     }
   }
 );
-
-// POST /api/orders/validate-promo { code, subtotal }
 router.post('/validate-promo', requireAuth, async (req, res) => {
   try {
     const code = normalizeText(req.body?.code).toUpperCase();

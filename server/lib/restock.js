@@ -1,11 +1,6 @@
-// lib/restock.js
-// Auto-restock scheduler: products marked OUT_OF_STOCK_TEMPORARY with
-// autoRestock=true are restocked after `restockAfterDays` days.
 const prisma = require('./prisma');
-
-const CHECK_INTERVAL_MS = 60 * 60 * 1000; // check every hour
+const CHECK_INTERVAL_MS = 60 * 60 * 1000; 
 let timer = null;
-
 async function runRestockCheck() {
   try {
     const now = new Date();
@@ -24,7 +19,6 @@ async function runRestockCheck() {
         restockQuantity: true,
       },
     });
-
     for (const product of candidates) {
       const days = product.restockAfterDays || 2;
       const dueAt = new Date(product.outOfStockAt.getTime() + days * 24 * 60 * 60 * 1000);
@@ -47,10 +41,8 @@ async function runRestockCheck() {
     console.error('❌ Auto-restock check failed:', error.message);
   }
 }
-
 function startRestockScheduler() {
   if (timer) return;
-  // Run once shortly after boot, then hourly.
   setTimeout(() => {
     void runRestockCheck();
     timer = setInterval(() => void runRestockCheck(), CHECK_INTERVAL_MS);
@@ -58,5 +50,4 @@ function startRestockScheduler() {
   }, 30 * 1000);
   console.log('⏰ Auto-restock scheduler started (checks hourly)');
 }
-
 module.exports = { startRestockScheduler, runRestockCheck };

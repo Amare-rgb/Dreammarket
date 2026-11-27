@@ -3,8 +3,6 @@ const fs = require('fs');
 const path = require('path');
 const { randomUUID } = require('crypto');
 const UPLOAD_ROOT = path.resolve(__dirname, '..', 'uploads');
-
-// ── Field → local subfolder map ─────────────────────────────────────────
 const SUBFOLDERS = {
   image: 'products',
   images: 'products',
@@ -20,12 +18,8 @@ const SUBFOLDERS = {
   article: 'articles',
   logo: 'settings',
 };
-
-// ── Helpers ─────────────────────────────────────────────────────────────
 const makeError = (code, message) =>
   Object.assign(new Error(message), { code });
-
-// File filter — images + PDFs (same rules as before)
 const fileFilter = (req, file, cb) => {
   const validTypes = [
     'image/jpeg',
@@ -37,7 +31,6 @@ const fileFilter = (req, file, cb) => {
     'image/svg+xml',
     'application/pdf',
   ];
-
   const validExtensions = [
     '.jpeg',
     '.jpg',
@@ -48,9 +41,7 @@ const fileFilter = (req, file, cb) => {
     '.svg',
     '.pdf',
   ];
-
   const ext = path.extname(file.originalname).toLowerCase();
-
   if (validTypes.includes(file.mimetype) || validExtensions.includes(ext)) {
     cb(null, true);
   } else {
@@ -61,8 +52,6 @@ const fileFilter = (req, file, cb) => {
     );
   }
 };
-
-// ── Local disk storage ──────────────────────────────────────────────────
 const localStorage = multer.diskStorage({
   destination: (req, file, callback) => {
     const subfolder = SUBFOLDERS[file.fieldname] || 'products';
@@ -88,8 +77,6 @@ const localStorage = multer.diskStorage({
     callback(null, `${randomUUID()}${safeExtension}`);
   },
 });
-
-// ── Attach public URLs to locally saved files ───────────────────────────
 const attachUrls = (req, res, next) => {
   const addUrl = (file) => {
     if (!file) return null;
@@ -103,14 +90,12 @@ const attachUrls = (req, res, next) => {
       .join('/')}`;
     const url = `${req.protocol}://${req.get('host')}${publicPath}`;
     const publicId = relativePath.split(path.sep).join('/');
-
     file.url = url;
     file.location = url;
     file.secure_url = url;
     file.public_id = publicId;
     return null;
   };
-
   let error = req.file ? addUrl(req.file) : null;
   if (Array.isArray(req.files)) {
     for (const file of req.files) {
@@ -126,57 +111,38 @@ const attachUrls = (req, res, next) => {
   }
   next(error || undefined);
 };
-
-// Compose: multer → attach URLs → next()
 const withStorage = (multerMiddleware) => (req, res, next) => {
   multerMiddleware(req, res, (err) => {
     if (err) return next(err);
     return attachUrls(req, res, next);
   });
 };
-
-// ── Multer instances ────────────────────────────────────────────────────
 const single = multer({
   storage: localStorage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10 MB
+    fileSize: 10 * 1024 * 1024, 
     files: 1,
   },
   fileFilter,
 });
-
 const multiple = multer({
   storage: localStorage,
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10 MB each
+    fileSize: 10 * 1024 * 1024, 
     files: 10,
   },
   fileFilter,
 });
-
-// ── Exported middlewares ────────────────────────────────────────────────
-
-// Products — field name 'image'
 const uploadSingle = withStorage(single.single('image'));
-
-// Avatars — field name 'avatar'
 const uploadAvatar = withStorage(single.single('avatar'));
-
-// Multiple documents
 const uploadDocuments = withStorage(multiple.array('documents', 5));
-
-// Multiple images
 const uploadMultiple = withStorage(multiple.array('images', 5));
-
-// Backward-compatible "upload" object
 const upload = {
   single: (field) => withStorage(single.single(field)),
   array: (field, max) => withStorage(multiple.array(field, max)),
   fields: (fields) => withStorage(multiple.fields(fields)),
   any: () => withStorage(multiple.any()),
 };
-
-// ── Error-handling wrapper ──────────────────────────────────────────────
 const handleUpload = (uploadMiddleware) => {
   return (req, res, next) => {
     uploadMiddleware(req, res, (err) => {
@@ -214,7 +180,6 @@ const handleUpload = (uploadMiddleware) => {
     });
   };
 };
-
 module.exports = {
   upload,
   uploadSingle,

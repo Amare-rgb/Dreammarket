@@ -2,35 +2,28 @@ const https = require('https');
 const fs = require('fs');
 const path = require('path');
 const { randomUUID } = require('crypto');
-
 const TELEGRAM_REQUEST_TIMEOUT_MS = 10000;
 const TELEGRAM_MAX_MESSAGE_CODE_POINTS = 3500;
-
 function getArticleUrl(slug) {
   const configuredSiteUrl =
     process.env.NEXT_PUBLIC_SITE_URL ||
     process.env.FRONTEND_URL ||
     process.env.CLIENT_URL ||
     (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:3000');
-
   if (!configuredSiteUrl) {
     throw new Error('Set NEXT_PUBLIC_SITE_URL to the public website URL.');
   }
-
   let siteUrl;
   try {
     siteUrl = new URL(configuredSiteUrl);
   } catch {
     throw new Error('NEXT_PUBLIC_SITE_URL must be a valid website URL.');
   }
-
   if (siteUrl.protocol !== 'https:' && siteUrl.protocol !== 'http:') {
     throw new Error('NEXT_PUBLIC_SITE_URL must use HTTP or HTTPS.');
   }
-
   return new URL(`/articles/${encodeURIComponent(slug)}`, siteUrl).toString();
 }
-
 function telegramRequest(token, method, payload) {
   return new Promise((resolve, reject) => {
     const body = JSON.stringify(payload);
@@ -43,7 +36,6 @@ function telegramRequest(token, method, payload) {
           'Content-Type': 'application/json',
           'Content-Length': Buffer.byteLength(body),
         },
-        // Bypass TLS verification (proxies/antivirus often break the chain)
         rejectUnauthorized: false,
         timeout: TELEGRAM_REQUEST_TIMEOUT_MS,
       },
@@ -57,7 +49,6 @@ function telegramRequest(token, method, payload) {
           } catch {
             return reject(new Error('Telegram returned an unreadable response.'));
           }
-
           if (res.statusCode < 200 || res.statusCode >= 300 || result?.ok !== true) {
             const description =
               typeof result?.description === 'string'
@@ -65,12 +56,10 @@ function telegramRequest(token, method, payload) {
                 : `HTTP ${res.statusCode}`;
             return reject(new Error(`Telegram rejected the message: ${description}`));
           }
-
           resolve(result);
         });
       }
     );
-
     req.on('timeout', () => {
       req.destroy(new Error('Telegram did not respond before the request timed out.'));
     });
@@ -86,7 +75,6 @@ function telegramRequest(token, method, payload) {
     req.end();
   });
 }
-
 function isHttpUrl(value) {
   if (typeof value !== 'string' || !value.trim()) return false;
   try {
@@ -96,15 +84,11 @@ function isHttpUrl(value) {
     return false;
   }
 }
-
-// Resolve an article image value to a fetchable http(s) URL.
-// Handles relative /uploads/... paths stored by older uploads.
 function resolveImageUrl(value) {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
   if (isHttpUrl(trimmed)) return trimmed;
-
   if (trimmed.startsWith('/')) {
     const base = (
       process.env.PUBLIC_API_URL ||
@@ -118,9 +102,7 @@ function resolveImageUrl(value) {
   }
   return null;
 }
-
 const UPLOAD_ROOT = path.resolve(__dirname, '..', 'uploads');
-
 const IMAGE_MIME_BY_EXT = {
   '.jpg': 'image/jpeg',
   '.jpeg': 'image/jpeg',
@@ -130,14 +112,10 @@ const IMAGE_MIME_BY_EXT = {
   '.avif': 'image/avif',
   '.svg': 'image/svg+xml',
 };
-
-// Resolve a stored article image value to a local file path under uploads/.
-// Handles absolute http(s) URLs and relative /uploads/... paths.
 function resolveLocalFilePath(value) {
   if (typeof value !== 'string') return null;
   const trimmed = value.trim();
   if (!trimmed) return null;
-
   let pathname = trimmed;
   if (isHttpUrl(trimmed)) {
     try {
@@ -146,29 +124,19 @@ function resolveLocalFilePath(value) {
       return null;
     }
   }
-
   if (!pathname.startsWith('/uploads/')) return null;
-
   const relative = pathname
     .slice('/uploads/'.length)
     .split('/')
     .map((segment) => decodeURIComponent(segment))
     .join(path.sep);
-
   const resolved = path.resolve(UPLOAD_ROOT, relative);
   if (!resolved.startsWith(UPLOAD_ROOT + path.sep) && resolved !== UPLOAD_ROOT) {
     return null;
   }
   return resolved;
 }
-
-// Telegram sendPhoto only supports JPEG/PNG/WebP. Other formats (AVIF, SVG,
-// GIF, BMP, TIFF...) must go through sendDocument or Telegram rejects them
-// with IMAGE_PROCESS_FAILED.
 const TELEGRAM_PHOTO_EXTENSIONS = new Set(['.jpg', '.jpeg', '.png', '.webp']);
-
-// Send a locally stored media file to Telegram as multipart/form-data.
-// Uses native https.request (same TLS workaround as telegramRequest).
 function sendMediaMultipart(token, method, fieldName, chatId, filePath, caption) {
   return fs.promises.readFile(filePath).then((buffer) => {
     return new Promise((resolve, reject) => {
@@ -176,7 +144,6 @@ function sendMediaMultipart(token, method, fieldName, chatId, filePath, caption)
       const mime = IMAGE_MIME_BY_EXT[ext] || 'application/octet-stream';
       const filename = path.basename(filePath);
       const boundary = `----TelegramFormBoundary${randomUUID()}`;
-
       const head = Buffer.from(
         `--${boundary}\r\n` +
           `Content-Disposition: form-data; name="chat_id"\r\n\r\n${chatId}\r\n` +
@@ -222,7 +189,6 @@ function sendMediaMultipart(token, method, fieldName, chatId, filePath, caption)
           });
         }
       );
-
       req.on('timeout', () => {
         req.destroy(new Error('Telegram did not respond before the request timed out.'));
       });
@@ -239,7 +205,6 @@ function sendMediaMultipart(token, method, fieldName, chatId, filePath, caption)
     });
   });
 }
-
 function isDirectVideoUrl(value) {
   if (typeof value !== 'string' || !value.trim()) return false;
   try {
@@ -257,7 +222,6 @@ function escapeHtml(value) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;');
 }
-
 function splitTelegramMessage(message) {
   const codePoints = Array.from(message);
   const chunks = [];
@@ -268,7 +232,6 @@ function splitTelegramMessage(message) {
   }
   return chunks;
 }
-
 async function sendArticleAnnouncement(article) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -395,8 +358,6 @@ async function sendArticleAnnouncement(article) {
     ...(warnings.length ? { warning: warnings.join(' | ') } : {}),
   };
 }
-
-// Generic plain-text admin alert (payment verification requests, etc.)
 async function sendTelegramMessage(text) {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -412,5 +373,4 @@ async function sendTelegramMessage(text) {
     return { sent: false, reason: error.message };
   }
 }
-
 module.exports = { sendArticleAnnouncement, sendTelegramMessage };

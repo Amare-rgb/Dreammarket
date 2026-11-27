@@ -1,23 +1,10 @@
-// routes/admin.dashboard.js
 const express = require('express');
 const router = express.Router();
 const prisma = require('../lib/prisma');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-
-// ═══════════════════════════════════════════════════════════
-// Dashboard overview for marketplace products, customers, orders, and articles.
-// ═══════════════════════════════════════════════════════════
-
-// ============================================================
-// GET /api/admin/dashboard — Main dashboard stats
-// ============================================================
 router.get('/', requireAuth, requireAdmin, async (req, res) => {
   try {
     console.log('🔍 Fetching dashboard data...');
-
-    // ---------------------------------------------------------
-    // 1. BASIC COUNTS
-    // ---------------------------------------------------------
     const [totalProducts, totalCustomers, availableTables] = await Promise.all([
       prisma.product.count(),
       prisma.user.count({ where: { role: 'USER' } }),
@@ -27,7 +14,6 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
           to_regclass('public.articles') IS NOT NULL AS "articles"
       `,
     ]);
-
     const tables = availableTables[0];
     const [orderCounts, totalArticles] = await Promise.all([
       tables.orders
@@ -55,10 +41,6 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
       ...(!tables.orders ? ['orders', 'pendingOrders'] : []),
       ...(!tables.articles ? ['articles'] : []),
     ];
-
-    // ---------------------------------------------------------
-    // 2. RECENT PRODUCTS (last 5, newest first)
-    // ---------------------------------------------------------
     const recentProducts = await prisma.product.findMany({
       take: 5,
       orderBy: { createdAt: 'desc' },
@@ -69,17 +51,13 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
         discountPrice: true,
         stock: true,
         sku: true,
-        images: true, // String[] — image URLs
+        images: true, 
         createdAt: true,
         category: {
           select: { id: true, name: true, slug: true },
         },
       },
     });
-
-    // ---------------------------------------------------------
-    // 3. FORMAT RECENT PRODUCTS
-    // ---------------------------------------------------------
     const formattedRecentProducts = recentProducts.map((p) => ({
       id: p.id,
       name: p.name,
@@ -97,10 +75,6 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
     console.log(
       `📊 Dashboard data fetched (${totalProducts} products, ${totalCustomers} customers, ${formattedRecentProducts.length} recent)`
     );
-
-    // ---------------------------------------------------------
-    // 4. RESPONSE
-    // ---------------------------------------------------------
     res.json({
       success: true,
       stats: {
@@ -124,5 +98,4 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
     });
   }
 });
-
 module.exports = router;

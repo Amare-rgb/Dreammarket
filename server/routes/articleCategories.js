@@ -1,8 +1,6 @@
 const express = require("express");
-const prisma = require("../lib/prisma"); // adjust to where your Prisma client is exported
-
+const prisma = require("../lib/prisma"); 
 const router = express.Router();
-
 const DEFAULTS = [
   { name: "General", slug: "general" },
   { name: "News", slug: "news" },
@@ -11,18 +9,14 @@ const DEFAULTS = [
   { name: "Tips", slug: "tips" },
   { name: "Events", slug: "events" },
 ];
-
 const slugify = (value) => {
   const slug = String(value)
     .toLowerCase()
     .trim()
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-  // Amharic or other non-Latin names produce an empty slug, so use a fallback.
   return slug || `cat-${Date.now().toString(36)}`;
 };
-
-// GET /api/articles/admin/categories
 router.get("/", async (_req, res) => {
   try {
     if ((await prisma.articleCategory.count()) === 0) {
@@ -31,14 +25,11 @@ router.get("/", async (_req, res) => {
         skipDuplicates: true,
       });
     }
-
     const [categories, grouped] = await Promise.all([
       prisma.articleCategory.findMany({ orderBy: { createdAt: "asc" } }),
       prisma.article.groupBy({ by: ["category"], _count: { _all: true } }),
     ]);
-
     const counts = new Map(grouped.map((g) => [g.category, g._count._all]));
-
     res.json({
       categories: categories.map((c) => ({
         id: c.id,
@@ -53,8 +44,6 @@ router.get("/", async (_req, res) => {
     res.status(500).json({ error: "Could not load categories." });
   }
 });
-
-// POST /api/articles/admin/categories
 router.post("/", async (req, res) => {
   try {
     const name = String((req.body && req.body.name) || "")
@@ -68,7 +57,6 @@ router.post("/", async (req, res) => {
         .status(400)
         .json({ error: "Category name must be 2 to 40 characters." });
     }
-
     const slug = slugify(name);
     const existing = await prisma.articleCategory.findFirst({
       where: {
@@ -78,7 +66,6 @@ router.post("/", async (req, res) => {
     if (existing) {
       return res.status(409).json({ error: "This category already exists." });
     }
-
     const category = await prisma.articleCategory.create({
       data: { name, nameAm, slug },
     });
@@ -91,8 +78,6 @@ router.post("/", async (req, res) => {
     res.status(500).json({ error: "Could not create the category." });
   }
 });
-
-// DELETE /api/articles/admin/categories/:id
 router.delete("/:id", async (req, res) => {
   try {
     const category = await prisma.articleCategory.findUnique({

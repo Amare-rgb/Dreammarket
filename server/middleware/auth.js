@@ -1,15 +1,10 @@
-// middleware/auth.js
 const jwt = require('jsonwebtoken');
 const prisma = require('../lib/prisma');
-
 const JWT_SECRET = process.env.JWT_SECRET || 'your-jwt-secret-key';
-
-// Authentication middleware - checks if user is logged in
 const requireAuth = (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
     const token = authHeader && authHeader.split(' ')[1];
-
     if (!token) {
       return res.status(401).json({ 
         success: false,
@@ -17,13 +12,9 @@ const requireAuth = (req, res, next) => {
         code: 'NO_TOKEN'
       });
     }
-
     const decoded = jwt.verify(token, JWT_SECRET);
     console.log('🔑 Decoded token:', decoded);
-    
-    // Get user ID from token - handle both formats
     const userId = decoded.userId || decoded.id || decoded.user_id;
-    
     if (!userId) {
       return res.status(401).json({ 
         success: false,
@@ -31,8 +22,6 @@ const requireAuth = (req, res, next) => {
         code: 'INVALID_TOKEN'
       });
     }
-    
-    // Set user in request
     req.user = {
       id: userId,
       userId: userId,
@@ -41,8 +30,6 @@ const requireAuth = (req, res, next) => {
       name: decoded.name || decoded.userName || '',
       ...decoded
     };
-    
-    // Also set in session for compatibility
     req.session = req.session || {};
     req.session.user = {
       id: userId,
@@ -51,7 +38,6 @@ const requireAuth = (req, res, next) => {
       role: decoded.role || 'USER',
       name: decoded.name || decoded.userName || ''
     };
-
     console.log('✅ User authenticated:', req.user.email, 'Role:', req.user.role);
     next();
   } catch (error) {
@@ -71,7 +57,6 @@ const requireAuth = (req, res, next) => {
         code: 'TOKEN_EXPIRED'
       });
     }
-    
     console.error('❌ Auth middleware error:', error);
     return res.status(500).json({ 
       success: false,
@@ -80,37 +65,23 @@ const requireAuth = (req, res, next) => {
     });
   }
 };
-
-// ============================================
-// OPTIONAL AUTH - Allows both authenticated and guest requests
-// ============================================
 const optionalAuth = async (req, res, next) => {
   try {
     const authHeader = req.headers.authorization;
     const token = authHeader && authHeader.split(' ')[1];
-
-    // If no token, continue as guest
     if (!token) {
       console.log('👤 Guest access (no token)');
       req.user = null;
       return next();
     }
-
-    // Try to verify the token
     try {
       const decoded = jwt.verify(token, JWT_SECRET);
-      
-      // Get user ID from token
       const userId = decoded.userId || decoded.id || decoded.user_id;
-      
       if (!userId) {
         console.log('👤 Guest access (invalid token - no user ID)');
         req.user = null;
         return next();
       }
-
-      // Fetch user from database to ensure they exist
-      // FIXED: Removed emailVerified - not in your schema
       const user = await prisma.user.findUnique({
         where: { id: userId },
         select: {
@@ -119,7 +90,6 @@ const optionalAuth = async (req, res, next) => {
           email: true,
           phone: true,
           role: true,
-          // emailVerified removed - field doesn't exist in your User model
         }
       });
 
@@ -128,8 +98,6 @@ const optionalAuth = async (req, res, next) => {
         req.user = null;
         return next();
       }
-
-      // Set authenticated user
       req.user = {
         id: user.id,
         userId: user.id,
@@ -139,11 +107,9 @@ const optionalAuth = async (req, res, next) => {
         phone: user.phone || '',
         ...decoded
       };
-
       console.log('✅ Optional auth - User authenticated:', req.user.email);
       next();
     } catch (jwtError) {
-      // Token is invalid but we allow guest access
       console.log('👤 Guest access (invalid token):', jwtError.message);
       req.user = null;
       next();
@@ -154,14 +120,10 @@ const optionalAuth = async (req, res, next) => {
     next();
   }
 };
-
-// Admin authorization middleware
 const requireAdmin = (req, res, next) => {
-  // First authenticate
   requireAuth(req, res, () => {
     const userRole = req.user?.role?.toUpperCase();
     console.log('🛡️ Admin check - User role:', userRole);
-    
     if (userRole !== 'ADMIN') {
       console.log('❌ Admin access denied for role:', userRole);
       return res.status(403).json({ 
@@ -174,8 +136,6 @@ const requireAdmin = (req, res, next) => {
     next();
   });
 };
-
-// Seller authorization middleware
 const requireSeller = (req, res, next) => {
   requireAuth(req, res, () => {
     const userRole = req.user?.role?.toUpperCase();
@@ -189,8 +149,6 @@ const requireSeller = (req, res, next) => {
     next();
   });
 };
-
-// Seller or Admin authorization middleware
 const requireSellerOrAdmin = (req, res, next) => {
   requireAuth(req, res, () => {
     const userRole = req.user?.role?.toUpperCase();
@@ -204,10 +162,7 @@ const requireSellerOrAdmin = (req, res, next) => {
     next();
   });
 };
-
-// Alias for requireAuth
 const authenticateToken = requireAuth;
-
 const isAdmin = (req, res, next) => {
   const userRole = req.user?.role?.toUpperCase();
   if (!req.user || userRole !== 'ADMIN') {
@@ -219,7 +174,6 @@ const isAdmin = (req, res, next) => {
   }
   next();
 };
-
 module.exports = {
   requireAuth,
   optionalAuth,

@@ -1,13 +1,9 @@
 const fs = require('fs');
 const path = require('path');
-
 const tracePath = path.join(__dirname, '..', '.next', 'trace');
-
 try {
   let txt = fs.readFileSync(tracePath, 'utf8');
-  // Replace any sequence of ][ across line boundaries with a single comma to merge arrays
   const fixed = txt.replace(/\]\s*\r?\n\s*\[/g, ',\n');
-  // Quick parse check
   try {
     JSON.parse(fixed);
   } catch (err) {

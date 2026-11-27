@@ -1,4 +1,3 @@
-// routes/auth.routes.js
 const crypto = require('crypto');
 const express = require('express');
 const bcrypt = require('bcryptjs');
@@ -11,18 +10,12 @@ const {
 } = require('../lib/auth');
 const { requireAuth } = require('../middleware/auth');
 const { sendPasswordResetEmail, sendWelcomeEmail } = require('../jobs/email.jobs');
-
-// ============================================================
-// HELPERS & CONSTANTS
-// ============================================================
 const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS) || 10;
 const SELF_SERVICE_ROLES = ['USER'];
 const RESERVED_ACCOUNTS = [];
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-
 const normalizeEmail = (value) =>
   typeof value === 'string' ? value.trim().toLowerCase() : '';
-
 const passwordError = (pw) => {
   if (typeof pw !== 'string' || pw.length < 8) {
     return 'Password must be at least 8 characters';
@@ -35,7 +28,6 @@ const passwordError = (pw) => {
   }
   return null;
 };
-
 const runInBackground = (label, fn) => {
   Promise.resolve()
     .then(fn)
@@ -46,14 +38,11 @@ const runInBackground = (label, fn) => {
       )
     );
 };
-
 const safeEqual = (a, b) => {
   const bufA = Buffer.from(String(a || ''));
   const bufB = Buffer.from(String(b || ''));
   return bufA.length === bufB.length && crypto.timingSafeEqual(bufA, bufB);
 };
-
-// Standard user selection — matches schema fields exactly
 const USER_PUBLIC_SELECT = {
   id: true,
   name: true,
@@ -66,17 +55,11 @@ const USER_PUBLIC_SELECT = {
   createdAt: true,
   updatedAt: true,
 };
-
-// ============================================================
-// REGISTER
-// POST /api/auth/register
-// ============================================================
 router.post('/register', async (req, res) => {
   try {
     const { name, password, phone, role } = req.body || {};
     const email = normalizeEmail(req.body && req.body.email);
     const cleanName = typeof name === 'string' ? name.trim() : '';
-
     if (!cleanName || !email || !password) {
       return res.status(400).json({
         success: false,
@@ -90,35 +73,28 @@ router.post('/register', async (req, res) => {
         error: 'Please enter a valid email address',
       });
     }
-
     const pwErr = passwordError(password);
     if (pwErr) {
       return res.status(400).json({ success: false, error: pwErr });
     }
-
     if (RESERVED_ACCOUNTS.includes(email)) {
       return res.status(403).json({
         success: false,
         error: 'This email is reserved. Please contact an administrator.',
       });
     }
-
     const existingUser = await prisma.user.findUnique({ where: { email } });
-
     if (existingUser) {
       return res.status(400).json({
         success: false,
         error: 'Email already registered',
       });
     }
-
     const requestedRole = String(role || 'USER').toUpperCase();
     const finalRole = SELF_SERVICE_ROLES.includes(requestedRole)
       ? requestedRole
       : 'USER';
-
     const hashedPassword = await bcrypt.hash(password, BCRYPT_ROUNDS);
-
     const user = await prisma.user.create({
       data: {
         name: cleanName,
@@ -130,11 +106,9 @@ router.post('/register', async (req, res) => {
       },
       select: USER_PUBLIC_SELECT,
     });
-
     runInBackground('Welcome email', () =>
       sendWelcomeEmail(user.email, user.name)
     );
-
     res.status(201).json({
       success: true,
       message: 'Account created successfully.',
@@ -147,7 +121,6 @@ router.post('/register', async (req, res) => {
         error: 'Email already registered',
       });
     }
-
     console.error('❌ Registration error:', error);
     res.status(500).json({
       success: false,
@@ -157,11 +130,6 @@ router.post('/register', async (req, res) => {
     });
   }
 });
-
-// ============================================================
-// LOGIN
-// POST /api/auth/login
-// ============================================================
 router.post('/login', async (req, res) => {
   try {
     const email = normalizeEmail(req.body && req.body.email);
@@ -173,29 +141,24 @@ router.post('/login', async (req, res) => {
         error: 'Email and password are required',
       });
     }
-
     let user = await prisma.user.findUnique({ where: { email } });
-
     if (!user) {
       user = await prisma.user.findFirst({
         where: { email: { equals: email, mode: 'insensitive' } },
       });
     }
-
     if (!user) {
       return res.status(401).json({
         success: false,
         error: 'Invalid credentials. User not found.',
       });
     }
-
     if (!user.password) {
       return res.status(401).json({
         success: false,
         error: 'Account created with OAuth. Please use Google login.',
       });
     }
-
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
       return res.status(401).json({
@@ -203,10 +166,8 @@ router.post('/login', async (req, res) => {
         error: 'Invalid credentials. Wrong password.',
       });
     }
-
     const token = generateToken(user.id, user.email, user.role);
     const { password: _, ...userData } = user;
-
     res.json({
       success: true,
       message: 'Login successful',
@@ -223,24 +184,16 @@ router.post('/login', async (req, res) => {
     });
   }
 });
-
-// ============================================================
-// GOOGLE LOGIN
-// POST /api/auth/google
-// Body: { credential } — Google ID token from Google Identity Services
-// ============================================================
 router.post('/google', async (req, res) => {
   try {
     const credential =
       typeof req.body?.credential === 'string' ? req.body.credential.trim() : '';
-
     if (!credential) {
       return res.status(400).json({
         success: false,
         error: 'Google credential is required',
       });
     }
-
     const clientId = process.env.GOOGLE_CLIENT_ID;
     if (!clientId) {
       console.error('❌ GOOGLE_CLIENT_ID is not configured on the server');
@@ -249,8 +202,6 @@ router.post('/google', async (req, res) => {
         error: 'Google login is not configured on the server',
       });
     }
-
-    // Verify the ID token with Google
     let profile;
     try {
       const axios = require('axios');
@@ -271,7 +222,6 @@ router.post('/google', async (req, res) => {
         error: 'Google login failed. Please try again.',
       });
     }
-
     const validIssuers = ['accounts.google.com', 'https://accounts.google.com'];
     if (
       !profile ||
@@ -285,7 +235,6 @@ router.post('/google', async (req, res) => {
         error: 'Google login failed. Invalid token.',
       });
     }
-
     const email = normalizeEmail(profile.email);
     const name =
       (typeof profile.name === 'string' && profile.name.trim()) ||
@@ -298,7 +247,6 @@ router.post('/google', async (req, res) => {
     let user = await prisma.user.findUnique({ where: { email } });
 
     if (!user) {
-      // OAuth account — random unusable password hash
       const randomPassword = crypto.randomBytes(32).toString('hex');
       const hashedPassword = await bcrypt.hash(randomPassword, BCRYPT_ROUNDS);
 
@@ -337,11 +285,6 @@ router.post('/google', async (req, res) => {
     });
   }
 });
-
-// ============================================================
-// GET CURRENT USER
-// GET /api/auth/me
-// ============================================================
 router.get('/me', requireAuth, async (req, res) => {
   try {
     const userId = req.user?.id;
@@ -349,7 +292,6 @@ router.get('/me', requireAuth, async (req, res) => {
     if (!userId) {
       return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
-
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: USER_PUBLIC_SELECT,
@@ -367,19 +309,9 @@ router.get('/me', requireAuth, async (req, res) => {
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
-
-// ============================================================
-// LOGOUT
-// POST /api/auth/logout
-// ============================================================
 router.post('/logout', async (req, res) => {
   res.json({ success: true, message: 'Logged out successfully' });
 });
-
-// ============================================================
-// CHANGE PASSWORD
-// POST /api/auth/change-password
-// ============================================================
 router.post('/change-password', requireAuth, async (req, res) => {
   try {
     const userId = req.user?.id;
@@ -388,19 +320,16 @@ router.post('/change-password', requireAuth, async (req, res) => {
     if (!userId) {
       return res.status(401).json({ success: false, error: 'Unauthorized' });
     }
-
     if (!currentPassword || !newPassword) {
       return res.status(400).json({
         success: false,
         error: 'Current password and new password are required',
       });
     }
-
     const pwErr = passwordError(newPassword);
     if (pwErr) {
       return res.status(400).json({ success: false, error: pwErr });
     }
-
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user || !user.password) {
       return res.status(400).json({
@@ -416,13 +345,11 @@ router.post('/change-password', requireAuth, async (req, res) => {
         error: 'Current password is incorrect',
       });
     }
-
     const hashedPassword = await bcrypt.hash(newPassword, BCRYPT_ROUNDS);
     await prisma.user.update({
       where: { id: userId },
       data: { password: hashedPassword },
     });
-
     res.json({ success: true, message: 'Password changed successfully' });
   } catch (error) {
     console.error('❌ Password change error:', error);
@@ -431,11 +358,6 @@ router.post('/change-password', requireAuth, async (req, res) => {
       .json({ success: false, error: 'Failed to change password' });
   }
 });
-
-// ============================================================
-// UPDATE PROFILE
-// PATCH /api/auth/profile
-// ============================================================
 router.patch('/profile', requireAuth, async (req, res) => {
   try {
     const userId = req.user?.id;
@@ -451,14 +373,12 @@ router.patch('/profile', requireAuth, async (req, res) => {
     if (address !== undefined) data.address = address;
     if (bio !== undefined) data.bio = bio;
     if (avatar !== undefined) data.avatar = avatar;
-
     if (Object.keys(data).length === 0) {
       return res.status(400).json({
         success: false,
         error: 'No fields provided to update',
       });
     }
-
     const updatedUser = await prisma.user.update({
       where: { id: userId },
       data,
@@ -480,11 +400,6 @@ router.patch('/profile', requireAuth, async (req, res) => {
     });
   }
 });
-
-// ============================================================
-// FORGOT PASSWORD
-// POST /api/auth/forgot-password
-// ============================================================
 router.post('/forgot-password', async (req, res) => {
   try {
     const email = normalizeEmail(req.body && req.body.email);
@@ -499,7 +414,6 @@ router.post('/forgot-password', async (req, res) => {
         error: 'Please enter a valid email address',
       });
     }
-
     const user = await prisma.user.findUnique({ where: { email } });
 
     if (!user) {
@@ -525,13 +439,6 @@ router.post('/forgot-password', async (req, res) => {
       .json({ success: false, error: 'Failed to process request' });
   }
 });
-
-// ============================================================
-// RESET PASSWORD
-// POST /api/auth/reset-password
-// Reset token is signed, short-lived, and bound to the current password hash.
-// Updating the password invalidates the token, including for repeated use.
-// ============================================================
 router.post('/reset-password', async (req, res) => {
   try {
     const token = typeof req.body?.token === 'string' ? req.body.token : '';
@@ -587,11 +494,6 @@ router.post('/reset-password', async (req, res) => {
   }
 });
 
-// ============================================================
-// ADMIN: Create admin user
-// POST /api/auth/create-admin
-// Requires header  x-admin-setup-key  matching  ADMIN_SETUP_KEY env var
-// ============================================================
 router.post('/create-admin', async (req, res) => {
   try {
     const setupKey = process.env.ADMIN_SETUP_KEY;

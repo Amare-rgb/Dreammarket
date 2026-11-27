@@ -1,4 +1,3 @@
-// routes/feedback.routes.js
 const express = require('express');
 const prisma = require('../lib/prisma');
 const { requireAuth, requireAdmin, optionalAuth } = require('../middleware/auth');
@@ -7,10 +6,6 @@ const { creditReviewReward } = require('../services/reviewReward.service');
 const router = express.Router();
 
 const text = (value) => (typeof value === 'string' ? value.trim() : '');
-
-// ============================================================
-// HELPER: Check if user has purchased a product
-// ============================================================
 async function hasPurchasedProduct(userEmail, productId) {
   const order = await prisma.order.findFirst({
     where: {
@@ -24,12 +19,6 @@ async function hasPurchasedProduct(userEmail, productId) {
   });
   return !!order;
 }
-
-// ============================================================
-// PRODUCT FEEDBACK ROUTES
-// ============================================================
-
-// GET /api/feedback/products/:productId — List approved reviews for a product
 router.get('/products/:productId', optionalAuth, async (req, res) => {
   try {
     const { productId } = req.params;
@@ -65,7 +54,6 @@ router.get('/products/:productId', optionalAuth, async (req, res) => {
       prisma.review.count({ where }),
     ]);
 
-    // Check if current user has reviewed this product
     let userReview = null;
     if (req.user) {
       userReview = await prisma.review.findUnique({
@@ -78,8 +66,6 @@ router.get('/products/:productId', optionalAuth, async (req, res) => {
       });
     }
 
-    // Check if user can review (has purchased) - but allow all authenticated users to review
-    // This is more lenient to ensure feedback is accessible
     let canReview = false;
     let hasPurchased = false;
     if (req.user) {
@@ -89,11 +75,9 @@ router.get('/products/:productId', optionalAuth, async (req, res) => {
       });
       if (user) {
         hasPurchased = await hasPurchasedProduct(user.email, productId);
-        // Allow all authenticated users to review, but track purchase status
         canReview = true;
       }
     }
-
     return res.json({
       success: true,
       reviews: reviews.map((r) => ({
@@ -135,13 +119,11 @@ router.get('/products/:productId', optionalAuth, async (req, res) => {
   }
 });
 
-// POST /api/feedback/products/:productId — Submit product feedback (auth required, purchase verified)
 router.post('/products/:productId', requireAuth, async (req, res) => {
   try {
     const { productId } = req.params;
     const { rating, comment, imageUrl } = req.body;
 
-    // Validate input
     const ratingNum = parseInt(rating, 10);
     if (!ratingNum || ratingNum < 1 || ratingNum > 5) {
       return res.status(400).json({
@@ -158,7 +140,6 @@ router.post('/products/:productId', requireAuth, async (req, res) => {
       });
     }
 
-    // Validate image URL if provided
     let validatedImageUrl = null;
     if (imageUrl) {
       try {
@@ -180,7 +161,6 @@ router.post('/products/:productId', requireAuth, async (req, res) => {
       }
     }
 
-    // Verify product exists
     const product = await prisma.product.findUnique({
       where: { id: productId },
       select: { id: true, name: true },
@@ -188,8 +168,6 @@ router.post('/products/:productId', requireAuth, async (req, res) => {
     if (!product) {
       return res.status(404).json({ success: false, error: 'Product not found' });
     }
-
-    // Verify user exists
     const user = await prisma.user.findUnique({
       where: { id: req.user.id },
       select: { email: true, name: true },
@@ -198,11 +176,7 @@ router.post('/products/:productId', requireAuth, async (req, res) => {
       return res.status(401).json({ success: false, error: 'User not found' });
     }
 
-    // Check purchase status but don't block - allow all authenticated users to review
     const hasPurchased = await hasPurchasedProduct(user.email, productId);
-    // Note: We no longer block users who haven't purchased - this allows more feedback
-
-    // Check if user already reviewed this product
     const existingReview = await prisma.review.findUnique({
       where: {
         userId_productId: {
@@ -213,14 +187,13 @@ router.post('/products/:productId', requireAuth, async (req, res) => {
     });
 
     if (existingReview) {
-      // Update existing review
       const updated = await prisma.review.update({
         where: { id: existingReview.id },
         data: {
           rating: ratingNum,
           comment: commentText || null,
           imageUrl: validatedImageUrl,
-          status: 'PENDING', // Reset to pending for re-review
+          status: 'PENDING',
         },
         include: {
           user: { select: { name: true, avatar: true } },
@@ -251,7 +224,6 @@ router.post('/products/:productId', requireAuth, async (req, res) => {
       });
     }
 
-    // Create new review
     const review = await prisma.review.create({
       data: {
         userId: req.user.id,
@@ -293,8 +265,6 @@ router.post('/products/:productId', requireAuth, async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to submit review' });
   }
 });
-
-// DELETE /api/feedback/products/:productId — Delete user's own review
 router.delete('/products/:productId', requireAuth, async (req, res) => {
   try {
     const { productId } = req.params;
@@ -321,11 +291,6 @@ router.delete('/products/:productId', requireAuth, async (req, res) => {
   }
 });
 
-// ============================================================
-// ADMIN FEEDBACK MANAGEMENT ROUTES
-// ============================================================
-
-// GET /api/feedback/admin/all — List all feedback (reviews + article comments)
 router.get('/admin/all', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { type, status, page = 1, limit = 20 } = req.query;
@@ -340,7 +305,6 @@ router.get('/admin/all', requireAuth, requireAdmin, async (req, res) => {
       totalArticleComments: 0,
     };
 
-    // Fetch product reviews
     if (!type || type === 'review' || type === 'all') {
       const reviewWhere = {};
       if (status) reviewWhere.status = status.toUpperCase();
@@ -380,7 +344,6 @@ router.get('/admin/all', requireAuth, requireAdmin, async (req, res) => {
       results.totalReviews = reviewCount;
     }
 
-    // Fetch article comments
     if (!type || type === 'comment' || type === 'all') {
       const commentWhere = {};
       if (status) commentWhere.status = status.toUpperCase();
@@ -431,7 +394,6 @@ router.get('/admin/all', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-// PATCH /api/feedback/admin/reviews/:id/status — Update review status
 router.patch('/admin/reviews/:id/status', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -463,7 +425,6 @@ router.patch('/admin/reviews/:id/status', requireAuth, requireAdmin, async (req,
   }
 });
 
-// PATCH /api/feedback/admin/comments/:id/status — Update comment status
 router.patch('/admin/comments/:id/status', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -495,7 +456,6 @@ router.patch('/admin/comments/:id/status', requireAuth, requireAdmin, async (req
   }
 });
 
-// POST /api/feedback/admin/reviews/:id/reply — Reply to a review
 router.post('/admin/reviews/:id/reply', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -534,8 +494,6 @@ router.post('/admin/reviews/:id/reply', requireAuth, requireAdmin, async (req, r
     return res.status(500).json({ success: false, error: 'Failed to reply' });
   }
 });
-
-// POST /api/feedback/admin/comments/:id/reply — Reply to an article comment
 router.post('/admin/comments/:id/reply', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -548,7 +506,6 @@ router.post('/admin/comments/:id/reply', requireAuth, requireAdmin, async (req, 
         error: 'Reply is required and must be under 2000 characters',
       });
     }
-
     const comment = await prisma.articleComment.update({
       where: { id },
       data: {
@@ -574,8 +531,6 @@ router.post('/admin/comments/:id/reply', requireAuth, requireAdmin, async (req, 
     return res.status(500).json({ success: false, error: 'Failed to reply' });
   }
 });
-
-// DELETE /api/feedback/admin/reviews/:id — Delete a review
 router.delete('/admin/reviews/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -589,8 +544,6 @@ router.delete('/admin/reviews/:id', requireAuth, requireAdmin, async (req, res) 
     return res.status(500).json({ success: false, error: 'Failed to delete review' });
   }
 });
-
-// DELETE /api/feedback/admin/comments/:id — Delete an article comment
 router.delete('/admin/comments/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -604,5 +557,4 @@ router.delete('/admin/comments/:id', requireAuth, requireAdmin, async (req, res)
     return res.status(500).json({ success: false, error: 'Failed to delete comment' });
   }
 });
-
 module.exports = router;

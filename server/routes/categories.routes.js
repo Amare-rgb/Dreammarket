@@ -1,14 +1,7 @@
-// routes/categories.routes.js
 const express = require('express');
 const router = express.Router();
 const prisma = require('../lib/prisma');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-
-// ═══════════════════════════════════════════════════════════
-// Categories API — Dream More Affiliate Market
-// ═══════════════════════════════════════════════════════════
-
-// ── Shared select — same shape for every endpoint ──────────
 const CATEGORY_PUBLIC_SELECT = {
   id: true,
   name: true,
@@ -22,12 +15,6 @@ const CATEGORY_PUBLIC_SELECT = {
   updatedAt: true,
 };
 
-/**
- * Normalise an image value:
- *   - http(s) URL → kept as-is
- *   - null / '' / undefined     → null
- *   - anything else → null (rejected)
- */
 function normaliseImage(value) {
   if (value === null || value === undefined) return null;
   if (typeof value !== 'string') return null;
@@ -37,14 +24,7 @@ function normaliseImage(value) {
   console.warn(`⚠️ Rejected non-URL image value: ${trimmed}`);
   return null;
 }
-
-// ── Auth user helper ───────────────────────────────────────
 const getAuthUserId = (req) => req.user?.id || req.user?.userId || null;
-
-// ============================================================
-// ADMIN — Get ALL categories
-// GET /api/categories/admin/all
-// ============================================================
 router.get('/admin/all', requireAuth, requireAdmin, async (req, res) => {
   try {
     const categories = await prisma.category.findMany({
@@ -65,11 +45,6 @@ router.get('/admin/all', requireAuth, requireAdmin, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch categories' });
   }
 });
-
-// ============================================================
-// PUBLIC — Get all categories
-// GET /api/categories/public
-// ============================================================
 router.get('/public', async (req, res) => {
   try {
     const categories = await prisma.category.findMany({
@@ -90,16 +65,9 @@ router.get('/public', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch categories' });
   }
 });
-
-// ============================================================
-// SHARED — Get categories (flat, nested, or by parent)
-// GET /api/categories
-// ============================================================
 router.get('/', async (req, res) => {
   try {
     const { parentId, includeChildren, includeProducts } = req.query;
-
-    // ── Subcategories of a given parent ──
     if (parentId) {
       const subcategories = await prisma.category.findMany({
         where: { parentId },
@@ -108,8 +76,6 @@ router.get('/', async (req, res) => {
       });
       return res.json(subcategories);
     }
-
-    // ── Nested parent/children ──
     if (includeChildren === 'true') {
       const categories = await prisma.category.findMany({
         where: { parentId: null },
@@ -151,7 +117,7 @@ router.get('/', async (req, res) => {
       return res.json(categories);
     }
 
-    // ── Flat list ──
+  
     const categories = await prisma.category.findMany({
       orderBy: { name: 'asc' },
       select: {
@@ -167,9 +133,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// ============================================================
-// GET /api/categories/:id — single category with children + products
-// ============================================================
 router.get('/:id', async (req, res) => {
   try {
     const { id } = req.params;
@@ -202,10 +165,6 @@ router.get('/:id', async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch category' });
   }
 });
-
-// ============================================================
-// CREATE — POST /api/categories (ADMIN ONLY)
-// ============================================================
 router.post('/', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { name, slug, description, parentId, image, icon, color } = req.body;
@@ -221,8 +180,6 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
     if (!userId) {
       return res.status(401).json({ error: 'User not authenticated' });
     }
-
-    // Verify user exists (to prevent foreign key errors)
     const existingUser = await prisma.user.findUnique({
       where: { id: userId },
       select: { id: true },
@@ -257,7 +214,6 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
   } catch (error) {
     console.error('Error creating category:', error);
     
-    // Handle Prisma unique constraint errors (e.g. duplicate name or slug)
     if (error.code === 'P2002') {
       const field = error.meta?.target?.[0] || 'field';
       return res.status(400).json({ error: `A category with this ${field} already exists.` });
@@ -267,9 +223,6 @@ router.post('/', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-// ============================================================
-// UPDATE — PUT /api/categories/:id (ADMIN ONLY)
-// ============================================================
 router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -307,9 +260,6 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-// ============================================================
-// DELETE — DELETE /api/categories/:id (ADMIN ONLY)
-// ============================================================
 router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;

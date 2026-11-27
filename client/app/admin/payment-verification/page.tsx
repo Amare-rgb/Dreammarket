@@ -229,7 +229,7 @@ export default function AdminPaymentVerificationPage() {
                   </h2>
                   <p className="text-xs text-gray-500">
                     {selected.user.name} ({selected.user.email}) ·{" "}
-                    {selected.order.customerName} ·{" "}
+                    {selected.order.customerName || "—"} ·{" "}
                     {money(Number(selected.order.total))}
                   </p>
                   <p className="mt-1 text-xs">

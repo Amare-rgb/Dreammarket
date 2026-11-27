@@ -1,13 +1,7 @@
-// lib/auth.js
 const jwt = require('jsonwebtoken');
 const crypto = require('crypto');
 const prisma = require('./prisma');
-
-// ═══════════════════════════════════════════════════════════
-// JWT_SECRET must be set in .env — fail fast if missing.
-// ═══════════════════════════════════════════════════════════
 const JWT_SECRET = process.env.JWT_SECRET;
-
 if (!JWT_SECRET || JWT_SECRET.length < 32) {
   throw new Error(
     '❌ JWT_SECRET is missing or too short (min 32 chars). ' +
@@ -16,28 +10,18 @@ if (!JWT_SECRET || JWT_SECRET.length < 32) {
       'Then add to .env:  JWT_SECRET=<the-long-string>'
   );
 }
-
 const TOKEN_EXPIRY = process.env.JWT_EXPIRY || '7d';
 const VERIFICATION_EXPIRY = '24h';
 const RESET_EXPIRY = '1h';
-
-// ============================================================
-// getServerSession — verify JWT and return the user
-// ============================================================
 const getServerSession = async (req) => {
   try {
     const authHeader = req.headers.authorization;
     if (!authHeader) return null;
-
     const token = authHeader.split(' ')[1];
     if (!token) return null;
-
     const decoded = jwt.verify(token, JWT_SECRET);
-
-    // Accept any of the ID field names used across the app
     const userId = decoded.userId || decoded.id || decoded.user_id;
     if (!userId) return null;
-
     const user = await prisma.user.findUnique({
       where: { id: userId },
       select: {
@@ -47,20 +31,13 @@ const getServerSession = async (req) => {
         role: true,
       },
     });
-
     if (!user) return null;
-
     return { user };
   } catch (error) {
     console.error('❌ Session error:', error.message);
     return null;
   }
 };
-
-// ============================================================
-// generateToken — sign a login token
-// Includes id / userId / user_id so any consumer works.
-// ============================================================
 const generateToken = (userId, email, role, name = '') => {
   const payload = {
     id: userId,
@@ -73,17 +50,12 @@ const generateToken = (userId, email, role, name = '') => {
 
   return jwt.sign(payload, JWT_SECRET, { expiresIn: TOKEN_EXPIRY });
 };
-
-// ============================================================
-// Email verification token
-// ============================================================
 const generateVerificationToken = (email) =>
   jwt.sign(
     { email, purpose: 'email-verification' },
     JWT_SECRET,
     { expiresIn: VERIFICATION_EXPIRY }
   );
-
 const verifyVerificationToken = (token) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
@@ -93,16 +65,11 @@ const verifyVerificationToken = (token) => {
     return null;
   }
 };
-
-// ============================================================
-// Password reset token
-// ============================================================
 const passwordVersion = (passwordHash) =>
   crypto
     .createHmac('sha256', JWT_SECRET)
     .update(String(passwordHash || ''))
     .digest('hex');
-
 const generateResetToken = (email, passwordHash) =>
   jwt.sign(
     {
@@ -113,7 +80,6 @@ const generateResetToken = (email, passwordHash) =>
     JWT_SECRET,
     { expiresIn: RESET_EXPIRY }
   );
-
 const verifyResetToken = (token, passwordHash) => {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
@@ -139,9 +105,6 @@ const verifyResetToken = (token, passwordHash) => {
     return null;
   }
 };
-
-// ⚠️ JWT_SECRET is intentionally NOT exported.
-// No other module should need it — use the helper functions.
 module.exports = {
   getServerSession,
   generateToken,

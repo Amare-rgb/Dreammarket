@@ -474,7 +474,7 @@ export function Navbar() {
                   <span>{t("nav.sign_in", "Sign In")}</span>
                 </button>
                 <div role="menu" className={`absolute right-0 top-full z-50 mt-2 w-52 origin-top-right rounded-2xl border border-[#eadfce] bg-white p-1.5 shadow-[0_20px_50px_rgba(0,0,0,0.22)] transition-all duration-150 ease-out ${dropdownOpen ? "pointer-events-auto translate-y-0 scale-100 opacity-100" : "pointer-events-none -translate-y-2 scale-95 opacity-0"}`}>
-                  <Link href="/auth/login" role="menuitem" onClick={closeAllMenus} className="group flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-[#1a1410] transition-colors hover:bg-[#faf6ef] hover:text-[#EB6D3D]">
+                  <Link href="/auth/signin" role="menuitem" onClick={closeAllMenus} className="group flex items-center gap-2.5 rounded-xl px-3 py-2 text-xs font-semibold text-[#1a1410] transition-colors hover:bg-[#faf6ef] hover:text-[#EB6D3D]">
                     <LogIn size={14} className="text-[#7a6a58] transition-colors group-hover:text-[#EB6D3D]" />
                     <span>{t("nav.sign_in", "Sign In")}</span>
                   </Link>
@@ -548,7 +548,7 @@ export function Navbar() {
                 </div>
               ) : (
                 <div className="flex items-center gap-2">
-                  <Link href="/auth/login" onClick={closeAllMenus} className="rounded-full border border-[#d9d3c8] bg-white px-3 py-1.5 text-xs font-semibold">{t("nav.sign_in", "Sign In")}</Link>
+                  <Link href="/auth/signin" onClick={closeAllMenus} className="rounded-full border border-[#d9d3c8] bg-white px-3 py-1.5 text-xs font-semibold">{t("nav.sign_in", "Sign In")}</Link>
                   <Link href="/auth/register" onClick={closeAllMenus} className="rounded-full bg-[#EB6D3D] px-3 py-1.5 text-xs font-semibold text-white">{t("nav.sign_up", "Create Account")}</Link>
                 </div>
               )}

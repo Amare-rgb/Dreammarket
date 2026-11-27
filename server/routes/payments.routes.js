@@ -1,20 +1,3 @@
-/**
- * payments.routes.js
- *
- * Module 3 — checkout payment verification + admin escalation chat.
- *
- * User routes (mounted at /api/payments):
- *   POST /verify                              real-time provider check
- *   POST /verification-requests               escalate to admin
- *   GET  /verification-requests/mine          my tickets
- *   GET  /verification-requests/:id           ticket + messages
- *   POST /verification-requests/:id/messages  reply in thread
- *
- * Admin routes (mounted at /api/admin/payments):
- *   GET   /verification-requests              list tickets (?status=)
- *   PATCH /verification-requests/:id          approve/reject
- *   POST  /verification-requests/:id/messages admin reply
- */
 const express = require('express');
 const prisma = require('../lib/prisma');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
@@ -23,16 +6,12 @@ const { inspectScreenshot } = require('../services/paymentVerification.service')
 const { upload, handleUpload } = require('../middleware/upload');
 const { sendTelegramMessage } = require('../lib/telegram');
 const { sendEmail } = require('../lib/email');
-
 const router = express.Router();
 const adminRouter = express.Router();
-
 const COMMISSION_RATE = () => {
   const n = Number(process.env.AFFILIATE_COMMISSION_RATE);
-  return Number.isFinite(n) && n > 0 ? n : 0; // percent, 0 = disabled
+  return Number.isFinite(n) && n > 0 ? n : 0; 
 };
-
-// ── helpers ────────────────────────────────────────────────────────────
 async function findOrderForUser({ orderNumber, orderId, userId, isAdmin }) {
   const where = orderNumber
     ? { orderNumber: String(orderNumber).trim() }
@@ -47,8 +26,6 @@ async function findOrderForUser({ orderNumber, orderId, userId, isAdmin }) {
   }
   return { order };
 }
-
-// Mark order paid + credit affiliate commission (idempotent)
 async function markOrderPaid(order, { transactionRef, method, notes }) {
   if (order.paymentStatus === 'PAID' && order.transactionRef === transactionRef) {
     return { alreadyPaid: true };
@@ -63,8 +40,6 @@ async function markOrderPaid(order, { transactionRef, method, notes }) {
       verifiedAt: new Date(),
     },
   });
-
-  // Affiliate commission credit
   const rate = COMMISSION_RATE();
   if (rate > 0 && order.affiliateCode && !order.affiliateCommission) {
     try {
@@ -96,7 +71,6 @@ async function markOrderPaid(order, { transactionRef, method, notes }) {
   }
   return { order: updated, alreadyPaid: false };
 }
-
 async function alertAdmins(text) {
   const results = await Promise.allSettled([
     sendTelegramMessage(`💳 Payment verification request\n\n${text}`),
@@ -108,15 +82,7 @@ async function alertAdmins(text) {
   ]);
   return results;
 }
-
-// ═══════════════════════════════════════════════════════════
-// USER ROUTES
-// ═══════════════════════════════════════════════════════════
 router.use(requireAuth);
-
-// POST /api/payments/check-ref — pre-order transaction reference check.
-// Lets the customer verify a Telebirr/CBE/etc. reference BEFORE placing
-// the order. No order is required; only checks provider + duplicates.
 router.post('/check-ref', async (req, res) => {
   try {
     const ref = String(req.body?.transactionRef || '').trim();
@@ -127,8 +93,6 @@ router.post('/check-ref', async (req, res) => {
         error: 'Enter a valid transaction reference.',
       });
     }
-
-    // Already used on another order?
     const dup = await prisma.order.findFirst({
       where: { transactionRef: ref },
       select: { orderNumber: true },
@@ -141,7 +105,6 @@ router.post('/check-ref', async (req, res) => {
         error: `This transaction reference was already used for order ${dup.orderNumber}.`,
       });
     }
-
     const provider = await verifyTransactionRef(ref);
     return res.json({
       success: true,
@@ -159,11 +122,6 @@ router.post('/check-ref', async (req, res) => {
     res.status(500).json({ success: false, verified: false, error: 'Verification failed. Please try again.' });
   }
 });
-
-// POST /api/payments/verify-screenshot — pre-order OCR check.
-// Accepts multipart/form-data with field "screenshot" (image/PDF, max 10MB).
-// Returns extracted amount / transaction reference / receipt URLs and the
-// stored file URL so the checkout can reuse it as the order's payment proof.
 router.post(
   '/verify-screenshot',
   handleUpload(upload.single('screenshot')),
@@ -175,8 +133,6 @@ router.post(
           error: 'Please choose a payment screenshot first.',
         });
       }
-
-      // PDFs can't be OCR'd — accept the upload for manual review
       const isPdf =
         req.file.mimetype === 'application/pdf' ||
         /\.pdf$/i.test(req.file.originalname || '');
@@ -195,13 +151,11 @@ router.post(
             'or it will be reviewed manually after ordering.',
         });
       }
-
       let inspection;
       try {
         inspection = await inspectScreenshot(req.file.path);
       } catch (ocrErr) {
         console.error('verify-screenshot OCR error:', ocrErr);
-        // OCR unavailable — still accept the upload; admin reviews manually
         return res.json({
           success: true,
           url: req.file.url || req.file.location || null,
@@ -216,8 +170,6 @@ router.post(
             'Your receipt will be verified manually after ordering.',
         });
       }
-
-      // Duplicate reference check (same protection as post-order verify)
       let duplicateOf = null;
       if (inspection.transactionRef) {
         const dup = await prisma.order.findFirst({
@@ -226,7 +178,6 @@ router.post(
         });
         if (dup) duplicateOf = dup.orderNumber;
       }
-
       return res.json({
         success: true,
         url: req.file.url || req.file.location || null,
@@ -247,8 +198,6 @@ router.post(
     }
   }
 );
-
-// POST /api/payments/verify — real-time provider verification
 router.post('/verify', async (req, res) => {
   try {
     const { orderNumber, orderId, transactionRef, receiptUrl } = req.body || {};
@@ -256,13 +205,10 @@ router.post('/verify', async (req, res) => {
     if (!ref || ref.length > 120) {
       return res.status(400).json({ success: false, error: 'A valid transaction reference is required.' });
     }
-
     const { order, error, status } = await findOrderForUser({
       orderNumber, orderId, userId: req.user.id, isAdmin: false,
     });
     if (error) return res.status(status).json({ success: false, error });
-
-    // Duplicate transaction ref protection (DB unique + explicit check)
     const dup = await prisma.order.findFirst({
       where: { transactionRef: ref, NOT: { id: order.id } },
       select: { orderNumber: true },
@@ -275,10 +221,7 @@ router.post('/verify', async (req, res) => {
         error: `This transaction reference was already used for order ${dup.orderNumber}.`,
       });
     }
-
-    // Real-time provider check
     const provider = await verifyTransactionRef(ref);
-
     if (provider.verified) {
       await markOrderPaid(order, {
         transactionRef: ref,
@@ -294,8 +237,6 @@ router.post('/verify', async (req, res) => {
         message: 'Payment verified successfully. Your order is now PAID.',
       });
     }
-
-    // Provider rejected / unavailable → do NOT mark paid; suggest escalation
     return res.status(402).json({
       success: false,
       verified: false,
@@ -314,8 +255,6 @@ router.post('/verify', async (req, res) => {
     res.status(500).json({ success: false, error: 'Verification failed. Please try again.' });
   }
 });
-
-// POST /api/payments/verification-requests — escalate to admin
 router.post('/verification-requests', async (req, res) => {
   try {
     const { orderNumber, orderId, transactionRef, receiptUrl, message } = req.body || {};
@@ -323,13 +262,10 @@ router.post('/verification-requests', async (req, res) => {
     if (!ref || ref.length > 120) {
       return res.status(400).json({ success: false, error: 'Transaction reference is required.' });
     }
-
     const { order, error, status } = await findOrderForUser({
       orderNumber, orderId, userId: req.user.id, isAdmin: false,
     });
     if (error) return res.status(status).json({ success: false, error });
-
-    // Reuse an existing PENDING request for the same order+ref
     let request = await prisma.paymentVerificationRequest.findFirst({
       where: { orderId: order.id, transactionRef: ref, status: 'PENDING' },
     });
@@ -360,20 +296,16 @@ router.post('/verification-requests', async (req, res) => {
           },
         });
       }
-      // Alert admins
       alertAdmins(
         `Order ${order.orderNumber}\nCustomer: ${order.customerName} <${order.customerEmail}>\nRef: ${ref}\nTotal: ${order.total} ETB`
       ).catch(() => {});
     }
-
     res.status(201).json({ success: true, request: { id: request.id, status: request.status } });
   } catch (error) {
     console.error('Create verification request error:', error);
     res.status(500).json({ success: false, error: 'Could not create request.' });
   }
 });
-
-// GET /api/payments/verification-requests/mine
 router.get('/verification-requests/mine', async (req, res) => {
   try {
     const requests = await prisma.paymentVerificationRequest.findMany({
@@ -391,14 +323,12 @@ router.get('/verification-requests/mine', async (req, res) => {
     res.status(500).json({ success: false, error: 'Server error' });
   }
 });
-
-// GET /api/payments/verification-requests/:id — owner only
 router.get('/verification-requests/:id', async (req, res) => {
   try {
     const request = await prisma.paymentVerificationRequest.findUnique({
       where: { id: req.params.id },
       include: {
-        order: { select: { orderNumber: true, total: true, paymentStatus: true } },
+        order: { select: { orderNumber: true, total: true, paymentStatus: true, customerName: true, customerEmail: true } },
         user: { select: { name: true, email: true } },
         messages: { orderBy: { createdAt: 'asc' } },
       },
@@ -415,7 +345,6 @@ router.get('/verification-requests/:id', async (req, res) => {
   }
 });
 
-// POST /api/payments/verification-requests/:id/messages — user reply
 router.post('/verification-requests/:id/messages', async (req, res) => {
   try {
     const request = await prisma.paymentVerificationRequest.findUnique({
@@ -441,12 +370,8 @@ router.post('/verification-requests/:id/messages', async (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════════
-// ADMIN ROUTES
-// ═══════════════════════════════════════════════════════════
 adminRouter.use(requireAuth, requireAdmin);
 
-// GET /api/admin/payments/verification-requests?status=PENDING
 adminRouter.get('/verification-requests', async (req, res) => {
   try {
     const status = String(req.query.status || '').toUpperCase();
@@ -469,7 +394,6 @@ adminRouter.get('/verification-requests', async (req, res) => {
   }
 });
 
-// PATCH /api/admin/payments/verification-requests/:id — approve/reject
 adminRouter.patch('/verification-requests/:id', async (req, res) => {
   try {
     const request = await prisma.paymentVerificationRequest.findUnique({
@@ -493,8 +417,6 @@ adminRouter.patch('/verification-requests/:id', async (req, res) => {
         resolvedAt: new Date(),
       },
     });
-
-    // On approval → mark the order PAID with the requested transaction ref
     if (status === 'APPROVED') {
       await markOrderPaid(request.order, {
         transactionRef: request.transactionRef,
@@ -527,7 +449,6 @@ adminRouter.patch('/verification-requests/:id', async (req, res) => {
   }
 });
 
-// POST /api/admin/payments/verification-requests/:id/messages — admin reply
 adminRouter.post('/verification-requests/:id/messages', async (req, res) => {
   try {
     const request = await prisma.paymentVerificationRequest.findUnique({

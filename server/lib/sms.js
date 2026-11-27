@@ -1,17 +1,11 @@
-// lib/sms.js — AfroMessage SMS notifications (https://afromessage.com)
-// Uses the same request format as the working Afilas site:
-// POST https://api.afromessage.com/api/send  (JSON body, Bearer token)
 const axios = require('axios');
 const https = require('https');
 const fs = require('fs');
-
 const BRAND = {
   name: process.env.BRAND_NAME || 'Dream More',
 };
-
 const AFROMESSAGE_BASE_URL =
   process.env.AFROMESSAGE_BASE_URL || 'https://api.afromessage.com/api';
-
 const TLS_ERROR_CODES = new Set([
   'UNABLE_TO_VERIFY_LEAF_SIGNATURE',
   'UNABLE_TO_GET_ISSUER_CERT_LOCALLY',
@@ -19,33 +13,20 @@ const TLS_ERROR_CODES = new Set([
   'DEPTH_ZERO_SELF_SIGNED_CERT',
   'CERT_HAS_EXPIRED',
 ]);
-
-// ─────────────────────────────────────────────────────────────
-// Normalize a phone number to international digits (no +).
-// Accepts: 0911..., +251911..., 251911..., 911...
-// ─────────────────────────────────────────────────────────────
 function normalizePhone(raw) {
   if (!raw || typeof raw !== 'string') return null;
   let digits = raw.replace(/\D/g, '');
   if (!digits) return null;
-
   if (digits.startsWith('00')) digits = digits.slice(2);
-
   if (digits.startsWith('251')) {
-    // already international
   } else if (digits.startsWith('0')) {
     digits = '251' + digits.slice(1);
   } else if (digits.length === 9) {
     digits = '251' + digits;
   }
-
   if (!/^251\d{9}$/.test(digits)) return null;
   return digits;
 }
-
-// ─────────────────────────────────────────────────────────────
-// Remove markup / template symbols so the SMS shows clean text
-// ─────────────────────────────────────────────────────────────
 function sanitizeSmsText(text) {
   return String(text ?? '')
     .replace(/<<[^>]*>>/g, '')
@@ -56,10 +37,6 @@ function sanitizeSmsText(text) {
     .replace(/\s+/g, ' ')
     .trim();
 }
-
-// ─────────────────────────────────────────────────────────────
-// Clean and validate the API key (a JWT has exactly 2 dots)
-// ─────────────────────────────────────────────────────────────
 function cleanApiKey(raw) {
   return String(raw || '')
     .trim()
@@ -67,13 +44,11 @@ function cleanApiKey(raw) {
     .replace(/^Bearer\s+/i, '')
     .replace(/\s+/g, '');
 }
-
 function getConfig() {
   const apiKey = cleanApiKey(process.env.AFROMESSAGE_API_KEY);
   if (!apiKey) {
     throw new Error('AFROMESSAGE_API_KEY is not set in environment');
   }
-
   const dots = (apiKey.match(/\./g) || []).length;
   if (dots !== 2) {
     throw new Error(
@@ -81,7 +56,6 @@ function getConfig() {
         'Check .env: one token only, then restart the server.'
     );
   }
-
   return {
     apiKey,
     senderId:
@@ -90,12 +64,6 @@ function getConfig() {
     identifierId: (process.env.AFROMESSAGE_IDENTIFIER_ID || '').trim() || undefined,
   };
 }
-
-// ─────────────────────────────────────────────────────────────
-// HTTPS agent
-//  - AFROMESSAGE_CA_FILE=path/to/ca.pem → trust an extra CA (best fix)
-//  - insecure=true                      → skip verification (fallback)
-// ─────────────────────────────────────────────────────────────
 function buildAgent({ insecure }) {
   if (insecure) {
     return new https.Agent({ rejectUnauthorized: false });
@@ -104,12 +72,8 @@ function buildAgent({ insecure }) {
   if (caFile && fs.existsSync(caFile)) {
     return new https.Agent({ ca: fs.readFileSync(caFile) });
   }
-  return undefined; // default Node verification
+  return undefined; 
 }
-
-// ─────────────────────────────────────────────────────────────
-// Turn an AfroMessage error into a clear, short message
-// ─────────────────────────────────────────────────────────────
 function explainError(detail) {
   const text = String(detail || '');
   const lower = text.toLowerCase();
@@ -128,25 +92,18 @@ function explainError(detail) {
 
 const errorDetail = (e) =>
   e.response?.data ? JSON.stringify(e.response.data) : e.message;
-
-// ─────────────────────────────────────────────────────────────
-// sendSms — POST via AfroMessage (same format as Afilas)
-// ─────────────────────────────────────────────────────────────
 async function sendSms({ to, message }) {
   const phone = normalizePhone(to);
   if (!phone) {
     throw new Error(`Invalid phone number: ${to}`);
   }
-
   const finalMessage = sanitizeSmsText(message);
   if (!finalMessage) {
     throw new Error('SMS message cannot be empty');
   }
-
   const { apiKey, senderId, identifierId } = getConfig();
-
   const body = {
-    to: phone, // no "+", exactly like Afilas
+    to: phone,
     message: finalMessage,
   };
   if (senderId) body.sender_id = senderId;
@@ -157,9 +114,7 @@ async function sendSms({ to, message }) {
     sender_id: senderId || null,
     message: finalMessage,
   });
-
   const SMS_TIMEOUT_MS = Number(process.env.AFROMESSAGE_TIMEOUT_MS) || 30000;
-
   const request = (insecure) =>
     axios.post(`${AFROMESSAGE_BASE_URL}/send`, body, {
       timeout: SMS_TIMEOUT_MS,
@@ -170,10 +125,8 @@ async function sendSms({ to, message }) {
         Accept: 'application/json',
       },
     });
-
   const forceInsecure = process.env.AFROMESSAGE_INSECURE_TLS === 'true';
   const strictTls = process.env.AFROMESSAGE_STRICT_TLS === 'true';
-
   let res;
   try {
     res = await request(forceInsecure);
@@ -190,10 +143,8 @@ async function sendSms({ to, message }) {
       throw new Error(explainError(errorDetail(err)));
     }
   }
-
   const data = res.data;
   console.log('📥 AfroMessage response:', JSON.stringify(data));
-
   if (String(data?.acknowledge).toLowerCase() !== 'success') {
     const errors = data?.response?.errors;
     const reason = Array.isArray(errors)
@@ -201,30 +152,22 @@ async function sendSms({ to, message }) {
       : data?.message || JSON.stringify(data);
     throw new Error(explainError(reason));
   }
-
   console.log(`✅ SMS sent via AfroMessage to: ${phone}`);
   return data;
 }
-
-// ─────────────────────────────────────────────────────────────
-// sendOrderApprovalSms — order confirmed notification (short)
-// ─────────────────────────────────────────────────────────────
 async function sendOrderApprovalSms(order) {
   if (!order) {
     throw new Error('sendOrderApprovalSms: order is required');
   }
-
   const name = sanitizeSmsText(order.customerName) || 'Customer';
   const orderNumber = sanitizeSmsText(order.orderNumber);
   const total = Number(order.total) || 0;
-
   const message =
     `${BRAND.name}: Hi ${name}, your order${orderNumber ? ` ${orderNumber}` : ''} is confirmed. ` +
     `Total: ETB ${total.toFixed(2)}. We will contact you for delivery. Thank you!`;
 
   return sendSms({ to: order.customerPhone, message });
 }
-
 module.exports = {
   sendSms,
   sendOrderApprovalSms,

@@ -24,7 +24,6 @@ const escapeHtml = (value) =>
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
 
-// Simple branded HTML wrapper for Edit Smarter emails
 function newsletterEmailHtml({ subject, previewText, bodyHtml }) {
   return `
     <div style="font-family:Arial,Helvetica,sans-serif;max-width:640px;margin:0 auto;color:#1e293b;line-height:1.6;">
@@ -48,7 +47,6 @@ function newsletterEmailHtml({ subject, previewText, bodyHtml }) {
     </div>`;
 }
 
-// Convert plain-text body (paragraphs separated by blank lines) to simple HTML
 function bodyToHtml(body) {
   return String(body || '')
     .split(/\n{2,}/)
@@ -58,7 +56,6 @@ function bodyToHtml(body) {
     .join('');
 }
 
-// Fire-and-forget helpers — never block the HTTP response on email delivery
 function sendSubscriptionConfirmation(subscriber) {
   const html = newsletterEmailHtml({
     subject: 'Welcome to Edit Smarter',
@@ -106,11 +103,6 @@ async function sendIssueToSubscribers(issue) {
   return { sent, failed, total: recipients.length };
 }
 
-// ═══════════════════════════════════════════════════════════
-// PUBLIC ROUTES
-// ═══════════════════════════════════════════════════════════
-
-// GET /api/media/news — all news items (client handles search/pagination)
 publicRouter.get('/news', async (req, res) => {
   try {
     const items = await prisma.newsItem.findMany({
@@ -123,7 +115,6 @@ publicRouter.get('/news', async (req, res) => {
   }
 });
 
-// GET /api/media/videos — newest video releases
 publicRouter.get('/videos', async (req, res) => {
   try {
     const items = await prisma.videoRelease.findMany({
@@ -137,7 +128,6 @@ publicRouter.get('/videos', async (req, res) => {
   }
 });
 
-// GET /api/media/popular-articles?period=LAST_7_DAYS
 publicRouter.get('/popular-articles', async (req, res) => {
   try {
     const period = PERIODS.includes(req.query?.period)
@@ -155,7 +145,6 @@ publicRouter.get('/popular-articles', async (req, res) => {
   }
 });
 
-// POST /api/media/newsletter/subscribe
 publicRouter.post('/newsletter/subscribe', async (req, res) => {
   try {
     const firstName = normalizeText(req.body?.firstName);
@@ -166,7 +155,6 @@ publicRouter.post('/newsletter/subscribe', async (req, res) => {
       .map((t) => normalizeText(t))
       .filter((t) => NEWSLETTER_TYPES.includes(t));
 
-    // Honeypot spam check — bots fill hidden fields, humans never see them
     const honeypot = normalizeText(req.body?.website || req.body?.company);
     if (honeypot) {
       return res.status(201).json({ success: true, subscriber: { email } });
@@ -193,7 +181,6 @@ publicRouter.post('/newsletter/subscribe', async (req, res) => {
           error: 'This email is already subscribed.',
         });
       }
-      // Re-subscribe an unsubscribed address
       const updated = await prisma.newsletterSubscriber.update({
         where: { email },
         data: { firstName, lastName, types: types.join(','), status: 'ACTIVE' },
@@ -213,7 +200,6 @@ publicRouter.post('/newsletter/subscribe', async (req, res) => {
   }
 });
 
-// GET /api/media/newsletter/issues — published issues (public archive)
 publicRouter.get('/newsletter/issues', async (req, res) => {
   try {
     const items = await prisma.newsletterIssue.findMany({
@@ -233,8 +219,6 @@ publicRouter.get('/newsletter/issues', async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to load newsletters.' });
   }
 });
-
-// GET /api/media/newsletter/issues/:id — single published issue
 publicRouter.get('/newsletter/issues/:id', async (req, res) => {
   try {
     const item = await prisma.newsletterIssue.findFirst({
@@ -250,7 +234,6 @@ publicRouter.get('/newsletter/issues/:id', async (req, res) => {
   }
 });
 
-// GET /api/media/newsletter/unsubscribe?token=...
 publicRouter.get('/newsletter/unsubscribe', async (req, res) => {
   try {
     const token = normalizeText(req.query?.token);
@@ -276,12 +259,8 @@ publicRouter.get('/newsletter/unsubscribe', async (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════════
-// ADMIN ROUTES (auth required)
-// ═══════════════════════════════════════════════════════════
 adminRouter.use(requireAuth, requireAdmin);
 
-// ── News CRUD ──
 adminRouter.get('/news', async (req, res) => {
   try {
     const items = await prisma.newsItem.findMany({ orderBy: { date: 'desc' } });
@@ -352,7 +331,6 @@ adminRouter.delete('/news/:id', async (req, res) => {
   }
 });
 
-// ── Video Releases CRUD ──
 adminRouter.get('/videos', async (req, res) => {
   try {
     const items = await prisma.videoRelease.findMany({ orderBy: { publishedAt: 'desc' } });
@@ -435,7 +413,6 @@ adminRouter.delete('/videos/:id', async (req, res) => {
   }
 });
 
-// ── Popular Articles CRUD ──
 adminRouter.get('/popular-articles', async (req, res) => {
   try {
     const items = await prisma.popularArticle.findMany({
@@ -513,7 +490,6 @@ adminRouter.delete('/popular-articles/:id', async (req, res) => {
   }
 });
 
-// ── Newsletter Subscribers ──
 adminRouter.get('/newsletter', async (req, res) => {
   try {
     const status = req.query?.status;
@@ -561,7 +537,6 @@ adminRouter.delete('/newsletter/:id', async (req, res) => {
   }
 });
 
-// ── Newsletter Issues (Edit Smarter editions) ──
 adminRouter.get('/newsletter/issues', async (req, res) => {
   try {
     const items = await prisma.newsletterIssue.findMany({
@@ -641,8 +616,6 @@ adminRouter.delete('/newsletter/issues/:id', async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to delete issue.' });
   }
 });
-
-// POST /api/admin/media/newsletter/issues/:id/publish — mark SENT and email subscribers
 adminRouter.post('/newsletter/issues/:id/publish', async (req, res) => {
   try {
     const issue = await prisma.newsletterIssue.findUnique({ where: { id: req.params.id } });
@@ -660,8 +633,6 @@ adminRouter.post('/newsletter/issues/:id/publish', async (req, res) => {
       where: { id: issue.id },
       data: { status: 'SENT', publishedAt },
     });
-
-    // Send emails — may take a while for large lists; report counts back
     const result = await sendIssueToSubscribers(updated);
     const final = await prisma.newsletterIssue.update({
       where: { id: issue.id },
@@ -678,5 +649,4 @@ adminRouter.post('/newsletter/issues/:id/publish', async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to publish issue.' });
   }
 });
-
 module.exports = { publicRouter, adminRouter };

@@ -1,12 +1,4 @@
-// lib/email.js
 const nodemailer = require('nodemailer');
-
-// ═══════════════════════════════════════════════════════════
-// Email — Dream More Affiliate Market
-//  • Provider: Resend (preferred) or SMTP (fallback)
-//  • No order/order-related emails (Order model removed)
-// ═══════════════════════════════════════════════════════════
-
 const stripSlash = (s) => String(s || '').trim().replace(/\/+$/, '');
 
 const BRAND = {
@@ -46,8 +38,6 @@ const getTransporter = () => {
   }
   return transporter;
 };
-
-// ── Escape user-provided text ──────────────────────────────
 const escapeHtml = (value) =>
   String(value == null ? '' : value)
     .replace(/&/g, '&amp;')
@@ -55,8 +45,6 @@ const escapeHtml = (value) =>
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
-
-// ── Shared layout ──────────────────────────────────────────
 const wrapEmail = ({ heading, bodyHtml }) => {
   const year = new Date().getFullYear();
   return `
@@ -232,10 +220,6 @@ Need help? Contact us at ${BRAND.supportEmail}.
     html,
   });
 }
-
-// ============================================================
-// sendPasswordResetEmail — sends a reset link
-// ============================================================
 async function sendPasswordResetEmail(email, name, resetToken) {
   const resetUrl = `${BRAND.website}/reset-password?token=${encodeURIComponent(
     resetToken
@@ -286,10 +270,6 @@ stay unchanged.
     html,
   });
 }
-
-// ============================================================
-// sendVerificationEmail — optional, for future OTP flow
-// ============================================================
 async function sendVerificationEmail(email, name, otp) {
   const safeName = escapeHtml(name || 'there');
   const safeOtp = escapeHtml(otp || '');
@@ -329,7 +309,6 @@ This code will expire in 10 minutes.
     html,
   });
 }
-
 module.exports = {
   sendEmail,
   sendWelcomeEmail,

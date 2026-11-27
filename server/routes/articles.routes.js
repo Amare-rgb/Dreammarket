@@ -2,9 +2,7 @@ const express = require('express');
 const prisma = require('../lib/prisma');
 const { requireAuth, requireAdmin, optionalAuth } = require('../middleware/auth');
 const { sendArticleAnnouncement } = require('../lib/telegram');
-
 const router = express.Router();
-
 const text = (value) => (typeof value === 'string' ? value.trim() : '');
 const createSlug = (value) =>
   text(value)
@@ -14,7 +12,6 @@ const createSlug = (value) =>
     .replace(/[^a-z0-9]+/g, '-')
     .replace(/^-+|-+$/g, '')
     .slice(0, 100);
-
 function isValidHttpUrl(value) {
   try {
     const url = new URL(value);
@@ -23,11 +20,6 @@ function isValidHttpUrl(value) {
     return false;
   }
 }
-
-/* ------------------------------------------------------------------ */
-/* Categories helpers                                                  */
-/* ------------------------------------------------------------------ */
-
 const DEFAULT_CATEGORIES = [
   { name: 'General', slug: 'general' },
   { name: 'News', slug: 'news' },
@@ -36,7 +28,6 @@ const DEFAULT_CATEGORIES = [
   { name: 'Tips', slug: 'tips' },
   { name: 'Events', slug: 'events' },
 ];
-
 async function ensureDefaultCategories() {
   if ((await prisma.articleCategory.count()) === 0) {
     await prisma.articleCategory.createMany({
@@ -45,7 +36,6 @@ async function ensureDefaultCategories() {
     });
   }
 }
-
 async function categoryExists(slug) {
   await ensureDefaultCategories();
   const found = await prisma.articleCategory.findUnique({
@@ -54,7 +44,6 @@ async function categoryExists(slug) {
   });
   return Boolean(found);
 }
-
 async function uniqueCategorySlug(name) {
   const base = createSlug(name) || `cat-${Date.now().toString(36)}`;
   let slug = base;
@@ -69,11 +58,6 @@ async function uniqueCategorySlug(name) {
   }
   return slug;
 }
-
-/* ------------------------------------------------------------------ */
-/* Article helpers                                                     */
-/* ------------------------------------------------------------------ */
-
 function articleInput(body) {
   const title = text(body?.title);
   const description = text(body?.description);
@@ -84,8 +68,6 @@ function articleInput(body) {
   const pdfUrl = text(body?.pdfUrl);
   const note = text(body?.note);
   const published = body?.published === true || body?.published === 'true';
-
-  // Optional Amharic translations (empty string clears them)
   const optText = (v) => {
     const s = text(v);
     return s || null;
@@ -94,7 +76,6 @@ function articleInput(body) {
   const descriptionAm = optText(body?.descriptionAm);
   const contentAm = optText(body?.contentAm);
   const noteAm = optText(body?.noteAm);
-
   if (!title || !description || !content) {
     return { error: 'Title, description, and article content are required.' };
   }
@@ -122,10 +103,8 @@ function articleInput(body) {
       error: 'The PDF URL must be a valid link starting with http:// or https://.',
     };
   }
-
   const slug = createSlug(text(body?.slug) || title);
   if (!slug) return { error: 'Enter a title that can be used as an article URL.' };
-
   return {
     data: {
       title,
@@ -145,7 +124,6 @@ function articleInput(body) {
     },
   };
 }
-
 async function uniqueSlug(baseSlug, currentId) {
   let slug = baseSlug;
   let suffix = 2;
@@ -159,7 +137,6 @@ async function uniqueSlug(baseSlug, currentId) {
   }
   return slug;
 }
-
 async function announceArticle(article) {
   try {
     return await sendArticleAnnouncement(article);
@@ -172,11 +149,6 @@ async function announceArticle(article) {
     return { sent: false, error: message };
   }
 }
-
-/* ------------------------------------------------------------------ */
-/* Admin: categories                                                   */
-/* ------------------------------------------------------------------ */
-
 router.get('/admin/categories', requireAuth, requireAdmin, async (req, res) => {
   try {
     await ensureDefaultCategories();
@@ -186,7 +158,6 @@ router.get('/admin/categories', requireAuth, requireAdmin, async (req, res) => {
       prisma.article.groupBy({ by: ['category'], _count: { _all: true } }),
     ]);
     const counts = new Map(grouped.map((g) => [g.category, g._count._all]));
-
     return res.json({
       success: true,
       categories: categories.map((c) => ({
@@ -203,7 +174,6 @@ router.get('/admin/categories', requireAuth, requireAdmin, async (req, res) => {
     return res.status(500).json({ success: false, error: 'Could not load categories.' });
   }
 });
-
 router.post('/admin/categories', requireAuth, requireAdmin, async (req, res) => {
   try {
     const name = text(req.body?.name).replace(/\s+/g, ' ');
@@ -214,7 +184,6 @@ router.post('/admin/categories', requireAuth, requireAdmin, async (req, res) => 
         error: 'Category name must be 2 to 40 characters.',
       });
     }
-
     const parentId = text(req.body?.parentId) || null;
     let parent = null;
     if (parentId) {
@@ -232,9 +201,7 @@ router.post('/admin/categories', requireAuth, requireAdmin, async (req, res) => 
         });
       }
     }
-
     await ensureDefaultCategories();
-
     const duplicate = await prisma.articleCategory.findFirst({
       where: { name: { equals: name, mode: 'insensitive' } },
       select: { id: true },
@@ -244,12 +211,10 @@ router.post('/admin/categories', requireAuth, requireAdmin, async (req, res) => 
         .status(409)
         .json({ success: false, error: 'This category already exists.' });
     }
-
     const slug = await uniqueCategorySlug(name);
     const category = await prisma.articleCategory.create({
       data: { name, nameAm, slug, parentId: parent?.id || null },
     });
-
     return res.status(201).json({
       success: true,
       category: {
@@ -271,7 +236,6 @@ router.post('/admin/categories', requireAuth, requireAdmin, async (req, res) => 
     return res.status(500).json({ success: false, error: 'Could not create the category.' });
   }
 });
-
 router.delete('/admin/categories/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const category = await prisma.articleCategory.findUnique({
@@ -280,7 +244,6 @@ router.delete('/admin/categories/:id', requireAuth, requireAdmin, async (req, re
     if (!category) {
       return res.status(404).json({ success: false, error: 'Category not found.' });
     }
-
     const childCount = await prisma.articleCategory.count({
       where: { parentId: category.id },
     });
@@ -290,7 +253,6 @@ router.delete('/admin/categories/:id', requireAuth, requireAdmin, async (req, re
         error: `This category has ${childCount} subcategor${childCount === 1 ? 'y' : 'ies'}. Delete them first.`,
       });
     }
-
     const inUse = await prisma.article.count({ where: { category: category.slug } });
     if (inUse > 0) {
       return res.status(400).json({
@@ -298,7 +260,6 @@ router.delete('/admin/categories/:id', requireAuth, requireAdmin, async (req, re
         error: `This category is used by ${inUse} article(s). Move or delete them first.`,
       });
     }
-
     await prisma.articleCategory.delete({ where: { id: category.id } });
     return res.json({ success: true });
   } catch (error) {
@@ -306,12 +267,6 @@ router.delete('/admin/categories/:id', requireAuth, requireAdmin, async (req, re
     return res.status(500).json({ success: false, error: 'Could not delete the category.' });
   }
 });
-
-/* ------------------------------------------------------------------ */
-/* Admin: comments                                                     */
-/* ✅ MOVED ABOVE /admin/:id TO PREVENT ROUTING CONFLICT               */
-/* ------------------------------------------------------------------ */
-
 router.get('/admin/comments', requireAuth, requireAdmin, async (req, res) => {
   try {
     const comments = await prisma.articleComment.findMany({
@@ -345,7 +300,6 @@ router.get('/admin/comments', requireAuth, requireAdmin, async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to fetch comments' });
   }
 });
-
 router.delete('/admin/comments/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     await prisma.articleComment.delete({
@@ -360,11 +314,6 @@ router.delete('/admin/comments/:id', requireAuth, requireAdmin, async (req, res)
     return res.status(500).json({ success: false, error: 'Failed to delete comment' });
   }
 });
-
-/* ------------------------------------------------------------------ */
-/* Admin: articles                                                     */
-/* ------------------------------------------------------------------ */
-
 router.get('/admin', requireAuth, requireAdmin, async (req, res) => {
   try {
     const articles = await prisma.article.findMany({
@@ -377,8 +326,6 @@ router.get('/admin', requireAuth, requireAdmin, async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to fetch articles' });
   }
 });
-
-// ✅ Now that /admin/comments is above, this will only catch actual IDs
 router.get('/admin/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const article = await prisma.article.findUnique({
@@ -393,7 +340,6 @@ router.get('/admin/:id', requireAuth, requireAdmin, async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to fetch article' });
   }
 });
-
 router.post('/admin', requireAuth, requireAdmin, async (req, res) => {
   try {
     const result = articleInput(req.body);
@@ -403,7 +349,6 @@ router.post('/admin', requireAuth, requireAdmin, async (req, res) => {
     if (!(await categoryExists(result.data.category))) {
       return res.status(400).json({ success: false, error: 'Unknown category.' });
     }
-
     const slug = await uniqueSlug(result.data.slug);
     const article = await prisma.article.create({
       data: {
@@ -429,7 +374,6 @@ router.post('/admin', requireAuth, requireAdmin, async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to create article' });
   }
 });
-
 router.put('/admin/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const result = articleInput(req.body);
@@ -439,7 +383,6 @@ router.put('/admin/:id', requireAuth, requireAdmin, async (req, res) => {
     if (!(await categoryExists(result.data.category))) {
       return res.status(400).json({ success: false, error: 'Unknown category.' });
     }
-
     const existing = await prisma.article.findUnique({
       where: { id: req.params.id },
       select: { id: true, published: true },
@@ -447,7 +390,6 @@ router.put('/admin/:id', requireAuth, requireAdmin, async (req, res) => {
     if (!existing) {
       return res.status(404).json({ success: false, error: 'Article not found' });
     }
-
     const slug = await uniqueSlug(result.data.slug, existing.id);
     const article = await prisma.article.update({
       where: { id: existing.id },
@@ -473,7 +415,6 @@ router.put('/admin/:id', requireAuth, requireAdmin, async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to update article' });
   }
 });
-
 router.post('/admin/:id/telegram', requireAuth, requireAdmin, async (req, res) => {
   try {
     const article = await prisma.article.findUnique({
@@ -488,7 +429,6 @@ router.post('/admin/:id/telegram', requireAuth, requireAdmin, async (req, res) =
         error: 'Publish the article before sending it to Telegram.',
       });
     }
-
     const telegram = await announceArticle(article);
     return res.json({ success: true, telegram });
   } catch (error) {
@@ -499,7 +439,6 @@ router.post('/admin/:id/telegram', requireAuth, requireAdmin, async (req, res) =
     });
   }
 });
-
 router.delete('/admin/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     await prisma.article.delete({ where: { id: req.params.id } });
@@ -512,12 +451,6 @@ router.delete('/admin/:id', requireAuth, requireAdmin, async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to delete article' });
   }
 });
-
-/* ------------------------------------------------------------------ */
-/* Public                                                              */
-/* "/categories" MUST stay above "/:slug".                             */
-/* ------------------------------------------------------------------ */
-
 router.get('/categories', async (req, res) => {
   try {
     await ensureDefaultCategories();
@@ -532,10 +465,8 @@ router.get('/categories', async (req, res) => {
     ]);
     const counts = new Map(grouped.map((g) => [g.category, g._count._all]));
     const countOf = (slug) => counts.get(slug) || 0;
-
     const parents = categories.filter((c) => !c.parentId);
     const childrenOf = (id) => categories.filter((c) => c.parentId === id);
-
     const result = parents
       .map((c) => {
         const subs = childrenOf(c.id).map((s) => ({
@@ -545,7 +476,6 @@ router.get('/categories', async (req, res) => {
           slug: s.slug,
           count: countOf(s.slug),
         }));
-        // Parent count includes its own articles plus all subcategory articles
         const total =
           countOf(c.slug) + subs.reduce((sum, s) => sum + s.count, 0);
         return {
@@ -565,12 +495,9 @@ router.get('/categories', async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to fetch categories' });
   }
 });
-
 router.get('/', async (req, res) => {
   try {
     const category = text(req.query?.category).toLowerCase();
-
-    // When a parent category is selected, include articles from its subcategories too
     let categoryFilter = null;
     if (category) {
       const cat = await prisma.articleCategory.findUnique({
@@ -588,7 +515,6 @@ router.get('/', async (req, res) => {
         categoryFilter = category;
       }
     }
-
     const articles = await prisma.article.findMany({
       where: {
         published: true,
@@ -616,11 +542,6 @@ router.get('/', async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to fetch articles' });
   }
 });
-
-/* ------------------------------------------------------------------ */
-/* Comments (Public)                                                   */
-/* ------------------------------------------------------------------ */
-
 router.get('/:slug/comments', optionalAuth, async (req, res) => {
   try {
     const article = await prisma.article.findFirst({
@@ -630,13 +551,10 @@ router.get('/:slug/comments', optionalAuth, async (req, res) => {
     if (!article) {
       return res.status(404).json({ success: false, error: 'Article not found' });
     }
-
-    // Show only approved comments to public, or all if admin
     const where = { articleId: article.id };
     if (!req.user || req.user.role !== 'ADMIN') {
       where.status = 'APPROVED';
     }
-
     const comments = await prisma.articleComment.findMany({
       where,
       orderBy: { createdAt: 'desc' },
@@ -646,7 +564,6 @@ router.get('/:slug/comments', optionalAuth, async (req, res) => {
         },
       },
     });
-
     return res.json({
       success: true,
       comments: comments.map((c) => ({
@@ -666,7 +583,6 @@ router.get('/:slug/comments', optionalAuth, async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to fetch comments' });
   }
 });
-
 router.post('/:slug/comments', optionalAuth, async (req, res) => {
   try {
     const article = await prisma.article.findFirst({
@@ -676,20 +592,16 @@ router.post('/:slug/comments', optionalAuth, async (req, res) => {
     if (!article) {
       return res.status(404).json({ success: false, error: 'Article not found' });
     }
-
     const name = text(req.body?.name);
     const message = text(req.body?.message);
     const imageUrl = text(req.body?.imageUrl);
     const pdfUrl = text(req.body?.pdfUrl);
-
     if (!name || !message) {
       return res.status(400).json({ success: false, error: 'Name and message are required.' });
     }
     if (name.length > 80 || message.length > 2000) {
       return res.status(400).json({ success: false, error: 'Name or message is too long.' });
     }
-
-    // Validate image URL if provided
     let validatedImageUrl = null;
     if (imageUrl) {
       try {
@@ -710,8 +622,6 @@ router.post('/:slug/comments', optionalAuth, async (req, res) => {
         });
       }
     }
-
-    // Validate PDF URL if provided (must be an uploaded file on this server)
     let validatedPdfUrl = null;
     if (pdfUrl) {
       try {
@@ -733,15 +643,12 @@ router.post('/:slug/comments', optionalAuth, async (req, res) => {
         });
       }
     }
-
-    // If user is authenticated, use their name and link userId
     let userId = null;
     let displayName = name;
     if (req.user) {
       userId = req.user.id;
       displayName = req.user.name || name;
     }
-
     const comment = await prisma.articleComment.create({
       data: {
         articleId: article.id,
@@ -750,7 +657,7 @@ router.post('/:slug/comments', optionalAuth, async (req, res) => {
         message,
         imageUrl: validatedImageUrl,
         pdfUrl: validatedPdfUrl,
-        status: 'PENDING', // New comments start as pending for moderation
+        status: 'PENDING', 
       },
       include: {
         user: {
@@ -758,7 +665,6 @@ router.post('/:slug/comments', optionalAuth, async (req, res) => {
         },
       },
     });
-
     return res.status(201).json({
       success: true,
       comment: {
@@ -778,7 +684,6 @@ router.post('/:slug/comments', optionalAuth, async (req, res) => {
     return res.status(500).json({ success: false, error: 'Failed to create comment' });
   }
 });
-
 router.get('/:slug', async (req, res) => {
   try {
     const article = await prisma.article.findFirst({
@@ -805,16 +710,13 @@ router.get('/:slug', async (req, res) => {
     if (!article) {
       return res.status(404).json({ success: false, error: 'Article not found' });
     }
-
     prisma.article
       .update({ where: { id: article.id }, data: { views: { increment: 1 } } })
       .catch((error) => console.error('Failed to count article view:', error));
-
     return res.json({ success: true, article });
   } catch (error) {
     console.error('Failed to fetch published article:', error);
     return res.status(500).json({ success: false, error: 'Failed to fetch article' });
   }
 });
-
 module.exports = router;

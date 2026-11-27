@@ -14,9 +14,6 @@ const toNumber = (value) => {
   return Number.isFinite(n) ? n : null;
 };
 
-// ═══════════════════════════════════════════════════════════
-// PUBLIC — list active delivery regions for checkout dropdown
-// ═══════════════════════════════════════════════════════════
 publicRouter.get('/', async (req, res) => {
   try {
     const regions = await prisma.deliveryRegion.findMany({
@@ -41,8 +38,6 @@ publicRouter.get('/', async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to load delivery regions.' });
   }
 });
-
-// Haversine distance in km
 function haversineKm(lat1, lng1, lat2, lng2) {
   const R = 6371;
   const toRad = (d) => (d * Math.PI) / 180;
@@ -54,9 +49,6 @@ function haversineKm(lat1, lng1, lat2, lng2) {
   return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-// GET /api/delivery-regions/nearest?lat=&lng=
-// Returns active regions sorted by distance, flagging exact
-// country/region/woreda matches. Used for nearest-location fallback.
 publicRouter.get('/nearest', async (req, res) => {
   try {
     const lat = toNumber(req.query.lat);
@@ -84,15 +76,23 @@ publicRouter.get('/nearest', async (req, res) => {
       },
     });
 
+    const etaHours = (distanceKm) =>
+      distanceKm == null ? null : Math.max(1, Math.ceil(distanceKm / 25));
+
     const located = regions
       .filter((r) => r.latitude != null && r.longitude != null)
-      .map((r) => ({
-        ...r,
-        distanceKm:
+      .map((r) => {
+        const distanceKm =
           Math.round(
             haversineKm(lat, lng, Number(r.latitude), Number(r.longitude)) * 10
-          ) / 10,
-      }))
+          ) / 10;
+        return {
+          ...r,
+          distanceKm,
+          exactMatch: distanceKm <= 1.5,
+          etaHours: etaHours(distanceKm),
+        };
+      })
       .sort((a, b) => a.distanceKm - b.distanceKm);
 
     const unlocated = regions.filter(
@@ -102,7 +102,7 @@ publicRouter.get('/nearest', async (req, res) => {
     res.json({
       success: true,
       nearest: located[0] || null,
-      locations: [...located, ...unlocated.map((r) => ({ ...r, distanceKm: null }))],
+      locations: [...located, ...unlocated.map((r) => ({ ...r, distanceKm: null, exactMatch: false, etaHours: null }))],
     });
   } catch (error) {
     console.error('Error computing nearest delivery region:', error);
@@ -110,12 +110,8 @@ publicRouter.get('/nearest', async (req, res) => {
   }
 });
 
-// ═══════════════════════════════════════════════════════════
-// ADMIN — CRUD for delivery regions
-// ═══════════════════════════════════════════════════════════
 adminRouter.use(requireAuth, requireAdmin);
 
-// GET ALL (admin — includes inactive)
 adminRouter.get('/', async (req, res) => {
   try {
     const regions = await prisma.deliveryRegion.findMany({
@@ -128,7 +124,6 @@ adminRouter.get('/', async (req, res) => {
   }
 });
 
-// CREATE
 adminRouter.post('/', async (req, res) => {
   try {
     const name = normalizeText(req.body?.name);
@@ -165,8 +160,6 @@ adminRouter.post('/', async (req, res) => {
     res.status(500).json({ success: false, error: 'Failed to create delivery region.' });
   }
 });
-
-// UPDATE
 adminRouter.put('/:id', async (req, res) => {
   try {
     const existing = await prisma.deliveryRegion.findUnique({
@@ -235,7 +228,6 @@ adminRouter.delete('/:id', async (req, res) => {
     if (!existing) {
       return res.status(404).json({ success: false, error: 'Delivery region not found.' });
     }
-    // Keep referential integrity: deactivate instead of deleting if orders exist
     if (existing._count.orders > 0) {
       await prisma.deliveryRegion.update({
         where: { id: req.params.id },
