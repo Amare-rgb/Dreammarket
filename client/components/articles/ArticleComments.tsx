@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import Image from "next/image";
 import { LoaderCircle, MessageSquare, X } from "lucide-react";
 import { api } from "@/lib/api";
@@ -15,64 +15,62 @@ interface ArticleComment {
   reply?: string | null;
   repliedAt?: string | null;
   createdAt: string;
-  user?: {
-    name: string;
-    avatar: string | null;
-  } | null;
+  user?: { name: string; avatar: string | null } | null;
 }
 
-interface ArticleCommentsProps {
-  slug: string;
-}
+const MAX_IMAGE_BYTES = 10 * 1024 * 1024;
+const FIELD_CLS =
+  "w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none focus:border-[#EB6D3D] focus:ring-2 focus:ring-[#EB6D3D]/30";
 
-export default function ArticleComments({ slug }: ArticleCommentsProps) {
+export default function ArticleComments({ slug }: { slug: string }) {
   const { t } = useLanguage();
   const [comments, setComments] = useState<ArticleComment[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
-  const [commentName, setCommentName] = useState("");
-  const [commentMessage, setCommentMessage] = useState("");
-  const [commentImage, setCommentImage] = useState<string | null>(null);
-  const [commentImagePreview, setCommentImagePreview] = useState<string | null>(null);
-  const [uploadingImage, setUploadingImage] = useState(false);
+  const [loadedSlug, setLoadedSlug] = useState("");
+  const [loadError, setLoadError] = useState("");
+  const [name, setName] = useState("");
+  const [message, setMessage] = useState("");
+  const [imageUrl, setImageUrl] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
-  const [submitNotice, setSubmitNotice] = useState("");
-  const commentFileRef = useRef<HTMLInputElement>(null);
+  const [notice, setNotice] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
 
-  // Fetch comments
+  const loading = loadedSlug !== slug && !loadError;
+
   useEffect(() => {
-    const fetchComments = async () => {
+    let active = true;
+    (async () => {
       try {
-        setLoading(true);
         const res = await api.get(`/api/articles/${encodeURIComponent(slug)}/comments`);
+        if (!active) return;
         setComments(res.data?.comments || []);
+        setLoadError("");
+        setLoadedSlug(slug);
       } catch {
-        setError(t("articles.comments_load_failed", "Comments could not be loaded."));
-      } finally {
-        setLoading(false);
+        if (!active) return;
+        setLoadError(t("articles.comments_load_failed", "Comments could not be loaded."));
+        setLoadedSlug(slug);
       }
+    })();
+    return () => {
+      active = false;
     };
-    const timer = setTimeout(() => {
-      void fetchComments();
-    }, 0);
-    return () => clearTimeout(timer);
   }, [slug, t]);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
+    if (fileRef.current) fileRef.current.value = "";
     if (!file) return;
 
     if (!file.type.startsWith("image/")) {
-      setSubmitError(t("articles.upload_image_error", "Please upload an image file"));
-      return;
+      return setSubmitError(t("articles.upload_image_error", "Please upload an image file"));
     }
-    if (file.size > 10 * 1024 * 1024) {
-      setSubmitError(t("articles.upload_image_size", "Image must be less than 10MB"));
-      return;
+    if (file.size > MAX_IMAGE_BYTES) {
+      return setSubmitError(t("articles.upload_image_size", "Image must be less than 10MB"));
     }
 
-    setUploadingImage(true);
+    setUploading(true);
     setSubmitError("");
     try {
       const formData = new FormData();
@@ -80,51 +78,42 @@ export default function ArticleComments({ slug }: ArticleCommentsProps) {
       const res = await api.post("/api/upload/feedback", formData, {
         headers: { "Content-Type": "multipart/form-data" },
       });
-      if (res.data?.success) {
-        setCommentImage(res.data.url);
-        setCommentImagePreview(res.data.url);
+      if (res.data?.success && res.data.url) {
+        setImageUrl(res.data.url);
       } else {
         setSubmitError(res.data?.error || t("articles.upload_failed", "Failed to upload image"));
       }
     } catch (err) {
-      const error = err as { response?: { data?: { error?: string } } };
-      setSubmitError(error.response?.data?.error || t("articles.upload_failed", "Failed to upload image"));
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error;
+      setSubmitError(msg || t("articles.upload_failed", "Failed to upload image"));
     } finally {
-      setUploadingImage(false);
-      if (commentFileRef.current) commentFileRef.current.value = "";
+      setUploading(false);
     }
-  };
-
-  const removeImage = () => {
-    setCommentImage(null);
-    setCommentImagePreview(null);
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!commentName.trim() || !commentMessage.trim()) {
-      setSubmitError(t("articles.comment_required", "Please enter your name and a comment."));
-      return;
+    if (!name.trim() || !message.trim()) {
+      return setSubmitError(t("articles.comment_required", "Please enter your name and a comment."));
     }
 
     setSubmitting(true);
     setSubmitError("");
-    setSubmitNotice("");
+    setNotice("");
     try {
-      const res = await api.post(
-        `/api/articles/${encodeURIComponent(slug)}/comments`,
-        { name: commentName.trim(), message: commentMessage.trim(), imageUrl: commentImage }
-      );
-      const created: ArticleComment | undefined = res.data?.comment;
-      if (created) {
-        setComments((prev) => [created, ...prev]);
-        setSubmitNotice(t("articles.comment_sent_review", "Thank you! Your comment has been submitted for review."));
+      const res = await api.post(`/api/articles/${encodeURIComponent(slug)}/comments`, {
+        name: name.trim(),
+        message: message.trim(),
+        imageUrl,
+      });
+      if (res.data?.comment) {
+        setComments((prev) => [res.data.comment, ...prev]);
+        setNotice(t("articles.comment_sent_review", "Thank you! Your comment has been submitted for review."));
       } else {
-        setSubmitNotice(t("articles.comment_sent_pending", "Thank you! Your comment was submitted and will appear after review."));
+        setNotice(t("articles.comment_sent_pending", "Thank you! Your comment was submitted and will appear after review."));
       }
-      setCommentMessage("");
-      setCommentImage(null);
-      setCommentImagePreview(null);
+      setMessage("");
+      setImageUrl(null);
     } catch {
       setSubmitError(t("articles.comment_failed", "Your comment could not be sent. Please try again."));
     } finally {
@@ -142,12 +131,11 @@ export default function ArticleComments({ slug }: ArticleCommentsProps) {
 
   return (
     <div className="mt-8 border-t border-slate-100 pt-6">
-      <h3 className="text-lg font-bold text-slate-900 mb-4 flex items-center gap-2">
+      <h3 className="mb-4 flex items-center gap-2 text-lg font-bold text-slate-900">
         <MessageSquare size={20} className="text-[#EB6D3D]" />
         {t("articles.comments", "Comments")} ({comments.length})
       </h3>
 
-      {/* Comment Form */}
       <form onSubmit={handleSubmit} className="mb-8 space-y-4">
         <div>
           <label htmlFor="comment-name" className="mb-1 block text-sm font-semibold text-slate-700">
@@ -155,90 +143,79 @@ export default function ArticleComments({ slug }: ArticleCommentsProps) {
           </label>
           <input
             id="comment-name"
-            value={commentName}
-            onChange={(e) => setCommentName(e.target.value)}
+            value={name}
+            onChange={(e) => setName(e.target.value)}
             maxLength={80}
             autoComplete="name"
-            className="h-11 w-full rounded-lg border border-slate-300 px-3 text-sm text-slate-900 outline-none focus:border-[#EB6D3D] focus:ring-2 focus:ring-[#EB6D3D]/30"
+            className={`${FIELD_CLS} h-11`}
           />
         </div>
+
         <div>
           <label htmlFor="comment-message" className="mb-1 block text-sm font-semibold text-slate-700">
             {t("articles.your_comment", "Your comment")}
           </label>
           <textarea
             id="comment-message"
-            value={commentMessage}
-            onChange={(e) => setCommentMessage(e.target.value)}
+            value={message}
+            onChange={(e) => setMessage(e.target.value)}
             maxLength={1000}
             rows={4}
-            className="w-full resize-y rounded-lg border border-slate-300 px-3 py-2 text-sm leading-6 text-slate-900 outline-none focus:border-[#EB6D3D] focus:ring-2 focus:ring-[#EB6D3D]/30"
+            className={`${FIELD_CLS} resize-y py-2 leading-6`}
           />
-          <p className="mt-1 text-right text-xs text-slate-400">
-            {commentMessage.length}/1000
-          </p>
+          <p className="mt-1 text-right text-xs text-slate-400">{message.length}/1000</p>
         </div>
 
-        {/* Image upload */}
         <div>
-          <label className="mb-1 block text-sm font-semibold text-slate-700">
-            {t("articles.attach_image", "Attach image")} <span className="text-slate-400">{t("articles.optional", "(optional)")}</span>
-          </label>
-          {commentImagePreview ? (
+          <span className="mb-1 block text-sm font-semibold text-slate-700">
+            {t("articles.attach_image", "Attach image")}{" "}
+            <span className="text-slate-400">{t("articles.optional", "(optional)")}</span>
+          </span>
+          {imageUrl ? (
             <div className="relative inline-block">
               <Image
-                src={commentImagePreview}
+                src={imageUrl}
                 alt="Preview"
                 width={150}
                 height={100}
-                className="rounded-lg object-cover border border-slate-300"
+                unoptimized
+                className="rounded-lg border border-slate-300 object-cover"
               />
               <button
                 type="button"
-                onClick={removeImage}
-                className="absolute -top-2 -right-2 bg-red-500 text-white rounded-full p-1 hover:bg-red-600"
+                onClick={() => setImageUrl(null)}
+                aria-label="Remove image"
+                className="absolute -right-2 -top-2 rounded-full bg-red-500 p-1 text-white hover:bg-red-600"
               >
                 <X size={14} />
               </button>
             </div>
           ) : (
-            <div
-              onClick={() => commentFileRef.current?.click()}
-              className="border-2 border-dashed border-slate-300 rounded-lg p-4 text-center cursor-pointer hover:border-[#EB6D3D] transition-colors"
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              disabled={uploading}
+              className="w-full cursor-pointer rounded-lg border-2 border-dashed border-slate-300 p-4 text-center transition-colors hover:border-[#EB6D3D] disabled:opacity-60"
             >
-              {uploadingImage ? (
-                <LoaderCircle className="h-6 w-6 animate-spin text-[#EB6D3D] mx-auto" />
+              {uploading ? (
+                <LoaderCircle className="mx-auto h-6 w-6 animate-spin text-[#EB6D3D]" />
               ) : (
                 <>
                   <p className="text-sm text-slate-600">{t("articles.click_upload", "Click to upload image")}</p>
-                  <p className="text-xs text-slate-400 mt-1">{t("articles.upload_hint", "PNG, JPG up to 10MB")}</p>
+                  <p className="mt-1 text-xs text-slate-400">{t("articles.upload_hint", "PNG, JPG up to 10MB")}</p>
                 </>
               )}
-            </div>
+            </button>
           )}
-          <input
-            ref={commentFileRef}
-            type="file"
-            accept="image/*"
-            onChange={handleImageUpload}
-            className="hidden"
-          />
+          <input ref={fileRef} type="file" accept="image/*" onChange={handleImageUpload} className="hidden" />
         </div>
 
-        {submitError && (
-          <p role="alert" className="text-sm text-red-700">
-            {submitError}
-          </p>
-        )}
-        {submitNotice && (
-          <p role="status" className="text-sm text-emerald-700">
-            {submitNotice}
-          </p>
-        )}
+        {submitError && <p role="alert" className="text-sm text-red-700">{submitError}</p>}
+        {notice && <p role="status" className="text-sm text-emerald-700">{notice}</p>}
 
         <button
           type="submit"
-          disabled={submitting || uploadingImage}
+          disabled={submitting || uploading}
           className="inline-flex items-center gap-2 rounded-lg bg-[#EB6D3D] px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-[#cf5427] disabled:cursor-not-allowed disabled:opacity-60"
         >
           {submitting && <LoaderCircle size={16} className="animate-spin" />}
@@ -246,22 +223,14 @@ export default function ArticleComments({ slug }: ArticleCommentsProps) {
         </button>
       </form>
 
-      {/* Comments List */}
-      {error ? (
-        <p role="alert" className="text-sm text-red-700">
-          {error}
-        </p>
+      {loadError ? (
+        <p role="alert" className="text-sm text-red-700">{loadError}</p>
       ) : comments.length === 0 ? (
-        <p className="text-sm text-slate-500">
-          {t("articles.no_comments", "No comments yet. Be the first to comment.")}
-        </p>
+        <p className="text-sm text-slate-500">{t("articles.no_comments", "No comments yet. Be the first to comment.")}</p>
       ) : (
         <ul className="space-y-4">
           {comments.map((c) => (
-            <li
-              key={c.id}
-              className="rounded-xl border border-slate-200 bg-slate-50 p-4"
-            >
+            <li key={c.id} className="rounded-xl border border-slate-200 bg-slate-50 p-4">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div className="flex items-center gap-2">
                   {c.user?.avatar ? (
@@ -270,23 +239,19 @@ export default function ArticleComments({ slug }: ArticleCommentsProps) {
                       alt={c.name}
                       width={32}
                       height={32}
-                      unoptimized={c.user.avatar.includes('googleusercontent.com')}
+                      unoptimized
                       className="rounded-full object-cover"
                     />
                   ) : (
-                    <div className="w-8 h-8 rounded-full bg-slate-200 flex items-center justify-center">
-                      <span className="text-xs font-medium text-slate-600">
-                        {c.name.charAt(0).toUpperCase()}
-                      </span>
+                    <div className="flex h-8 w-8 items-center justify-center rounded-full bg-slate-200">
+                      <span className="text-xs font-medium text-slate-600">{c.name.charAt(0).toUpperCase()}</span>
                     </div>
                   )}
                   <p className="text-sm font-bold text-slate-900">{c.name}</p>
                 </div>
                 <p className="text-xs text-slate-400">{formatDate(c.createdAt)}</p>
               </div>
-              <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
-                {c.message}
-              </p>
+              <p className="mt-2 whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">{c.message}</p>
               {c.imageUrl && (
                 <div className="mt-3">
                   <Image
@@ -294,14 +259,15 @@ export default function ArticleComments({ slug }: ArticleCommentsProps) {
                     alt="Comment attachment"
                     width={300}
                     height={200}
-                    className="rounded-lg object-cover border border-slate-200"
+                    unoptimized
+                    className="rounded-lg border border-slate-200 object-cover"
                   />
                 </div>
               )}
               {c.reply && (
-                <div className="mt-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                  <p className="text-xs font-semibold text-blue-900 mb-1">{t("articles.admin_reply", "Admin Reply:")}</p>
-                  <p className="text-sm text-blue-800 whitespace-pre-wrap">{c.reply}</p>
+                <div className="mt-3 rounded-lg border border-blue-200 bg-blue-50 p-3">
+                  <p className="mb-1 text-xs font-semibold text-blue-900">{t("articles.admin_reply", "Admin Reply:")}</p>
+                  <p className="whitespace-pre-wrap text-sm text-blue-800">{c.reply}</p>
                 </div>
               )}
             </li>

@@ -1,25 +1,11 @@
-/**
- * paymentVerification.service.js
- *
- * OCR-based payment screenshot verification for orders.
- * - tesseract.js worker is created lazily and reused across requests
- *   (terminated on process exit) so memory doesn't leak.
- * - Parses paid amount, currency, transaction reference and receipt URLs.
- * - Compares extracted amount against order.total.
- * - Enforces duplicate transactionRef protection at DB level.
- */
+
 const prisma = require('../lib/prisma');
 const path = require('path');
 
 const AMOUNT_TOLERANCE = 0.01;
 const RECEIPT_FETCH_TIMEOUT_MS = 8000;
-// Local traineddata — avoids CDN download failures (SSL/proxy issues).
-// Place eng.traineddata.gz in server/tessdata/ (see README note below).
-// Forward slashes required — the worker resolves langPath as a URL/path.
 const TESSDATA_DIR =
   path.join(__dirname, '..', 'tessdata').replace(/\\/g, '/') + '/';
-
-// ── Tesseract worker lifecycle ──────────────────────────────────────────
 let workerPromise = null;
 
 const TRAINEDDATA_URLS = [
@@ -28,12 +14,6 @@ const TRAINEDDATA_URLS = [
   'https://raw.githubusercontent.com/naptha/tessdata/gh-pages/4.0.0_best_int/eng.traineddata.gz',
 ];
 
-/**
- * Download eng.traineddata.gz into server/tessdata/ if missing.
- * Uses a scoped https agent with rejectUnauthorized:false because some
- * networks run SSL-inspecting proxies that break Node's default CA store.
- * Only applies to this traineddata download — not global.
- */
 async function ensureTraineddata() {
   const fs = require('fs');
   const https = require('https');
@@ -106,7 +86,7 @@ async function getWorker() {
         cacheMethod: 'none',
       });
     })();
-    // If creation fails, allow retry on next request
+   
     workerPromise.catch(() => {
       workerPromise = null;
     });
@@ -129,16 +109,11 @@ process.on('SIGTERM', terminateWorker);
 process.on('SIGINT', terminateWorker);
 process.on('beforeExit', terminateWorker);
 
-// ── OCR ─────────────────────────────────────────────────────────────────
-// Tesseract's image loader (pixReadStream) cannot read PDFs and emits an
-// unhandled worker 'error' that would crash the whole Node process.
-// Guard: reject PDFs before touching the worker, and suppress OCR-worker
-// crashes so one bad upload never takes the server down.
 const OCR_CRASH_RE = /pixReadStream|attempting to read image|tesseract/i;
 process.on('uncaughtException', (err) => {
   if (OCR_CRASH_RE.test(err?.message || '')) {
     console.warn('[ocr] worker error suppressed:', err.message);
-    workerPromise = null; // recreate worker on next request
+    workerPromise = null; 
     return;
   }
   console.error('Uncaught exception:', err);
@@ -162,16 +137,15 @@ async function extractTextFromImage(imageInput) {
   return (data?.text || '').trim();
 }
 
-// ── Field parsing ───────────────────────────────────────────────────────
+
 const CURRENCY_RE = /ETB|Br\.?|ብር|Birr/i;
 
-// Amount patterns: "ETB 1,234.56", "1,234.56 ETB", "Br 500", "1,234.56"
 function parseAmount(text) {
   if (!text) return null;
 
   const candidates = [];
 
-  // Number adjacent to currency marker (strongest signal)
+
   const currencyPatterns = [
     /(?:ETB|Br\.?|ብር|Birr)\s*([0-9][0-9,]*(?:\.\d{1,2})?)/gi,
     /([0-9][0-9,]*(?:\.\d{1,2})?)\s*(?:ETB|Br\.?|ብር|Birr)/gi,
@@ -184,7 +158,7 @@ function parseAmount(text) {
     }
   }
 
-  // Fallback: any plausible money amount on its own line
+  
   const lines = text.split(/\r?\n/);
   for (const line of lines) {
     const m = line.match(/\b([0-9]{1,3}(?:,[0-9]{3})+(?:\.\d{1,2})?|[0-9]+(?:\.\d{1,2})?)\b/);
@@ -238,8 +212,6 @@ function parseReceiptUrls(text) {
   }
   return [...urls].slice(0, 3);
 }
-
-// ── Official receipt URL check (best-effort) ────────────────────────────
 async function fetchReceiptInfo(url) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), RECEIPT_FETCH_TIMEOUT_MS);
@@ -255,7 +227,7 @@ async function fetchReceiptInfo(url) {
     });
     if (!res.ok) return { reachable: false, status: res.status };
     const html = (await res.text()).slice(0, 500_000);
-    // Try to pull an amount and reference out of the receipt page
+
     const amount = parseAmount(html.replace(/<[^>]+>/g, ' '));
     const ref = parseTransactionRef(html.replace(/<[^>]+>/g, ' '));
     return { reachable: true, status: res.status, amount, ref };
@@ -266,7 +238,6 @@ async function fetchReceiptInfo(url) {
   }
 }
 
-// ── Amount comparison ───────────────────────────────────────────────────
 function compareAmount(paid, expected) {
   if (paid == null || expected == null) {
     return { status: 'NEEDS_REVIEW', paid, expected };
@@ -298,10 +269,10 @@ function compareAmount(paid, expected) {
  * Verify a payment screenshot for an order.
  *
  * @param {object} params
- * @param {string} params.orderRef        order id or orderNumber
- * @param {object} params.user            authenticated user { id, email }
- * @param {string} params.imagePath       absolute path to uploaded screenshot
- * @param {string} params.screenshotUrl   public URL of the stored screenshot
+ * @param {string} params.orderRef        
+ * @param {object} params.user           
+ * @param {string} params.imagePath      
+ * @param {string} params.screenshotUrl   
  * @returns {Promise<{status:number, body:object}>}
  */
 async function verifyPayment({ orderRef, user, imagePath, screenshotUrl }) {

@@ -1,7 +1,5 @@
 "use client";
-
 import { Check, Package, Truck, XCircle } from "lucide-react";
-
 export type OrderStatus =
   | "PENDING"
   | "CONFIRMED"
@@ -15,7 +13,6 @@ interface OrderTrackingProps {
   createdAt: string;
   updatedAt?: string;
 }
-
 const STEPS: { key: OrderStatus; label: string }[] = [
   { key: "PENDING", label: "Order placed" },
   { key: "CONFIRMED", label: "Confirmed" },
@@ -23,7 +20,6 @@ const STEPS: { key: OrderStatus; label: string }[] = [
   { key: "SHIPPED", label: "On the way" },
   { key: "DELIVERED", label: "Delivered" },
 ];
-
 const STATUS_INDEX: Record<string, number> = {
   PENDING: 0,
   CONFIRMED: 1,
@@ -31,9 +27,7 @@ const STATUS_INDEX: Record<string, number> = {
   SHIPPED: 3,
   DELIVERED: 4,
 };
-
 const DAY_MS = 24 * 60 * 60 * 1000;
-
 function formatEta(date: Date): string {
   return date.toLocaleDateString(undefined, {
     weekday: "short",
@@ -52,13 +46,10 @@ function etaMessage(status: OrderStatus, createdAt: string, updatedAt?: string):
       day: "numeric",
     })}.`;
   }
-
   if (status === "CANCELLED") {
     return "This order was cancelled.";
   }
-
   if (status === "SHIPPED") {
-    // Expected within 24 hours of the last status update (shipment time)
     const shippedAt = updatedAt ? new Date(updatedAt).getTime() : now;
     const eta = new Date(shippedAt + DAY_MS);
     if (eta.getTime() <= now) {
@@ -67,8 +58,6 @@ function etaMessage(status: OrderStatus, createdAt: string, updatedAt?: string):
     const hoursLeft = Math.max(1, Math.round((eta.getTime() - now) / (60 * 60 * 1000)));
     return `Expected to arrive within ${hoursLeft} hour${hoursLeft === 1 ? "" : "s"} (by ${formatEta(eta)}).`;
   }
-
-  // Before shipping: estimate delivery ~3 days after the order was placed
   const eta = new Date(new Date(createdAt).getTime() + 3 * DAY_MS);
   if (eta.getTime() <= now) {
     return "Your order is on its way — delivery is imminent.";
@@ -94,7 +83,6 @@ export default function OrderTracking({
       </div>
     );
   }
-
   const currentIndex = STATUS_INDEX[status] ?? 0;
   const progress = (currentIndex / (STEPS.length - 1)) * 100;
 

@@ -26,16 +26,11 @@ import SignInPage from "../../app/auth/signin/page";
 import RegisterPage from "../../app/auth/register/page";
 import ForgotPasswordPage from "../../app/forgot-password/page";
 import ResetPasswordPage from "../../app/reset-password/page";
-
-/**
- * Smoke tests for auth pages — verify initial render without crashing.
- */
 describe("auth pages", () => {
   it("sign-in page renders", () => {
     const html = renderToString(<SignInPage />);
     expect(html.length).toBeGreaterThan(0);
   });
-
   it("register page renders", () => {
     const html = renderToString(<RegisterPage />);
     expect(html.length).toBeGreaterThan(0);

@@ -1,4 +1,3 @@
-// app/not-found.tsx
 import Link from "next/link";
 import { Home, ShoppingBag, Mail, ArrowLeft } from "lucide-react";
 
@@ -6,7 +5,7 @@ export default function NotFound() {
   return (
     <main className="min-h-screen bg-[#faf6ee] flex items-center justify-center px-5 py-16">
       <div className="w-full max-w-lg text-center">
-        {/* Big 404 with gold accent */}
+        
         <div className="relative mb-6">
           <span className="block font-serif-heading text-[120px] sm:text-[160px] font-bold leading-none tracking-[-0.05em] text-[#1a1410]/10 select-none">
             404

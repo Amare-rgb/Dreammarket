@@ -1,5 +1,4 @@
 "use client";
-
 import { FormEvent, useMemo, useState } from "react";
 import Link from "next/link";
 import {
@@ -28,7 +27,7 @@ export default function ArticleCategoriesPage() {
   const [error, setError] = useState("");
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
-  // Only top-level categories can be parents
+  
   const parents = useMemo(
     () => categories.filter((c) => !c.parentId),
     [categories]
@@ -126,7 +125,6 @@ export default function ArticleCategoriesPage() {
           deleted only when it has no subcategories and no articles use it.
         </p>
       </header>
-
       <form
         onSubmit={handleAdd}
         className="flex flex-wrap gap-3 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm"

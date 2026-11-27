@@ -1,10 +1,8 @@
 import { ExternalLink } from "lucide-react";
 import { getVideoSource } from "@/lib/video";
-
 export default function VideoPlayer({ url, title }: { url: string; title: string }) {
   const source = getVideoSource(url);
   if (!source) return null;
-
   if (source.kind === "iframe") {
     return (
       <div className="relative aspect-video w-full overflow-hidden rounded-xl border border-slate-200 bg-black">
@@ -20,7 +18,6 @@ export default function VideoPlayer({ url, title }: { url: string; title: string
       </div>
     );
   }
-
   if (source.kind === "file") {
     return (
       <video
@@ -34,7 +31,6 @@ export default function VideoPlayer({ url, title }: { url: string; title: string
       </video>
     );
   }
-
   return (
     <a
       href={source.src}

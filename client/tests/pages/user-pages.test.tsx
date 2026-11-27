@@ -30,11 +30,6 @@ import ProfilePage from "../../app/profile/page";
 import OrdersPage from "../../app/orders/page";
 import OrderDetailPage from "../../app/orders/[orderNumber]/page";
 import CheckoutPage from "../../app/checkout/page";
-
-/**
- * Smoke tests for authenticated user pages.
- * useAuth is mocked as an authenticated user; api calls resolve empty.
- */
 describe("user pages", () => {
   it("profile page renders", () => {
     const html = renderToString(<ProfilePage />);

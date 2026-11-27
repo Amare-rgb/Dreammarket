@@ -26,7 +26,6 @@ export default function ArticleSidebar({ activeCategory = "all", onCategorySelec
         if (active) {
           const list: PublicCategory[] = res.data?.categories || [];
           setCategories(list);
-          // Auto-expand the active category (or the parent of an active subcategory)
           if (activeCategory !== "all") {
             const parent = list.find((c) =>
               c.subcategories?.some((s) => s.slug === activeCategory)

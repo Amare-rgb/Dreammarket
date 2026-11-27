@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useState } from "react";
 import { Clock, Flame, PackageX, Truck } from "lucide-react";
 import { formatClock, formatLong, getCountdownBadges, type CountdownBadgeKind } from "./countdown";
@@ -9,7 +8,6 @@ interface ProductCountdownProps {
   availableAt?: string | null;
   restockDate?: string | null;
   saleEndDate?: string | null;
-  /** "card" = compact badges for grid cards, "detail" = larger badges for PDP */
   variant?: "card" | "detail";
 }
 
@@ -40,7 +38,6 @@ function BadgeIcon({ kind, compact }: { kind: CountdownBadgeKind; compact: boole
     case "low_stock": return <Flame className={cls} />;
   }
 }
-
 export default function ProductCountdown({
   stock,
   availableAt,
@@ -56,7 +53,6 @@ export default function ProductCountdown({
   const badgeBase = compact
     ? "inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-bold"
     : "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold";
-
   return (
     <div className={compact ? "flex flex-col gap-1" : "flex flex-col gap-2"}>
       {badges.map((badge) => {

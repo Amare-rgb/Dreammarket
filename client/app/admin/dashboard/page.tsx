@@ -1,14 +1,9 @@
-// app/admin/dashboard/page.tsx
 "use client";
-
 import React, { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import axios, { AxiosError } from "axios";
 import { Download, RefreshCw, Package } from "lucide-react";
-
-// ============================================================
-// Types
-// ============================================================
+import { hardNavigate } from "@/lib/navigation";
 interface User {
   id: string;
   name: string;
@@ -48,15 +43,10 @@ interface StatsCardProps {
   value: string | number;
   subtitle?: string;
 }
-
-// ============================================================
-// Axios instance
-// ============================================================
 const api = axios.create({
   baseURL: process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000",
   headers: { "Content-Type": "application/json" },
 });
-
 api.interceptors.request.use((config) => {
   const token =
     localStorage.getItem("authToken") ||
@@ -76,18 +66,11 @@ api.interceptors.response.use(
       sessionStorage.removeItem("authToken");
       localStorage.removeItem("user");
       sessionStorage.removeItem("user");
-      if (typeof window !== "undefined") {
-        // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-        window.location.href = "/auth/signin";
-      }
+      hardNavigate("/auth/signin");
     }
     return Promise.reject(error);
   }
 );
-
-// ============================================================
-// Stats Card
-// ============================================================
 const StatsCard: React.FC<StatsCardProps> = ({ title, value, subtitle }) => {
   return (
     <div className="min-w-0 rounded-xl border border-gray-200 bg-white p-3 transition-shadow duration-200 hover:shadow-md">
@@ -106,9 +89,7 @@ const StatsCard: React.FC<StatsCardProps> = ({ title, value, subtitle }) => {
   );
 };
 
-// ============================================================
-// Helpers
-// ============================================================
+
 const formatDate = (dateString: string) => {
   return new Date(dateString).toLocaleDateString("en-US", {
     month: "short",
@@ -123,8 +104,6 @@ const formatCurrency = (amount: number) => {
     maximumFractionDigits: 2,
   }).format(amount || 0);
 };
-
-// ✅ Cloudinary-only — returns null if no valid URL
 const resolveCloudinaryUrl = (raw: unknown): string | null => {
   if (typeof raw !== "string") return null;
   const s = raw.trim();
@@ -153,7 +132,7 @@ const getCategoryName = (product: Product): string => {
 };
 
 const getDisplayPrice = (product: Product): number => {
-  // Use per-currency discount for the primary currency
+
   if (Array.isArray(product.discountPrices) && product.discountPrices.length > 0) {
     const primaryDiscount = product.discountPrices.find(
       (d) => d.currency.toUpperCase() === (product.currency || "ETB").toUpperCase()
@@ -171,9 +150,6 @@ const getDisplayPrice = (product: Product): number => {
   return product.price;
 };
 
-// ============================================================
-// Main component
-// ============================================================
 export default function DashboardPage() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);

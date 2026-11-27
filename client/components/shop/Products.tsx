@@ -1,21 +1,30 @@
 // components/shop/Products.tsx
 "use client";
 
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
 import { useSearchParams } from "next/navigation";
-import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUpRight, Search, ShoppingCart, Video, X, Trash2 } from "lucide-react";
+import { ArrowUpRight, Search, ShoppingCart, Trash2, Video, X } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { readCart, writeCart } from "@/app/lib/cart";
 import ProductCountdown from "./ProductCountdown";
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Types
-// ─────────────────────────────────────────────────────────────────────────────
 export interface ProductPrice {
   currency: string;
   amount: number;
+}
+
+export interface ProductReward {
+  id: string;
+  name: string;
+  triggerType: string;
+  threshold: number;
+  rewardType: string;
+  rewardValue: string;
+  currency?: string | null;
+  promoCode: string | null;
+  expiresAt?: string | null;
 }
 
 export interface Product {
@@ -41,17 +50,7 @@ export interface Product {
   videoUrl: string | null;
   liters?: number | null;
   sizes?: string[];
-  rewards?: {
-    id: string;
-    name: string;
-    triggerType: string;
-    threshold: number;
-    rewardType: string;
-    rewardValue: string;
-    currency?: string | null;
-    promoCode: string | null;
-    expiresAt?: string | null;
-  }[];
+  rewards?: ProductReward[];
 }
 
 type SortOption = "size-low" | "size-high" | "price-low" | "price-high" | "name";
@@ -61,11 +60,6 @@ interface CategoryOption {
   name: string;
   slug: string;
   parentId?: string | null;
-}
-
-interface ApiPrice {
-  currency?: string;
-  amount?: number | string;
 }
 
 interface ApiProduct {
@@ -78,7 +72,7 @@ interface ApiProduct {
   description?: string | null;
   price?: number | string;
   currency?: string;
-  prices?: ApiPrice[] | null;
+  prices?: { currency?: string; amount?: number | string }[] | null;
   discountPrice?: number | string | null;
   discountPrices?: { currency: string; amount: number }[] | null;
   unitOfMeasurement?: string | null;
@@ -96,31 +90,34 @@ interface ApiProduct {
   size?: string | null;
   capacity?: string | null;
   sizesList?: { size?: string; stock?: number }[] | null;
-  rewardRules?: {
-    id: string;
-    name: string;
-    triggerType: string;
-    threshold: number;
-    rewardType: string;
-    rewardValue: string;
-    promoCode: string | null;
-  }[] | null;
+  rewardRules?: ProductReward[] | null;
 }
 
-// ─────────────────────────────────────────────────────────────────────────────
-// API base
-// ─────────────────────────────────────────────────────────────────────────────
-const RAW_API_BASE =
+const API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_URL ||
   process.env.NEXT_PUBLIC_API_BASE_URL ||
-  "http://localhost:5000";
-const API_BASE_URL = RAW_API_BASE.replace(/\/+$/, "");
+  "http://localhost:5000"
+).replace(/\/+$/, "");
 
 const DEFAULT_CURRENCY = "ETB";
+const LITER_BUCKETS = [
+  { max: 1, label: "Under 1L", val: 0.5 },
+  { max: 1, label: "1L", val: 1 },
+  { max: 2, label: "2L", val: 2 },
+  { max: 5, label: "5L", val: 5 },
+  { max: 10, label: "10L", val: 10 },
+  { max: 20, label: "20L", val: 20 },
+  { max: 25, label: "25L", val: 25 },
+  { max: 30, label: "30L", val: 30 },
+  { max: 50, label: "50L", val: 50 },
+  { max: 100, label: "100L", val: 100 },
+  { max: 200, label: "200L", val: 200 },
+  { max: 1000, label: "1000L (IBC)", val: 1000 },
+  { max: Infinity, label: "Over 1000L", val: 99999 },
+];
 
-// ─────────────────────────────────────────────────────────────────────────────
-// Helpers
-// ─────────────────────────────────────────────────────────────────────────────
+const isPositive = (v: unknown): v is number => typeof v === "number" && Number.isFinite(v) && v > 0;
+
 function formatMoney(amount: number, currency: string = DEFAULT_CURRENCY) {
   if (!Number.isFinite(amount)) return `${currency} 0.00`;
   try {
@@ -135,59 +132,31 @@ function formatMoney(amount: number, currency: string = DEFAULT_CURRENCY) {
   }
 }
 
-function resolveImage(raw: unknown): string | null {
+function resolveMediaUrl(raw: unknown, allowData: boolean): string | null {
   if (typeof raw !== "string") return null;
   const s = raw.trim();
   if (!s) return null;
-  if (s.startsWith("data:")) return s;
+  if (allowData && s.startsWith("data:")) return s;
   if (s.startsWith("http://") || s.startsWith("https://")) return s;
-  if (s.startsWith("res.cloudinary.com/")) return `https://${s}`;
-  return null;
+  return s.startsWith("res.cloudinary.com/") ? `https://${s}` : null;
 }
-
-function resolveVideo(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  const s = raw.trim();
-  if (!s) return null;
-  if (s.startsWith("http://") || s.startsWith("https://")) return s;
-  if (s.startsWith("res.cloudinary.com/")) return `https://${s}`;
-  return null;
-}
-
-const isPositive = (v: unknown): v is number =>
-  typeof v === "number" && Number.isFinite(v) && v > 0;
 
 function normalizePrices(p: ApiProduct): ProductPrice[] {
   const list: ProductPrice[] = [];
-
   if (Array.isArray(p.prices)) {
     for (const raw of p.prices) {
-      const currency =
-        typeof raw?.currency === "string" && raw.currency.trim()
-          ? raw.currency.toUpperCase()
-          : null;
+      const currency = typeof raw?.currency === "string" && raw.currency.trim() ? raw.currency.toUpperCase() : null;
       const amount = Number(raw?.amount);
-      if (currency && isPositive(amount)) {
-        list.push({ currency, amount });
-      }
+      if (currency && isPositive(amount)) list.push({ currency, amount });
     }
   }
-
-  if (list.length === 0) {
+  if (!list.length) {
     const amount = Number(p.price);
-    const currency =
-      typeof p.currency === "string" && p.currency.trim()
-        ? p.currency.toUpperCase()
-        : DEFAULT_CURRENCY;
+    const currency = typeof p.currency === "string" && p.currency.trim() ? p.currency.toUpperCase() : DEFAULT_CURRENCY;
     list.push({ currency, amount: isPositive(amount) ? amount : 0 });
   }
-
   const seen = new Set<string>();
-  return list.filter((x) => {
-    if (seen.has(x.currency)) return false;
-    seen.add(x.currency);
-    return true;
-  });
+  return list.filter((x) => (seen.has(x.currency) ? false : (seen.add(x.currency), true)));
 }
 
 function detectLiters(product: {
@@ -199,118 +168,72 @@ function detectLiters(product: {
   capacity?: string | null;
 }): number | null {
   const tryParse = (val: unknown): number | null => {
-    if (typeof val === "number" && !isNaN(val) && val > 0) return val;
+    if (typeof val === "number" && !Number.isNaN(val) && val > 0) return val;
     if (typeof val === "string") {
-      const m = val.match(
-        /(\d+(?:\.\d+)?)\s*(?:l|lt|ltr|liter|litre|liters|litres)\b/i
-      );
+      const m = val.match(/(\d+(?:\.\d+)?)\s*(?:l|lt|ltr|liter|litre|liters|litres)\b/i);
       if (m) {
         const n = parseFloat(m[1]);
-        return isNaN(n) ? null : n;
+        return Number.isNaN(n) ? null : n;
       }
     }
     return null;
   };
-
-  const direct = tryParse(product.liters) ?? tryParse(product.volume);
-  if (direct) return direct;
-
-  const fromSize = tryParse(product.size) ?? tryParse(product.capacity);
-  if (fromSize) return fromSize;
-
-  const haystack = `${product.name || ""} ${product.description || ""}`;
-  const m = haystack.match(
-    /(\d+(?:\.\d+)?)\s*(?:l|lt|ltr|liter|litre|liters|litres)\b/i
+  return (
+    tryParse(product.liters) ??
+    tryParse(product.volume) ??
+    tryParse(product.size) ??
+    tryParse(product.capacity) ??
+    tryParse(`${product.name || ""} ${product.description || ""}`)
   );
-  if (m) {
-    const n = parseFloat(m[1]);
-    if (!isNaN(n) && n > 0) return n;
-  }
-  return null;
 }
 
 function literBucket(liters: number): string {
   if (liters < 1) return "Under 1L";
-  if (liters <= 1) return "1L";
-  if (liters <= 2) return "2L";
-  if (liters <= 5) return "5L";
-  if (liters <= 10) return "10L";
-  if (liters <= 20) return "20L";
-  if (liters <= 25) return "25L";
-  if (liters <= 30) return "30L";
-  if (liters <= 50) return "50L";
-  if (liters <= 100) return "100L";
-  if (liters <= 200) return "200L";
-  if (liters <= 1000) return "1000L (IBC)";
-  return "Over 1000L";
+  return (LITER_BUCKETS.slice(1).find((b) => liters <= b.max) || LITER_BUCKETS[LITER_BUCKETS.length - 1]).label;
 }
 
 function parseBucketValue(label: string): number {
-  if (label === "Under 1L") return 0.5;
-  if (label === "Over 1000L") return 99999;
-  const m = label.match(/(\d+(?:\.\d+)?)/);
-  return m ? parseFloat(m[1]) : 0;
+  return LITER_BUCKETS.find((b) => b.label === label)?.val ?? 0;
 }
 
-function rewardBadgeText(r: {
-  triggerType: string;
-  threshold: number;
-  rewardType: string;
-  rewardValue: string;
-}): string {
-  const trigger =
-    r.triggerType === "MIN_QUANTITY"
-      ? `Buy ${Number(r.threshold)}+`
-      : `Spend ${Number(r.threshold).toLocaleString()}+ ETB`;
+function rewardBadgeText(r: ProductReward): string {
+  const trigger = r.triggerType === "MIN_QUANTITY" ? `Buy ${Number(r.threshold)}+` : `Spend ${Number(r.threshold).toLocaleString()}+ ETB`;
   const reward =
-    r.rewardType === "PERCENT_DISCOUNT"
-      ? `${r.rewardValue}% off`
-      : r.rewardType === "FREE_ITEM"
-      ? `Free ${r.rewardValue}`
-      : `${r.rewardValue} ETB reward`;
+    r.rewardType === "PERCENT_DISCOUNT" ? `${r.rewardValue}% off` : r.rewardType === "FREE_ITEM" ? `Free ${r.rewardValue}` : `${r.rewardValue} ETB reward`;
   return `${trigger} → ${reward}`;
 }
 
-function PackageIcon({ className = "h-10 w-10" }: { className?: string }) {
-  return (
-    <svg
-      viewBox="0 0 24 24"
-      fill="none"
-      className={className}
-      aria-hidden="true"
-    >
-      <path
-        d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinejoin="round"
-      />
-      <path
-        d="m3.3 7 8.7 5 8.7-5M12 22V12"
-        stroke="currentColor"
-        strokeWidth="1.7"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+function matchesCategoryName(productCategory: string, selected: string): boolean {
+  const p = productCategory.toLowerCase().trim();
+  const s = selected.toLowerCase().trim();
+  return s === "all" || p === s || p.includes(s) || s.includes(p);
 }
 
-const ProductImage: React.FC<{
+function getEffectivePrice(product: Product): number {
+  if (Array.isArray(product.discountPrices)) {
+    const match = product.discountPrices.find((d) => d.currency.toUpperCase() === product.currency.toUpperCase());
+    if (match && match.amount > 0 && match.amount < product.price) return match.amount;
+  }
+  if (product.discountPrice != null && product.discountPrice > 0 && product.discountPrice < product.price) {
+    return product.discountPrice;
+  }
+  return product.price;
+}
+
+function ProductImage({
+  src,
+  videoUrl,
+  alt,
+  priority = false,
+}: {
   src: string | null;
   videoUrl?: string | null;
   alt: string;
   priority?: boolean;
-}> = ({ src, videoUrl, alt, priority = false }) => {
-  const [prevSrc, setPrevSrc] = useState(src);
+}) {
   const [hasError, setHasError] = useState(false);
   const [hovering, setHovering] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
-
-  if (src !== prevSrc) {
-    setPrevSrc(src);
-    setHasError(false);
-  }
-
   const showVideo = Boolean(videoUrl) && hovering && !hasError;
 
   useEffect(() => {
@@ -318,10 +241,7 @@ const ProductImage: React.FC<{
     if (!v) return;
     if (showVideo) {
       v.muted = true;
-      const playPromise = v.play();
-      if (playPromise && typeof playPromise.catch === "function") {
-        playPromise.catch(() => {});
-      }
+      v.play()?.catch(() => {});
     } else {
       v.pause();
       try {
@@ -333,32 +253,28 @@ const ProductImage: React.FC<{
   if (!src || hasError) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-[#2a1f18] text-[#e0a83c]/40">
-        <PackageIcon />
+        <svg viewBox="0 0 24 24" fill="none" className="h-10 w-10" aria-hidden="true">
+          <path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+          <path d="m3.3 7 8.7 5 8.7-5M12 22V12" stroke="currentColor" strokeWidth="1.7" strokeLinejoin="round" />
+        </svg>
       </div>
     );
   }
 
   return (
-    <div
-      className="relative h-full w-full"
-      onMouseEnter={() => videoUrl && setHovering(true)}
-      onMouseLeave={() => setHovering(false)}
-      onTouchStart={() => videoUrl && setHovering(true)}
-    >
+    <div className="relative h-full w-full" onMouseEnter={() => videoUrl && setHovering(true)} onMouseLeave={() => setHovering(false)} onTouchStart={() => videoUrl && setHovering(true)}>
       <Image
+        key={src}
         src={src}
         alt={alt}
         fill
         unoptimized
-        className={`object-cover object-center transition-all duration-500 ease-out ${
-          showVideo ? "opacity-0" : "opacity-100 group-hover:scale-[1.04]"
-        }`}
+        className={`object-cover object-center transition-all duration-500 ease-out ${showVideo ? "opacity-0" : "opacity-100 group-hover:scale-[1.04]"}`}
         onError={() => setHasError(true)}
         sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 25vw"
         loading={priority ? "eager" : "lazy"}
         fetchPriority={priority ? "high" : "auto"}
       />
-
       {videoUrl && (
         <video
           ref={videoRef}
@@ -367,143 +283,146 @@ const ProductImage: React.FC<{
           loop
           playsInline
           preload="none"
-          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${
-            showVideo ? "opacity-100" : "opacity-0 pointer-events-none"
-          }`}
           aria-hidden="true"
+          className={`absolute inset-0 h-full w-full object-cover transition-opacity duration-300 ${showVideo ? "pointer-events-auto opacity-100" : "pointer-events-none opacity-0"}`}
         />
       )}
     </div>
   );
-};
+}
 
 export default function Products() {
   const { t } = useLanguage();
   const searchParams = useSearchParams();
-  const initialCategoryParam = searchParams.get("category") || "All";
+  const initialCategory = searchParams.get("category") || "All";
+  const hasInitializedURL = useRef(false);
 
-  const hasInitializedFromURL = useRef(false);
   const [products, setProducts] = useState<Product[]>([]);
   const [categoriesList, setCategoriesList] = useState<CategoryOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deletingCatId, setDeletingCatId] = useState<string | null>(null);
 
-  // ✅ FIX: Initialize state directly reading localStorage, no useEffect needed
   const [isAdmin] = useState<boolean>(() => {
     if (typeof window === "undefined") return false;
-    const userData = localStorage.getItem("user") || sessionStorage.getItem("user");
-    if (!userData) return false;
+    const raw = localStorage.getItem("user") || sessionStorage.getItem("user");
+    if (!raw) return false;
     try {
-      const parsed = JSON.parse(userData);
-      return String(parsed?.role || "").toUpperCase() === "ADMIN";
+      return String(JSON.parse(raw)?.role || "").toUpperCase() === "ADMIN";
     } catch {
       return false;
     }
   });
 
-  const [deletingCatId, setDeletingCatId] = useState<string | null>(null);
-
-  const [selectedCategory, setSelectedCategory] =
-    useState<string>(initialCategoryParam);
-  const [selectedLiter, setSelectedLiter] = useState<string>("All");
-  const [selectedSize, setSelectedSize] = useState<string>("All");
+  const [selectedCategory, setSelectedCategory] = useState(initialCategory);
+  const [selectedLiter, setSelectedLiter] = useState("All");
+  const [selectedSize, setSelectedSize] = useState("All");
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState<SortOption>("size-low");
-  const [cartFeedback, setCartFeedback] = useState<{
-    productId: string;
-    message: string;
-    isError: boolean;
-  } | null>(null);
+  const [cartFeedback, setCartFeedback] = useState<{ productId: string; message: string; isError: boolean } | null>(null);
+
+  useEffect(() => {
+    const cat = searchParams.get("category");
+    if (cat && cat !== selectedCategory && !hasInitializedURL.current) {
+      hasInitializedURL.current = true;
+      setSelectedCategory(cat);
+    }
+  }, [searchParams, selectedCategory]);
+
+  useEffect(() => {
+    let active = true;
+    fetch(`${API_BASE_URL}/api/categories/public`)
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!active || !data) return;
+        const list: CategoryOption[] = Array.isArray(data) ? data : data?.categories || [];
+        if (list.length) {
+          const top = list.filter((c) => !c.parentId);
+          setCategoriesList((top.length ? top : list).map((c) => ({ id: c.id, name: c.name, slug: c.slug || c.name.toLowerCase(), parentId: c.parentId || null })));
+        }
+      })
+      .catch((err) => console.warn("Could not fetch categories list:", err));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    let active = true;
+
+    fetch(`${API_BASE_URL}/api/products/public?limit=50`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`Server returned ${res.status}`);
+        return res.json();
+      })
+      .then((data) => {
+        if (!active) return;
+        const raw = Array.isArray(data) ? data : (data as { products?: unknown })?.products;
+        if (!Array.isArray(raw) || !raw.length) return setProducts([]);
+
+        const mapped: Product[] = (raw as ApiProduct[]).map((p) => {
+          const prices = normalizePrices(p);
+          const primary = prices[0];
+          const hasDiscount = p.discountPrice != null && Number(p.discountPrice) > 0 && Number(p.discountPrice) < primary.amount;
+          const stock = typeof p.stock === "number" && p.stock >= 0 ? p.stock : 0;
+          return {
+            id: p.id ?? p._id ?? "",
+            slug: p.slug || p.id || p._id || "",
+            name: p.name,
+            category: p.category?.name || p.categoryName || "Other Products",
+            description: p.description || "",
+            price: primary.amount,
+            currency: primary.currency,
+            prices,
+            discountPrice: hasDiscount ? Number(p.discountPrice) : null,
+            discountPrices: Array.isArray(p.discountPrices) ? p.discountPrices : null,
+            unit: p.unitOfMeasurement || "pcs",
+            stock,
+            availabilityStatus: p.availabilityStatus || undefined,
+            availableAt: p.availableAt || null,
+            restockDate: p.restockDate || null,
+            saleEndDate: p.saleEndDate || null,
+            featured: hasDiscount || Boolean(p.isFeatured),
+            badge: hasDiscount ? "Sale" : undefined,
+            images: (Array.isArray(p.images) ? p.images : []).map((img) => resolveMediaUrl(img, true)).filter((u): u is string => Boolean(u)),
+            videoUrl: resolveMediaUrl(p.videoUrl ?? p.video, false),
+            liters: detectLiters({ name: p.name, description: p.description || "", liters: p.liters, volume: p.volume, size: p.size, capacity: p.capacity }),
+            sizes: (Array.isArray(p.sizesList) ? p.sizesList : []).map((s) => (typeof s?.size === "string" ? s.size.trim() : "")).filter(Boolean),
+            rewards: Array.isArray(p.rewardRules) ? p.rewardRules : [],
+          };
+        });
+        setProducts(mapped);
+      })
+      .catch((err) => {
+        if (!active) return;
+        setError(err instanceof Error ? err.message : "Failed to load products");
+        setProducts([]);
+      })
+      .finally(() => active && setLoading(false));
+
+    return () => {
+      active = false;
+    };
+  }, []);
 
   const addToCart = (product: Product, image: string | null) => {
     try {
       const cart = readCart();
       const existing = cart.find((item) => item.productId === product.id);
       const nextQuantity = (existing?.quantity || 0) + 1;
-
       if (nextQuantity > product.stock) {
-        setCartFeedback({
-          productId: product.id,
-          message: t(
-            "checkout.stock_limit",
-            "There is not enough stock for another item."
-          ),
-          isError: true,
-        });
-        return;
+        return setCartFeedback({ productId: product.id, message: t("checkout.stock_limit", "There is not enough stock for another item."), isError: true });
       }
-
-      // Use per-currency discount for the primary currency
-      let effectivePrice = product.price;
-      if (Array.isArray(product.discountPrices)) {
-        const primaryDiscount = product.discountPrices.find(
-          (d) => d.currency.toUpperCase() === product.currency.toUpperCase()
-        );
-        if (primaryDiscount && primaryDiscount.amount > 0 && primaryDiscount.amount < product.price) {
-          effectivePrice = primaryDiscount.amount;
-        }
-      } else if (
-        product.discountPrice != null &&
-        product.discountPrice > 0 &&
-        product.discountPrice < product.price
-      ) {
-        effectivePrice = product.discountPrice;
-      }
-
-      const nextCart = existing
-        ? cart.map((item) =>
-            item.productId === product.id
-              ? {
-                  ...item,
-                  name: product.name,
-                  slug: product.slug,
-                  image,
-                  unitPrice: effectivePrice,
-                  quantity: nextQuantity,
-                }
-              : item
-          )
-        : [
-            ...cart,
-            {
-              productId: product.id,
-              name: product.name,
-              slug: product.slug,
-              image,
-              unitPrice: effectivePrice,
-              quantity: 1,
-            },
-          ];
-
-      writeCart(nextCart);
-      setCartFeedback({
-        productId: product.id,
-        message: t("checkout.added_to_cart", "Added to your order."),
-        isError: false,
-      });
-    } catch (err) {
-      console.error("Could not save product to the cart:", err);
-      setCartFeedback({
-        productId: product.id,
-        message: t(
-          "checkout.cart_save_error",
-          "Could not save your order. Please try again."
-        ),
-        isError: true,
-      });
+      const nextItem = { productId: product.id, name: product.name, slug: product.slug, image, unitPrice: getEffectivePrice(product), quantity: nextQuantity };
+      writeCart(existing ? cart.map((item) => (item.productId === product.id ? nextItem : item)) : [...cart, nextItem]);
+      setCartFeedback({ productId: product.id, message: t("checkout.added_to_cart", "Added to your order."), isError: false });
+    } catch {
+      setCartFeedback({ productId: product.id, message: t("checkout.cart_save_error", "Could not save your order. Please try again."), isError: true });
     }
   };
 
-  const getCategoryLabel = (catName: string) => {
-    const lower = catName.toLowerCase();
-    if (lower === "all") return t("shop.category_all", "All");
-    return catName;
-  };
-
-  // ✅ Handle Category Delete
   const handleDeleteCategory = async (categoryId: string, categoryName: string) => {
     if (!confirm(`Are you sure you want to delete the category "${categoryName}"?`)) return;
-
     setDeletingCatId(categoryId);
     try {
       const token = localStorage.getItem("token") || sessionStorage.getItem("token");
@@ -511,16 +430,9 @@ export default function Products() {
         method: "DELETE",
         headers: token ? { Authorization: `Bearer ${token}` } : {},
       });
-
-      if (!res.ok) {
-        const errorData = await res.json();
-        throw new Error(errorData.error || "Failed to delete category");
-      }
-
+      if (!res.ok) throw new Error((await res.json())?.error || "Failed to delete category");
       setCategoriesList((prev) => prev.filter((c) => c.id !== categoryId));
-      if (selectedCategory.toLowerCase() === categoryName.toLowerCase()) {
-        setSelectedCategory("All");
-      }
+      if (selectedCategory.toLowerCase() === categoryName.toLowerCase()) setSelectedCategory("All");
     } catch (err) {
       alert(err instanceof Error ? err.message : "Failed to delete category");
     } finally {
@@ -528,309 +440,91 @@ export default function Products() {
     }
   };
 
-  // ── Sync category from URL once ────────────────────────────────────────
-  useEffect(() => {
-    const cat = searchParams.get("category");
-    if (cat && cat !== selectedCategory && !hasInitializedFromURL.current) {
-      hasInitializedFromURL.current = true;
-      setSelectedCategory(cat);
-    }
-  }, [searchParams, selectedCategory]);
-
-  // ── Load categories ────────────────────────────────────────────────────
-  useEffect(() => {
-    let isMounted = true;
-    const fetchCategories = async () => {
-      try {
-        const res = await fetch(`${API_BASE_URL}/api/categories/public`);
-        if (res.ok) {
-          const data = await res.json();
-          const list = Array.isArray(data) ? data : data?.categories || [];
-          if (isMounted && list.length > 0) {
-            const top = list.filter((c: CategoryOption) => !c.parentId);
-            const items = (top.length > 0 ? top : list).map(
-              (c: CategoryOption) => ({
-                id: c.id,
-                name: c.name,
-                slug: c.slug || c.name.toLowerCase(),
-                parentId: c.parentId || null,
-              })
-            );
-            setCategoriesList(items);
-          }
-        }
-      } catch (err) {
-        console.warn("Could not fetch categories list from backend:", err);
-      }
-    };
-    fetchCategories();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  // ── Load products ──────────────────────────────────────────────────────
-  useEffect(() => {
-    let isMounted = true;
-
-    const fetchProducts = async () => {
-      setLoading(true);
-      setError(null);
-      try {
-        const url = `${API_BASE_URL}/api/products/public?limit=50`;
-        const res = await fetch(url);
-        if (!res.ok) throw new Error(`Server returned ${res.status}`);
-
-        const data = await res.json();
-        const rawProducts: unknown = Array.isArray(data)
-          ? data
-          : data && typeof data === "object" && "products" in data
-          ? (data as { products?: unknown }).products
-          : [];
-
-        if (!isMounted) return;
-
-        if (Array.isArray(rawProducts) && rawProducts.length > 0) {
-          const mapped: Product[] = (rawProducts as ApiProduct[]).map((p) => {
-            const categoryName =
-              p.category?.name || p.categoryName || "Other Products";
-
-            const imageList: string[] = Array.isArray(p.images)
-              ? p.images
-                  .map((img) => resolveImage(img))
-                  .filter((u): u is string => Boolean(u))
-              : [];
-
-            const videoUrl =
-              resolveVideo(p.videoUrl) ?? resolveVideo(p.video);
-
-            const prices = normalizePrices(p);
-            const primary = prices[0];
-            const price = primary.amount;
-            const currency = primary.currency;
-
-            const hasDiscount =
-              p.discountPrice !== null &&
-              p.discountPrice !== undefined &&
-              Number(p.discountPrice) > 0 &&
-              Number(p.discountPrice) < price;
-            const discountPrice = hasDiscount ? Number(p.discountPrice) : null;
-
-            const stock =
-              typeof p.stock === "number" && p.stock >= 0 ? p.stock : 0;
-
-            const liters = detectLiters({
-              name: p.name,
-              description: p.description || "",
-              liters: p.liters,
-              volume: p.volume,
-              size: p.size,
-              capacity: p.capacity,
-            });
-
-            return {
-              id: p.id ?? p._id ?? "",
-              slug: p.slug || p.id || p._id || "",
-              name: p.name,
-              category: categoryName,
-              description: p.description || "",
-              price,
-              currency,
-              prices,
-              discountPrice,
-              discountPrices: Array.isArray(p.discountPrices) ? p.discountPrices : null,
-              unit: p.unitOfMeasurement || "pcs",
-              stock,
-              availabilityStatus: p.availabilityStatus || undefined,
-              availableAt: p.availableAt || null,
-              restockDate: p.restockDate || null,
-              saleEndDate: p.saleEndDate || null,
-              featured: hasDiscount || Boolean(p.isFeatured),
-              badge: hasDiscount ? "Sale" : undefined,
-              images: imageList,
-              videoUrl,
-              liters,
-              sizes: (Array.isArray(p.sizesList) ? p.sizesList : [])
-                .map((s) => (typeof s?.size === "string" ? s.size.trim() : ""))
-                .filter(Boolean),
-              rewards: Array.isArray(p.rewardRules) ? p.rewardRules : [],
-            };
-          });
-          setProducts(mapped);
-        } else {
-          setProducts([]);
-        }
-      } catch (err) {
-        console.warn("Backend products fetch error:", err);
-        if (isMounted) {
-          setError(
-            err instanceof Error ? err.message : "Failed to load products"
-          );
-          setProducts([]);
-        }
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-
-    fetchProducts();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  // ── Liter tabs ─────────────────────────────────────────────────────────
   const literTabs = useMemo(() => {
     const set = new Set<string>();
-    products.forEach((p) => {
-      if (p.liters && p.liters > 0) {
-        set.add(literBucket(p.liters));
-      }
-    });
-
-    const sorted = Array.from(set).sort(
-      (a, b) => parseBucketValue(a) - parseBucketValue(b)
-    );
-
-    return sorted.length > 0 ? ["All", ...sorted] : [];
+    products.forEach((p) => p.liters && p.liters > 0 && set.add(literBucket(p.liters)));
+    const sorted = Array.from(set).sort((a, b) => parseBucketValue(a) - parseBucketValue(b));
+    return sorted.length ? ["All", ...sorted] : [];
   }, [products]);
 
-  // ── Size options (from product size variants) ─────────────────────────
   const sizeOptions = useMemo(() => {
     const set = new Set<string>();
-    products.forEach((p) => {
-      (p.sizes || []).forEach((s) => {
-        if (s) set.add(s);
-      });
-    });
+    products.forEach((p) => (p.sizes || []).forEach((s) => s && set.add(s)));
     return Array.from(set).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }));
   }, [products]);
 
-  // ── Category tabs ──────────────────────────────────────────────────────
   const categoryTabs = useMemo(() => {
     const set = new Set<string>(["All"]);
     categoriesList.forEach((c) => set.add(c.name));
-    products.forEach((p) => {
-      if (p.category) set.add(p.category);
-    });
+    products.forEach((p) => p.category && set.add(p.category));
     return Array.from(set);
   }, [categoriesList, products]);
 
-  // ── Filtered + sorted ──────────────────────────────────────────────────
   const filteredProducts = useMemo(() => {
-    const normalizedSearch = search.toLowerCase().trim();
-    const normalizedCategory = selectedCategory.toLowerCase().trim();
-
-    const filtered = products.filter((product) => {
-      const productCat = (product.category || "").toLowerCase().trim();
-      const matchesCategory =
-        normalizedCategory === "all" ||
-        productCat === normalizedCategory ||
-        productCat.includes(normalizedCategory) ||
-        normalizedCategory.includes(productCat);
-
-      const matchesLiter =
-        selectedLiter === "All" ||
-        (product.liters != null &&
-          product.liters > 0 &&
-          literBucket(product.liters) === selectedLiter);
-
-      const matchesSize =
-        selectedSize === "All" ||
-        (product.sizes || []).some(
-          (s) => s.toLowerCase() === selectedSize.toLowerCase()
-        );
-
-      const matchesSearch =
-        !normalizedSearch ||
-        product.name.toLowerCase().includes(normalizedSearch) ||
-        product.description.toLowerCase().includes(normalizedSearch) ||
-        product.category.toLowerCase().includes(normalizedSearch) ||
-        (product.sizes || []).some((s) =>
-          s.toLowerCase().includes(normalizedSearch)
-        );
-
-      return matchesCategory && matchesLiter && matchesSize && matchesSearch;
+    const q = search.toLowerCase().trim();
+    const filtered = products.filter((p) => {
+      const okCat = matchesCategoryName(p.category || "", selectedCategory);
+      const okLiter = selectedLiter === "All" || (p.liters != null && p.liters > 0 && literBucket(p.liters) === selectedLiter);
+      const okSize = selectedSize === "All" || (p.sizes || []).some((s) => s.toLowerCase() === selectedSize.toLowerCase());
+      const okSearch =
+        !q ||
+        p.name.toLowerCase().includes(q) ||
+        p.description.toLowerCase().includes(q) ||
+        p.category.toLowerCase().includes(q) ||
+        (p.sizes || []).some((s) => s.toLowerCase().includes(q));
+      return okCat && okLiter && okSize && okSearch;
     });
 
     return [...filtered].sort((a, b) => {
-      const priceA = a.discountPrice ?? a.price;
-      const priceB = b.discountPrice ?? b.price;
-
-      const litersA = a.liters ?? Number.POSITIVE_INFINITY;
-      const litersB = b.liters ?? Number.POSITIVE_INFINITY;
-
       switch (sort) {
         case "size-low":
-          return litersA - litersB;
+          return (a.liters ?? Number.POSITIVE_INFINITY) - (b.liters ?? Number.POSITIVE_INFINITY);
         case "size-high":
           return (b.liters ?? -1) - (a.liters ?? -1);
         case "price-low":
-          return priceA - priceB;
+          return (a.discountPrice ?? a.price) - (b.discountPrice ?? b.price);
         case "price-high":
-          return priceB - priceA;
+          return (b.discountPrice ?? b.price) - (a.discountPrice ?? a.price);
         case "name":
           return a.name.localeCompare(b.name);
-        default:
-          return 0;
       }
     });
   }, [products, selectedCategory, selectedLiter, selectedSize, search, sort]);
 
-  const hasActiveFilters =
-    selectedCategory.toLowerCase() !== "all" ||
-    selectedLiter !== "All" ||
-    selectedSize !== "All" ||
-    search.trim() !== "";
+  const hasFilters = selectedCategory.toLowerCase() !== "all" || selectedLiter !== "All" || selectedSize !== "All" || search.trim() !== "";
+  const clearFilters = () => {
+    setSelectedCategory("All");
+    setSelectedLiter("All");
+    setSelectedSize("All");
+    setSearch("");
+  };
 
   return (
     <main className="shop-theme min-h-screen bg-[var(--cream)]">
-      {/* Hero */}
       <section className="relative overflow-hidden bg-[#1a1410] px-5 pb-16 pt-28 sm:px-8 lg:px-12 lg:pb-20 lg:pt-36">
-        <div
-          className="pointer-events-none absolute -right-24 -top-40 h-[32rem] w-[32rem] rounded-full bg-[#e0a83c]/10 blur-3xl"
-          aria-hidden="true"
-        />
-        <div
-          className="pointer-events-none absolute -bottom-40 -left-40 h-[30rem] w-[30rem] rounded-full bg-[#b98a3e]/10 blur-3xl"
-          aria-hidden="true"
-        />
-
+        <div className="pointer-events-none absolute -right-24 -top-40 h-[32rem] w-[32rem] rounded-full bg-[#e0a83c]/10 blur-3xl" aria-hidden="true" />
+        <div className="pointer-events-none absolute -bottom-40 -left-40 h-[30rem] w-[30rem] rounded-full bg-[#b98a3e]/10 blur-3xl" aria-hidden="true" />
         <div className="relative mx-auto max-w-7xl">
           <div className="max-w-3xl">
             <h1 className="font-serif-heading text-5xl font-medium leading-[0.98] tracking-[-0.045em] text-[#faf6ee] sm:text-6xl lg:text-7xl">
               {t("shop.hero_title_1", "Discover more,")}
               <br />
-              <span className="text-[#F47822]">
-                {t("shop.hero_title_2", "all in one marketplace.")}
-              </span>
+              <span className="text-[#F47822]">{t("shop.hero_title_2", "all in one marketplace.")}</span>
             </h1>
-
             <p className="mt-6 max-w-2xl text-base leading-7 text-[#faf6ee]/75 sm:text-lg">
-              {t(
-                "shop.hero_subtitle",
-                "Browse digital marketplace listings, compare product details, and find useful picks from a range of categories."
-              )}
+              {t("shop.hero_subtitle", "Browse digital marketplace listings, compare product details, and find useful picks from a range of categories.")}
             </p>
           </div>
         </div>
       </section>
 
-      {/* Catalogue */}
       <section className="px-5 py-12 sm:px-8 lg:px-12 lg:py-16">
         <div className="mx-auto max-w-7xl lg:grid lg:grid-cols-[220px_minmax(0,1fr)] lg:gap-5">
-          {/* Categories sidebar */}
-          <aside className="mb-6 rounded-2xl border border-[#3a2a1e]/10 bg-white p-3 shadow-[0_12px_30px_rgba(58,42,30,.05)] lg:mb-0 lg:h-fit lg:sticky lg:top-24 lg:p-4">
+          <aside className="mb-6 rounded-2xl border border-[#3a2a1e]/10 bg-white p-3 shadow-[0_12px_30px_rgba(58,42,30,.05)] lg:sticky lg:top-24 lg:mb-0 lg:h-fit lg:p-4">
             <div className="mb-3 flex items-center justify-between">
-              <h2 className="text-sm font-bold uppercase tracking-[0.2em] text-[#b98a3e]">
-                {t("shop.categories", "Categories")}
-              </h2>
+              <h2 className="text-sm font-bold uppercase tracking-[0.2em] text-[#b98a3e]">{t("shop.categories", "Categories")}</h2>
               {selectedCategory.toLowerCase() !== "all" && (
-                <button
-                  type="button"
-                  onClick={() => setSelectedCategory("All")}
-                  className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#7a6a58] hover:text-[#1a1410]"
-                >
+                <button type="button" onClick={() => setSelectedCategory("All")} className="text-[10px] font-semibold uppercase tracking-[0.14em] text-[#7a6a58] hover:text-[#1a1410]">
                   {t("shop.clear", "Clear")}
                 </button>
               )}
@@ -838,73 +532,32 @@ export default function Products() {
 
             <div className="space-y-1.5">
               {categoryTabs.map((category) => {
-                const active =
-                  selectedCategory.toLowerCase() === category.toLowerCase();
-                  
-                // ✅ Find the actual category object to get the ID for deletion
-                const categoryObj = categoriesList.find(c => c.name === category);
-                const isDeleting = deletingCatId === categoryObj?.id;
+                const active = selectedCategory.toLowerCase() === category.toLowerCase();
+                const catObj = categoriesList.find((c) => c.name === category);
+                const count = products.filter((p) => matchesCategoryName(p.category || "", category)).length;
 
                 return (
-                  <div
-                    key={category}
-                    className={`group flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left text-sm font-medium transition-all duration-200 ${
-                      active
-                        ? "bg-[#EB6D3D] text-[#20283a] shadow-md"
-                        : "bg-[#faf6ee] text-[#7a6a58] hover:bg-[#f0e8d8] hover:text-[#1a1410]"
-                    }`}
-                  >
-                    <button
-                      type="button"
-                      onClick={() => setSelectedCategory(category)}
-                      className="flex-1 text-left truncate"
-                    >
-                      {getCategoryLabel(category)}
+                  <div key={category} className={`group flex w-full items-center justify-between rounded-xl px-2.5 py-2 text-left text-sm font-medium transition-all duration-200 ${active ? "bg-[#EB6D3D] text-[#20283a] shadow-md" : "bg-[#faf6ee] text-[#7a6a58] hover:bg-[#f0e8d8] hover:text-[#1a1410]"}`}>
+                    <button type="button" onClick={() => setSelectedCategory(category)} className="flex-1 truncate text-left">
+                      {category.toLowerCase() === "all" ? t("shop.category_all", "All") : category}
                     </button>
-                    
                     <div className="flex items-center gap-1">
-                      {/* ✅ Admin Delete Button */}
-                      {isAdmin && categoryObj && category !== "All" && (
+                      {isAdmin && catObj && category !== "All" && (
                         <button
+                          type="button"
+                          disabled={deletingCatId === catObj.id}
                           onClick={(e) => {
                             e.stopPropagation();
-                            void handleDeleteCategory(categoryObj.id, categoryObj.name);
+                            void handleDeleteCategory(catObj.id, catObj.name);
                           }}
-                          disabled={isDeleting}
-                          className={`p-1 rounded-md transition-colors ${
-                            active
-                              ? "hover:bg-[#20283a]/20 text-[#20283a]"
-                              : "hover:bg-red-100 text-red-500 opacity-0 group-hover:opacity-100"
-                          }`}
                           title="Delete Category"
+                          className={`rounded-md p-1 transition-colors ${active ? "text-[#20283a] hover:bg-[#20283a]/20" : "text-red-500 opacity-0 hover:bg-red-100 group-hover:opacity-100"}`}
                         >
-                          {isDeleting ? (
-                            <div className={`w-3 h-3 border-2 ${active ? "border-[#20283a]" : "border-red-500"} border-t-transparent rounded-full animate-spin`} />
-                          ) : (
-                            <Trash2 size={14} />
-                          )}
+                          <Trash2 size={14} />
                         </button>
                       )}
-                      
-                      <span
-                        className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full text-[10px] font-bold ${
-                          active
-                            ? "bg-[#20283a] text-white"
-                            : "bg-white text-[#7a6a58]"
-                        }`}
-                      >
-                        {products.filter((product) => {
-                          const productCat = (product.category || "")
-                            .toLowerCase()
-                            .trim();
-                          const normalized = category.toLowerCase();
-                          return (
-                            normalized === "all" ||
-                            productCat === normalized ||
-                            productCat.includes(normalized) ||
-                            normalized.includes(productCat)
-                          );
-                        }).length}
+                      <span className={`inline-flex h-5 min-w-5 items-center justify-center rounded-full text-[10px] font-bold ${active ? "bg-[#20283a] text-white" : "bg-white text-[#7a6a58]"}`}>
+                        {count}
                       </span>
                     </div>
                   </div>
@@ -914,436 +567,152 @@ export default function Products() {
           </aside>
 
           <div className="min-w-0">
-            {/* Controls */}
             <div className="mb-8 rounded-3xl border border-[#3a2a1e]/10 bg-white p-4 shadow-[0_15px_45px_rgba(58,42,30,.06)] sm:p-5">
               <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
                 <div className="relative w-full lg:max-w-md">
-                  <div className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#7a6a58]">
-                    <Search size={18} />
-                  </div>
+                  <Search size={18} className="pointer-events-none absolute left-4 top-1/2 -translate-y-1/2 text-[#7a6a58]" />
                   <input
                     type="search"
                     value={search}
                     onChange={(e) => setSearch(e.target.value)}
-                    placeholder={t(
-                      "shop.search_placeholder",
-                      "Search products, categories, and listings..."
-                    )}
+                    placeholder={t("shop.search_placeholder", "Search products, categories, and listings...")}
                     className="h-11 w-full rounded-xl border border-[#3a2a1e]/10 bg-[#faf6ee]/60 pl-11 pr-4 text-sm text-[#1a1410] outline-none transition placeholder:text-[#7a6a58]/60 focus:border-[#b98a3e] focus:bg-white focus:ring-4 focus:ring-[#e0a83c]/20"
                   />
                 </div>
 
-                <div className="flex items-center justify-end gap-2">
+                <div className="flex flex-wrap items-center justify-end gap-2">
                   {sizeOptions.length > 0 && (
-                    <select
-                      value={selectedSize}
-                      onChange={(e) => setSelectedSize(e.target.value)}
-                      className="h-10 rounded-full border border-[#3a2a1e]/10 bg-[#faf6ee] px-4 text-xs font-semibold text-[#1a1410] outline-none focus:border-[#b98a3e]"
-                      aria-label="Filter by size"
-                    >
-                      <option value="All">{t("shop.size_all", "All Sizes")}</option>
-                      {sizeOptions.map((size) => (
-                        <option key={size} value={size}>
-                          {size}
-                        </option>
+                    <select value={selectedSize} onChange={(e) => setSelectedSize(e.target.value)} className="h-10 rounded-full border border-[#3a2a1e]/10 bg-[#faf6ee] px-4 text-xs font-semibold text-[#1a1410] outline-none focus:border-[#b98a3e]">
+                      <option value="All">{t("shop.all_sizes", "All Sizes")}</option>
+                      {sizeOptions.map((s) => (
+                        <option key={s} value={s}>{s}</option>
                       ))}
                     </select>
                   )}
-                  <select
-                    value={sort}
-                    onChange={(e) => setSort(e.target.value as SortOption)}
-                    className="h-10 rounded-full border border-[#3a2a1e]/10 bg-[#faf6ee] px-4 text-xs font-semibold text-[#1a1410] outline-none focus:border-[#b98a3e]"
-                  >
-                    <option value="size-low">
-                      {t("shop.sort_size_low", "Size: Small → Large")}
-                    </option>
-                    <option value="size-high">
-                      {t("shop.sort_size_high", "Size: Large → Small")}
-                    </option>
-                    <option value="price-low">
-                      {t("shop.sort_price_low", "Price: Low to High")}
-                    </option>
-                    <option value="price-high">
-                      {t("shop.sort_price_high", "Price: High to Low")}
-                    </option>
-                    <option value="name">
-                      {t("shop.sort_name", "Name A–Z")}
-                    </option>
+                  <select value={sort} onChange={(e) => setSort(e.target.value as SortOption)} className="h-10 rounded-full border border-[#3a2a1e]/10 bg-[#faf6ee] px-4 text-xs font-semibold text-[#1a1410] outline-none focus:border-[#b98a3e]">
+                    <option value="size-low">{t("shop.sort_size_low", "Size: Small to Large")}</option>
+                    <option value="size-high">{t("shop.sort_size_high", "Size: Large to Small")}</option>
+                    <option value="price-low">{t("shop.sort_price_low", "Price: Low to High")}</option>
+                    <option value="price-high">{t("shop.sort_price_high", "Price: High to Low")}</option>
+                    <option value="name">{t("shop.sort_name", "Name: A to Z")}</option>
                   </select>
                 </div>
               </div>
 
               {literTabs.length > 0 && (
-                <div className="mt-4 flex flex-col gap-2 border-t border-[#3a2a1e]/10 pt-4 sm:flex-row sm:items-center sm:gap-4">
-                  <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[0.15em] text-[#b98a3e]">
-                    <span className="inline-block h-1.5 w-1.5 rounded-full bg-[#e0a83c]" />
-                    {t("shop.filter_by_size", "Filter by Size")}
-                  </span>
+                <div className="mt-4 flex flex-wrap gap-2 border-t border-[#3a2a1e]/10 pt-4">
+                  {literTabs.map((bucket) => (
+                    <button key={bucket} type="button" onClick={() => setSelectedLiter(bucket)} className={`rounded-full px-3.5 py-1.5 text-xs font-semibold transition ${selectedLiter === bucket ? "bg-[#20283a] text-white" : "bg-[#faf6ee] text-[#7a6a58] hover:text-[#1a1410]"}`}>
+                      {bucket === "All" ? t("shop.all_capacities", "All Capacities") : bucket}
+                    </button>
+                  ))}
+                </div>
+              )}
 
-                  <div className="flex flex-wrap gap-2">
-                    {literTabs.map((liter) => {
-                      const active = selectedLiter === liter;
-                      return (
-                        <button
-                          key={liter}
-                          type="button"
-                          onClick={() => setSelectedLiter(liter)}
-                          className={`rounded-full px-3 py-1 text-[11px] font-bold transition-all duration-200 ${
-                            active
-                              ? "bg-[#EB6D3D] text-[#20283a] shadow-md"
-                              : "bg-[#faf6ee] text-[#7a6a58] hover:bg-[#f0e8d8] hover:text-[#1a1410]"
-                          }`}
-                        >
-                          {liter === "All"
-                            ? t("shop.size_all", "All Sizes")
-                            : liter}
-                        </button>
-                      );
-                    })}
-                  </div>
+              {hasFilters && (
+                <div className="mt-3 flex items-center justify-between text-xs text-[#7a6a58]">
+                  <span>{t("shop.showing_count", "Showing")} {filteredProducts.length} {t("shop.products", "products")}</span>
+                  <button type="button" onClick={clearFilters} className="inline-flex items-center gap-1 font-semibold text-[#cf5427] hover:underline">
+                    <X size={13} /> {t("shop.clear_filters", "Clear filters")}
+                  </button>
                 </div>
               )}
             </div>
 
-            {/* Results summary */}
-            <div className="mb-5 flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-[#7a6a58]">
-                {t("shop.showing", "Showing")}{" "}
-                <span className="font-bold text-[#1a1410]">
-                  {filteredProducts.length}
-                </span>{" "}
-                {filteredProducts.length === 1
-                  ? t("shop.product_singular", "product")
-                  : t("shop.product_plural", "products")}
-                {selectedCategory.toLowerCase() !== "all" && (
-                  <span>
-                    {" "}
-                    {t("shop.in", "in")}{" "}
-                    <strong className="text-[#1a1410] capitalize">
-                      {getCategoryLabel(selectedCategory)}
-                    </strong>
-                  </span>
-                )}
-                {selectedLiter !== "All" && (
-                  <span>
-                    {" "}
-                    · <strong className="text-[#1a1410]">{selectedLiter}</strong>
-                  </span>
-                )}
-              </p>
-
-              {hasActiveFilters && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSelectedCategory("All");
-                    setSelectedLiter("All");
-                    setSelectedSize("All");
-                    setSearch("");
-                  }}
-                  className="inline-flex items-center gap-1 text-xs font-semibold text-[#b98a3e] hover:underline"
-                >
-                  <X size={12} />
-                  {t("shop.reset_filter", "Reset all filters")}
-                </button>
-              )}
-            </div>
-
-            {/* Grid */}
             {loading ? (
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-                {[1, 2, 3, 4, 5, 6, 7, 8].map((i) => (
-                  <div
-                    key={i}
-                    className="overflow-hidden rounded-2xl border border-[#3a2a1e]/10 bg-white p-2.5 animate-pulse"
-                  >
-                    <div className="aspect-square w-full rounded-xl bg-gray-200" />
-                    <div className="mt-3 space-y-1.5">
-                      <div className="h-4 w-3/4 rounded bg-gray-200" />
-                      <div className="h-3 w-1/2 rounded bg-gray-100" />
-                      <div className="mt-2 h-5 w-1/2 rounded bg-gray-200" />
-                    </div>
-                  </div>
+              <div className="grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-3">
+                {Array.from({ length: 6 }).map((_, i) => (
+                  <div key={i} className="h-80 animate-pulse rounded-3xl bg-white/80 p-4" />
                 ))}
               </div>
-            ) : filteredProducts.length > 0 ? (
-              <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4">
-                {filteredProducts.map((product, index) => {
-                  const isAboveTheFold = index < 2;
-
-                  // Build per-currency discount lookup
-                  const discountMap = new Map<string, number>();
-                  if (Array.isArray(product.discountPrices)) {
-                    for (const d of product.discountPrices) {
-                      if (d && typeof d.currency === "string" && Number(d.amount) > 0) {
-                        discountMap.set(d.currency.toUpperCase(), Number(d.amount));
-                      }
-                    }
-                  }
-                  // Fallback: single discountPrice applies to primary currency only
-                  if (discountMap.size === 0 && product.discountPrice != null && product.discountPrice > 0) {
-                    discountMap.set(product.currency.toUpperCase(), product.discountPrice);
-                  }
-
-                  const hasDiscount = discountMap.size > 0;
-                  const isTempOut =
-                    product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY";
-                  const isAvailable = product.stock > 0 && !isTempOut;
-                  const imageUrl = product.images?.[0] ?? null;
-                  const hasVideo = Boolean(product.videoUrl);
+            ) : error ? (
+              <div className="rounded-3xl border border-red-200 bg-red-50 p-8 text-center text-sm font-medium text-red-700">{error}</div>
+            ) : filteredProducts.length === 0 ? (
+              <div className="rounded-3xl border border-[#3a2a1e]/10 bg-white p-10 text-center">
+                <p className="text-base font-semibold text-[#1a1410]">{t("shop.no_products", "No products matched your filters.")}</p>
+                {hasFilters && (
+                  <button type="button" onClick={clearFilters} className="mt-4 rounded-full bg-[#EB6D3D] px-5 py-2 text-xs font-bold text-white hover:bg-[#cf5427]">
+                    {t("shop.clear_filters", "Clear filters")}
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-2 gap-4 sm:gap-6 lg:grid-cols-3">
+                {filteredProducts.map((product, idx) => {
+                  const img = product.images[0] || null;
+                  const effective = getEffectivePrice(product);
+                  const discounted = effective < product.price;
+                  const isTempOut = product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY";
+                  const outOfStock = product.stock < 1 || isTempOut;
+                  const fb = cartFeedback?.productId === product.id ? cartFeedback : null;
 
                   return (
-                    <div
-                      key={product.id}
-                      className="group flex flex-col overflow-hidden rounded-2xl border border-[#3a2a1e]/10 bg-white shadow-[0_8px_24px_rgba(58,42,30,.06)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_16px_40px_rgba(58,42,30,.12)]"
-                    >
-                      <Link
-                        href={`/shop/${encodeURIComponent(product.slug)}`}
-                        className="relative block aspect-square w-full overflow-hidden bg-[#2a1f18]"
-                      >
-                        <ProductImage
-                          src={imageUrl}
-                          videoUrl={product.videoUrl}
-                          alt={product.name}
-                          priority={isAboveTheFold}
-                        />
+                    <article key={product.id} className="group flex flex-col overflow-hidden rounded-3xl border border-[#3a2a1e]/10 bg-white shadow-[0_12px_30px_rgba(58,42,30,.05)] transition hover:-translate-y-0.5 hover:shadow-[0_18px_40px_rgba(58,42,30,.10)]">
+                      <Link href={`/products/${encodeURIComponent(product.slug || product.id)}`} className="relative aspect-square overflow-hidden bg-[#2a1f18]">
+                        <ProductImage src={img} videoUrl={product.videoUrl} alt={product.name} priority={idx < 3} />
+                        {product.badge && (
+                          <span className="absolute left-3 top-3 rounded-full bg-[#EB6D3D] px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider text-white shadow">
+                            {product.badge}
+                          </span>
+                        )}
+                        {product.videoUrl && (
+                          <span className="absolute right-3 top-3 inline-flex items-center gap-1 rounded-full bg-black/65 px-2 py-1 text-[10px] font-semibold text-white">
+                            <Video size={11} /> Video
+                          </span>
+                        )}
+                      </Link>
 
-                        {!isAvailable && (
-                          <div className="absolute inset-0 flex items-center justify-center bg-[#1a1410]/55 backdrop-blur-[1px]">
-                            <span className="rounded-full bg-white/95 px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-[#1a1410] shadow-lg">
-                              {isTempOut
-                                ? t("shop.out_of_stock_temp", "Out of stock temporarily")
-                                : t("shop.out_of_stock", "Out of stock")}
-                            </span>
+                      <div className="flex flex-1 flex-col p-4">
+                        <span className="text-[10px] font-bold uppercase tracking-[0.15em] text-[#b98a3e]">{product.category}</span>
+                        <Link href={`/products/${encodeURIComponent(product.slug || product.id)}`} className="mt-1 line-clamp-1 font-serif-heading text-lg font-semibold text-[#1a1410] hover:text-[#cf5427]">
+                          {product.name}
+                        </Link>
+                        {product.description && <p className="mt-1 line-clamp-2 text-xs text-[#7a6a58]">{product.description}</p>}
+
+                        {(product.rewards || []).length > 0 && (
+                          <div className="mt-2 flex flex-wrap gap-1">
+                            {(product.rewards || []).slice(0, 2).map((r) => (
+                              <span key={r.id} className="rounded-md bg-emerald-50 px-2 py-0.5 text-[10px] font-semibold text-emerald-700 ring-1 ring-emerald-200">
+                                {rewardBadgeText(r)}
+                              </span>
+                            ))}
                           </div>
                         )}
 
-                        <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-[#1a1410]/55 via-transparent to-transparent" />
+                        <ProductCountdown stock={product.stock} availableAt={product.availableAt} restockDate={product.restockDate} saleEndDate={product.saleEndDate} />
 
-                        <div className="absolute left-2 top-2 flex flex-wrap gap-1">
-                          <span className="rounded-full bg-white/95 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#1a1410] shadow-sm backdrop-blur">
-                            {getCategoryLabel(product.category)}
-                          </span>
-                          {product.liters != null && product.liters > 0 && (
-                            <span className="rounded-full bg-[#1a1410]/85 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-[#e0a83c] shadow-sm backdrop-blur">
-                              {literBucket(product.liters)}
-                            </span>
-                          )}
-                          {(product.sizes || []).slice(0, 3).map((size) => (
-                            <span
-                              key={size}
-                              className="rounded-full bg-[#EB6D3D]/90 px-2 py-0.5 text-[9px] font-bold tracking-wider text-white shadow-sm backdrop-blur"
+                        <div className="mt-auto pt-3">
+                          <div className="flex items-baseline gap-2">
+                            <span className="text-base font-bold text-[#1a1410]">{formatMoney(effective, product.currency)}</span>
+                            {discounted && <span className="text-xs text-[#7a6a58] line-through">{formatMoney(product.price, product.currency)}</span>}
+                            <span className="text-[11px] text-[#7a6a58]">/ {product.unit}</span>
+                          </div>
+
+                          <div className="mt-3 flex items-center gap-2">
+                            <button
+                              type="button"
+                              disabled={outOfStock}
+                              onClick={() => addToCart(product, img)}
+                              className={`flex h-9 flex-1 items-center justify-center gap-1.5 rounded-xl text-xs font-bold transition ${outOfStock ? "cursor-not-allowed bg-slate-200 text-slate-500" : "bg-[#20283a] text-white hover:bg-[#30384f]"}`}
                             >
-                              {size}
-                            </span>
-                          ))}
-                          {(product.rewards || []).slice(0, 1).map((r) => (
-                            <span
-                              key={r.id}
-                              className="rounded-full bg-emerald-600/95 px-2 py-0.5 text-[9px] font-bold tracking-wider text-white shadow-sm backdrop-blur"
-                            >
-                              🎁 {rewardBadgeText(r)}
-                            </span>
-                          ))}
-                          {hasDiscount && (
-                            <span className="rounded-full bg-red-600 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm">
-                              Sale
-                            </span>
-                          )}
-                          {hasVideo && (
-                            <span className="inline-flex items-center gap-1 rounded-full bg-[#EB6D3D] px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider text-white shadow-sm">
-                              <Video size={10} />
-                              Video
-                            </span>
-                          )}
-                        </div>
+                              <ShoppingCart size={13} />
+                              <span>{isTempOut ? t("product.out_of_stock_temp", "Temp out") : outOfStock ? t("product.out_of_stock", "Out") : t("checkout.add", "Add")}</span>
+                            </button>
+                            <Link href={`/products/${encodeURIComponent(product.slug || product.id)}`} aria-label={`View ${product.name}`} className="flex h-9 w-9 items-center justify-center rounded-xl border border-[#3a2a1e]/15 bg-[#faf6ee] text-[#1a1410] transition hover:border-[#b98a3e]">
+                              <ArrowUpRight size={15} />
+                            </Link>
+                          </div>
 
-                        <span
-                          className={`absolute bottom-2 left-2 inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[9px] font-semibold backdrop-blur ${
-                            isAvailable
-                              ? "border border-emerald-200 bg-emerald-50 text-emerald-700"
-                              : "border border-slate-200 bg-slate-100 text-slate-600"
-                          }`}
-                        >
-                          <span
-                            className={`h-1.5 w-1.5 rounded-full ${
-                              isAvailable
-                                ? "bg-emerald-500"
-                                : isTempOut
-                                ? "bg-amber-500"
-                                : "bg-red-500"
-                            }`}
-                          />
-                          {isAvailable
-                            ? t("shop.available_now", "Available now")
-                            : isTempOut
-                            ? t("shop.out_of_stock_temp", "Out of stock temporarily")
-                            : t("shop.out_of_stock", "Out of stock")}
-                        </span>
-
-                        <span className="absolute bottom-2 right-2 flex h-7 w-7 translate-y-2 items-center justify-center rounded-full bg-[#e0a83c] text-[#1a1410] opacity-0 shadow-md transition-all duration-300 group-hover:translate-y-0 group-hover:opacity-100">
-                          <ArrowUpRight size={14} strokeWidth={2.4} />
-                        </span>
-                      </Link>
-
-                      <div className="flex flex-1 flex-col p-3 sm:p-3.5">
-                        <div>
-                          <Link
-                            href={`/shop/${encodeURIComponent(product.slug)}`}
-                            className="block"
-                          >
-                            <h2 className="line-clamp-1 text-sm font-bold leading-tight text-[#1a1410] transition-colors group-hover:text-[#b98a3e]">
-                              {product.name}
-                            </h2>
-                          </Link>
-
-                          {!isAvailable ? (
-                            <p className="mt-1 line-clamp-2 text-[11px] leading-snug font-medium text-amber-700">
-                              {isTempOut
-                                ? t(
-                                    "shop.temp_out_desc",
-                                    "Temporarily unavailable. We'll restock soon — check back later."
-                                  )
-                                : t(
-                                    "shop.out_desc",
-                                    "This product is currently out of stock."
-                                  )}
-                            </p>
-                          ) : (
-                            <p className="mt-1 line-clamp-2 text-[11px] leading-snug text-[#7a6a58]">
-                              {product.description ||
-                                t(
-                                  "shop.default_card_desc",
-                                  "Explore product details and discover useful finds for everyday life."
-                                )}
+                          {fb && (
+                            <p className={`mt-2 text-[11px] font-semibold ${fb.isError ? "text-red-600" : "text-emerald-700"}`}>
+                              {fb.message}
                             </p>
                           )}
                         </div>
-
-                        <div className="mt-2">
-                          <ProductCountdown
-                            stock={product.stock}
-                            availableAt={product.availableAt}
-                            restockDate={product.restockDate}
-                            saleEndDate={product.saleEndDate}
-                            variant="card"
-                          />
-                        </div>
-
-                        <div className="mt-2.5 space-y-0.5">
-                          {product.prices.map((p) => {
-                            const isPrimary = p.currency === product.currency;
-                            const currencyDiscount = discountMap.get(p.currency.toUpperCase());
-                            const hasCurrencyDiscount =
-                              currencyDiscount != null &&
-                              currencyDiscount > 0 &&
-                              currencyDiscount < p.amount;
-                            const saving = hasCurrencyDiscount ? p.amount - currencyDiscount : 0;
-                            return (
-                              <div
-                                key={p.currency}
-                                className="space-y-0.5"
-                              >
-                                <div className="flex items-baseline gap-1.5">
-                                  <span className="text-[11px] font-bold text-[#1a1410]">
-                                    {formatMoney(p.amount, p.currency)}
-                                  </span>
-                                  {isPrimary && (
-                                    <span className="text-[9px] text-[#7a6a58]">
-                                      /{product.unit}
-                                    </span>
-                                  )}
-                                </div>
-                                {hasCurrencyDiscount && (
-                                  <div className="flex items-center gap-1.5">
-                                    <span className="rounded bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-700">
-                                      {formatMoney(currencyDiscount, p.currency)} disc
-                                    </span>
-                                    <span className="text-[9px] font-semibold text-red-600">
-                                      Save {formatMoney(saving, p.currency)}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => addToCart(product, imageUrl)}
-                          disabled={!isAvailable}
-                          className={`mt-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl px-3 text-xs font-bold transition ${
-                            isAvailable
-                              ? "bg-[#20283a] text-white hover:bg-[#30384f]"
-                              : isTempOut
-                              ? "bg-amber-100 text-amber-800 cursor-not-allowed"
-                              : "bg-slate-200 text-slate-500 cursor-not-allowed"
-                          }`}
-                        >
-                          <ShoppingCart size={15} />
-                          {t("checkout.add_to_order", "Add to cart")}
-                        </button>
-
-                        {cartFeedback?.productId === product.id && (
-                          <p
-                            role="status"
-                            className={`mt-2 text-center text-xs ${
-                              cartFeedback.isError
-                                ? "text-red-600"
-                                : "text-green-700"
-                            }`}
-                          >
-                            {cartFeedback.message}
-                            {!cartFeedback.isError && (
-                              <>
-                                {" "}
-                                <Link
-                                  href="/checkout"
-                                  className="ml-1 inline-block rounded-lg bg-[#cf5427] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#b84520]"
-                                >
-                                  {t("checkout.go_to_checkout", "Checkout")}
-                                </Link>
-                              </>
-                            )}
-                          </p>
-                        )}
                       </div>
-                    </div>
+                    </article>
                   );
                 })}
-              </div>
-            ) : (
-              <div className="rounded-3xl border border-dashed border-[#3a2a1e]/20 bg-white px-6 py-16 text-center shadow-sm">
-                <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full bg-[#faf6ee] text-[#b98a3e]">
-                  <Search size={22} />
-                </div>
-                <h3 className="font-serif-heading text-xl font-bold text-[#1a1410]">
-                  {t("shop.no_products_title", "No products found")}
-                </h3>
-                <p className="mx-auto mt-2 max-w-md text-xs leading-6 text-[#7a6a58]">
-                  {t(
-                    "shop.no_products_desc",
-                    "We couldn't find any items matching your current filters. Try adjusting your search query or choosing another category."
-                  )}
-                </p>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setSearch("");
-                    setSelectedCategory("All");
-                    setSelectedLiter("All");
-                  }}
-                  className="mt-6 inline-flex items-center gap-2 rounded-full bg-[#EB6D3D] px-6 py-2.5 text-xs font-bold uppercase tracking-wider text-[#20283a] transition hover:bg-[#cf5427] hover:text-white"
-                >
-                  {t("shop.clear_filters", "Clear all filters")}
-                </button>
-              </div>
-            )}
-
-            {error && !loading && filteredProducts.length === 0 && (
-              <div className="mt-6 rounded-2xl border border-red-200 bg-red-50 p-4 text-center text-sm text-red-600">
-                {error}
               </div>
             )}
           </div>

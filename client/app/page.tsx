@@ -1,55 +1,37 @@
-// app/page.tsx
 "use client";
 
-import { useEffect, useRef, useState, useSyncExternalStore } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import Image from "next/image";
-import {
-  ArrowDown,
-  ArrowRight,
-  ArrowUp,
-  ArrowUpRight,
-  ChevronRight,
-  ShoppingCart,
-} from "lucide-react";
-import { useSettings } from "@/hooks/useSettings";
+import { ArrowRight, ChevronRight, ShoppingCart } from "lucide-react";
 import { useLanguage } from "@/context/LanguageContext";
 import { readCart, writeCart } from "@/app/lib/cart";
 import ProductCountdown from "@/components/shop/ProductCountdown";
 
-// ============================================================
-// Types
-// ============================================================
-interface CategoryData {
-  id?: string;
-  name: string;
-  slug?: string;
-  description?: string | null;
-  image?: string | null;
-  images?: string[] | null;
-  parentId?: string | null;
-  _count?: { products?: number };
+const API_BASE_URL = (
+  process.env.NEXT_PUBLIC_API_URL ||
+  process.env.NEXT_PUBLIC_API_BASE_URL ||
+  "http://localhost:5000"
+).replace(/\/+$/, "");
+
+interface PriceEntry {
+  currency: string;
+  amount: number;
 }
 
-interface ProductPriceEntry {
+interface RawPriceEntry {
   currency?: string | null;
   amount?: number | string | null;
 }
 
-interface ProductData {
+interface CategoryData {
   id?: string;
-  name?: string;
+  name: string;
+  slug?: string;
+  parentId?: string | null;
   image?: string | null;
   images?: string[] | null;
-  categoryId?: string | null;
-  category?:
-    | { id?: string | null; name?: string | null; slug?: string | null }
-    | string
-    | null;
-  price?: number | string | null;
-  currency?: string | null;
-  prices?: ProductPriceEntry[] | null;
-  discountPrice?: number | string | null;
+  _count?: { products?: number };
 }
 
 interface HomeProductData {
@@ -59,13 +41,11 @@ interface HomeProductData {
   description?: string | null;
   image?: string | null;
   images?: string[] | null;
-  category?:
-    | { id?: string | null; name?: string | null; slug?: string | null }
-    | string
-    | null;
-  price: number | string;
+  categoryId?: string | null;
+  category?: { id?: string | null; name?: string | null; slug?: string | null } | string | null;
+  price?: number | string | null;
   currency?: string | null;
-  prices?: ProductPriceEntry[] | null;
+  prices?: RawPriceEntry[] | null;
   discountPrice?: number | string | null;
   discountPrices?: { currency: string; amount: number }[] | null;
   stock?: number | null;
@@ -87,1243 +67,470 @@ interface CategoryItem {
   priceCurrency: string;
 }
 
-// ============================================================
-// API base
-// ============================================================
-const RAW_API_BASE =
-  process.env.NEXT_PUBLIC_API_URL ||
-  process.env.NEXT_PUBLIC_API_BASE_URL ||
-  "http://localhost:5000";
-const API_BASE_URL = RAW_API_BASE.replace(/\/+$/, "");
-
-// ============================================================
-// Site assets — files in /public are served from the root
-// ============================================================
-const HERO_VIDEOS = ["/banners/dreahero.mp4"];
-const HERO_POSTER = "/banners/photo.jpg";
-
-// ============================================================
-// Mounted detection (server-safe)
-// ============================================================
-const subscribe = () => () => {};
-const getClientSnapshot = () => true;
-const getServerSnapshot = () => false;
-
-function useMounted() {
-  return useSyncExternalStore(subscribe, getClientSnapshot, getServerSnapshot);
-}
-
-// ============================================================
-// Image resolver — Cloudinary ONLY
-// ============================================================
 function resolveImage(raw?: string | null): string | null {
   if (!raw) return null;
   const s = String(raw).trim();
   if (!s) return null;
-
-  if (s.startsWith("data:")) return s;
-  if (s.startsWith("http://") || s.startsWith("https://")) return s;
-  if (s.startsWith("res.cloudinary.com/")) return `https://${s}`;
-
-  return null;
+  if (s.startsWith("data:") || s.startsWith("http://") || s.startsWith("https://")) return s;
+  return s.startsWith("res.cloudinary.com/") ? `https://${s}` : null;
 }
 
-// ============================================================
-// Price helpers
-// ============================================================
-function resolvePriceEntries(p: {
+function getPriceEntries(p: {
   price?: number | string | null;
   currency?: string | null;
-  prices?: ProductPriceEntry[] | null;
-}): { amount: number; currency: string }[] {
-  const list = Array.isArray(p.prices) ? p.prices : [];
-  const valid = list
-    .map((entry) => {
-      const amount = Number(entry?.amount);
-      const currency =
-        typeof entry?.currency === "string" && entry.currency.trim()
-          ? entry.currency.trim().toUpperCase()
-          : null;
-      return currency && Number.isFinite(amount) && amount > 0
-        ? { amount, currency }
-        : null;
-    })
-    .filter((e): e is { amount: number; currency: string } => e !== null);
+  prices?: RawPriceEntry[] | null;
+}): PriceEntry[] {
+  const fromList = Array.isArray(p.prices)
+    ? p.prices
+        .map((e) => {
+          const amount = Number(e?.amount);
+          const currency = typeof e?.currency === "string" && e.currency.trim() ? e.currency.trim().toUpperCase() : null;
+          return currency && Number.isFinite(amount) && amount > 0 ? { amount, currency } : null;
+        })
+        .filter((x): x is PriceEntry => Boolean(x))
+    : [];
 
-  if (valid.length > 0) return valid;
-
-  const amount = Number(p.price);
-  const fallbackCurrency =
-    typeof p.currency === "string" && p.currency.trim()
-      ? p.currency.trim().toUpperCase()
-      : "ETB";
-  if (Number.isFinite(amount) && amount > 0) {
-    return [{ amount, currency: fallbackCurrency }];
-  }
-  return [];
+  if (fromList.length > 0) return fromList;
+  const fallback = Number(p.price);
+  const currency = typeof p.currency === "string" && p.currency.trim() ? p.currency.trim().toUpperCase() : "ETB";
+  return Number.isFinite(fallback) && fallback > 0 ? [{ amount: fallback, currency }] : [];
 }
 
-function resolvePrimaryPrice(p: {
-  price?: number | string | null;
-  currency?: string | null;
-  prices?: ProductPriceEntry[] | null;
-}): { amount: number; currency: string } | null {
-  const valid = resolvePriceEntries(p);
-  const etb = valid.find((e) => e.currency === "ETB");
-  if (etb) return etb;
-  return valid[0] ?? null;
-}
-
-function effectivePrice(p: ProductData): { amount: number; currency: string } | null {
-  const primary = resolvePrimaryPrice(p);
-  if (!primary) return null;
-  const discount = p.discountPrice != null ? Number(p.discountPrice) : NaN;
-  if (Number.isFinite(discount) && discount > 0) {
-    return { amount: discount, currency: primary.currency };
-  }
-  return primary;
-}
-
-function formatPrice(n: number, currency = "ETB"): string {
-  return `${currency} ${n.toLocaleString()}`;
-}
-
-// ============================================================
-// Build category card data (mosaic + stats)
-// ============================================================
-function buildCategoryData(
-  cat: CategoryData,
-  productsForCategory: ProductData[]
-): {
-  images: (string | null)[];
-  productCount: number;
-  minPrice: number | null;
-  maxPrice: number | null;
-  priceCurrency: string;
-} {
-  const seen = new Set<string>();
-  const images: string[] = [];
-
-  const addImage = (raw?: string | null) => {
-    const url = resolveImage(raw);
-    if (!url) return;
-    if (seen.has(url)) return;
-    seen.add(url);
-    images.push(url);
-  };
-
-  // 1. Category's own image(s) first
-  addImage(cat.image);
-  if (Array.isArray(cat.images)) {
-    for (const img of cat.images) {
-      if (images.length >= 4) break;
-      addImage(img);
-    }
-  }
-
-  // 2. Fall back to product images
-  for (const p of productsForCategory) {
-    if (images.length >= 4) break;
-    if (Array.isArray(p.images)) {
-      for (const img of p.images) {
-        if (images.length >= 4) break;
-        addImage(img);
+function getDiscountMap(p: HomeProductData, fallbackCurrency: string): Map<string, number> {
+  const map = new Map<string, number>();
+  if (Array.isArray(p.discountPrices)) {
+    for (const d of p.discountPrices) {
+      if (d && typeof d.currency === "string" && Number(d.amount) > 0) {
+        map.set(d.currency.toUpperCase(), Number(d.amount));
       }
     }
-    addImage(p.image);
+  }
+  if (map.size === 0 && p.discountPrice != null) {
+    const dp = Number(p.discountPrice);
+    if (dp > 0) map.set(fallbackCurrency.toUpperCase(), dp);
+  }
+  return map;
+}
+
+function getPrimaryPricing(p: HomeProductData) {
+  const entries = getPriceEntries(p);
+  const primary = entries.find((e) => e.currency === "ETB") ?? entries[0] ?? { amount: 0, currency: "ETB" };
+  const discountMap = getDiscountMap(p, primary.currency);
+  const disc = discountMap.get(primary.currency.toUpperCase());
+  const hasDiscount = disc != null && disc > 0 && disc < primary.amount;
+  const effectivePrice = hasDiscount ? disc : primary.amount;
+  const otherPrices = entries.filter((e) => e.currency !== primary.currency);
+  return { primary, effectivePrice, hasDiscount, otherPrices, discountMap };
+}
+
+function buildCategoryItem(cat: CategoryData, matchedProducts: HomeProductData[]): CategoryItem {
+  const seen = new Set<string>();
+  const images: string[] = [];
+  const pushImg = (raw?: string | null) => {
+    const url = resolveImage(raw);
+    if (url && !seen.has(url) && images.length < 4) {
+      seen.add(url);
+      images.push(url);
+    }
+  };
+
+  pushImg(cat.image);
+  (cat.images || []).forEach(pushImg);
+  for (const prod of matchedProducts) {
+    (prod.images || []).forEach(pushImg);
+    pushImg(prod.image);
+    if (images.length >= 4) break;
   }
 
-  // 3. Compute stats
-  const priceEntries = productsForCategory
-    .map((p) => effectivePrice(p))
-    .filter((e): e is { amount: number; currency: string } => e !== null);
+  const prices = matchedProducts
+    .map((p) => {
+      const { primary, effectivePrice } = getPrimaryPricing(p);
+      return primary.amount > 0 ? { amount: effectivePrice, currency: primary.currency } : null;
+    })
+    .filter((x): x is PriceEntry => Boolean(x));
 
-  const minEntry = priceEntries.length
-    ? priceEntries.reduce((a, b) => (b.amount < a.amount ? b : a))
-    : null;
-  const maxEntry = priceEntries.length
-    ? priceEntries.reduce((a, b) => (b.amount > a.amount ? b : a))
-    : null;
+  const minEntry = prices.length ? prices.reduce((a, b) => (b.amount < a.amount ? b : a)) : null;
+  const maxEntry = prices.length ? prices.reduce((a, b) => (b.amount > a.amount ? b : a)) : null;
 
-  const minPrice = minEntry ? minEntry.amount : null;
-  const maxPrice = maxEntry ? maxEntry.amount : null;
-  const priceCurrency = minEntry?.currency || maxEntry?.currency || "ETB";
-
-  // 4. Pad mosaic to exactly 4 cells
   const cells: (string | null)[] = [...images];
   while (cells.length < 4) cells.push(null);
 
+  const slug = (cat.slug || cat.id || cat.name).toString().toLowerCase();
   return {
+    id: cat.id || slug,
+    title: cat.name || "Untitled",
+    slug,
     images: cells.slice(0, 4),
-    productCount: cat._count?.products ?? productsForCategory.length,
-    minPrice,
-    maxPrice,
-    priceCurrency,
+    productCount: cat._count?.products ?? matchedProducts.length,
+    minPrice: minEntry?.amount ?? null,
+    maxPrice: maxEntry?.amount ?? null,
+    priceCurrency: minEntry?.currency || maxEntry?.currency || "ETB",
   };
 }
 
-// ============================================================
-// CategoryCard — 2×2 mosaic + stats footer
-// ============================================================
 function CategoryCard({
-  product,
+  category,
   productsLabel,
   fromLabel,
   priority = false,
 }: {
-  product: CategoryItem;
+  category: CategoryItem;
   productsLabel: string;
   fromLabel: string;
   priority?: boolean;
 }) {
-  const cells: (string | null)[] = [...product.images];
-  while (cells.length < 4) cells.push(null);
-
-  const hasPrices =
-    product.minPrice !== null && product.maxPrice !== null;
-
-  const priceText = !hasPrices
+  const hasRange = category.minPrice !== null && category.maxPrice !== null;
+  const priceText = !hasRange
     ? null
-    : product.minPrice === product.maxPrice
-    ? formatPrice(product.minPrice as number, product.priceCurrency)
-    : `${fromLabel} ${formatPrice(product.minPrice as number, product.priceCurrency)}`;
+    : category.minPrice === category.maxPrice
+    ? `${category.priceCurrency} ${category.minPrice!.toLocaleString()}`
+    : `${fromLabel} ${category.priceCurrency} ${category.minPrice!.toLocaleString()}`;
 
   return (
-    <a
-      href={`/shop?category=${encodeURIComponent(product.slug)}`}
+    <Link
+      href={`/shop?category=${encodeURIComponent(category.slug)}`}
       className="group relative flex w-full flex-col overflow-hidden rounded-[14px] border border-[#eee6d8] bg-white shadow-[0_2px_10px_rgba(58,42,30,0.06)] transition-all duration-300 hover:-translate-y-1 hover:shadow-[0_14px_32px_rgba(58,42,30,0.14)]"
     >
-      {/* 2×2 mosaic */}
       <div className="relative grid h-[220px] w-full grid-cols-2 grid-rows-2 gap-[2px] bg-[#eee6d8]">
-        {cells.map((src, i) => (
-          <div key={i} className="relative overflow-hidden bg-[#f5eee1]">
+        {category.images.map((src, idx) => (
+          <div key={idx} className="relative overflow-hidden bg-[#f5eee1]">
             {src ? (
               <Image
                 src={src}
-                alt={`${product.title} ${i + 1}`}
+                alt={`${category.title} ${idx + 1}`}
                 fill
                 sizes="(max-width: 640px) 25vw, 12vw"
                 className="object-cover transition-transform duration-500 ease-out group-hover:scale-[1.06]"
-                loading={priority && i === 0 ? "eager" : "lazy"}
-                fetchPriority={priority && i === 0 ? "high" : "auto"}
+                loading={priority && idx === 0 ? "eager" : "lazy"}
+                fetchPriority={priority && idx === 0 ? "high" : "auto"}
                 unoptimized
               />
             ) : (
               <div className="flex h-full w-full items-center justify-center bg-[#f5eee1] text-[10px] font-semibold tracking-wider text-[#b98a3e]/40">
-                {product.title.slice(0, 2).toUpperCase()}
+                {category.title.slice(0, 2).toUpperCase()}
               </div>
             )}
           </div>
         ))}
       </div>
 
-      {/* Footer with title, product count, price */}
       <div className="flex items-center justify-between gap-2 border-t border-[#f0e8d8] bg-[#faf6ee] px-3.5 py-2.5">
         <div className="min-w-0 flex-1">
-          <h3 className="truncate text-[12px] font-semibold leading-tight text-[#2a1f18]">
-            {product.title}
-          </h3>
-
+          <h3 className="truncate text-[12px] font-semibold leading-tight text-[#2a1f18]">{category.title}</h3>
           <div className="mt-0.5 flex items-center gap-1.5 text-[10px] text-[#7a6a58]">
-            {product.productCount > 0 && (
-              <span className="truncate">
-                {product.productCount} {productsLabel}
-              </span>
-            )}
-
-            {product.productCount > 0 && priceText && (
-              <span className="text-[#7a6a58]/40">·</span>
-            )}
-
-            {priceText && (
-              <span className="truncate font-semibold text-[#b98a3e]">
-                {priceText}
-              </span>
-            )}
-
-            {product.productCount === 0 && (
-              <span className="truncate">{product.slug}</span>
-            )}
+            {category.productCount > 0 && <span className="truncate">{category.productCount} {productsLabel}</span>}
+            {category.productCount > 0 && priceText && <span className="text-[#7a6a58]/40">·</span>}
+            {priceText && <span className="truncate font-semibold text-[#b98a3e]">{priceText}</span>}
+            {category.productCount === 0 && <span className="truncate">{category.slug}</span>}
           </div>
         </div>
-
         <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-[#2a2a2a] text-white shadow-md transition-all duration-300 group-hover:scale-110 group-hover:bg-[#e0a83c] group-hover:text-[#1a1410]">
           <ChevronRight size={14} strokeWidth={2.5} />
         </span>
       </div>
-    </a>
+    </Link>
   );
 }
 
-// ============================================================
-// ProductCards
-// ============================================================
-function ProductCards() {
+export default function HomeStorefront() {
   const { t } = useLanguage();
   const [categories, setCategories] = useState<CategoryItem[]>([]);
+  const [products, setProducts] = useState<HomeProductData[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [cartFeedback, setCartFeedback] = useState<{ productId: string; message: string; isError: boolean } | null>(null);
 
-  useEffect(() => {
-    let isMounted = true;
+ useEffect(() => {
+    let active = true;
 
-    const fetchData = async () => {
-      try {
-        setLoading(true);
+    Promise.all([
+      fetch(`${API_BASE_URL}/api/categories/public`, { cache: "no-store" }),
+      fetch(`${API_BASE_URL}/api/products/public?limit=200`, { cache: "no-store" }).catch(() => null),
+    ])
+      .then(async ([catRes, prodRes]) => {
+        if (!catRes.ok) throw new Error(`Categories API returned ${catRes.status}`);
+        const catPayload = await catRes.json();
+        const rawCats: CategoryData[] = Array.isArray(catPayload)
+          ? catPayload
+          : catPayload?.categories || catPayload?.data || [];
+
+        let rawProducts: HomeProductData[] = [];
+        if (prodRes?.ok) {
+          const prodPayload = await prodRes.json().catch(() => null);
+          rawProducts = Array.isArray(prodPayload)
+            ? prodPayload
+            : prodPayload?.products || prodPayload?.data || [];
+        }
+        if (!active) return;
+
         setError(null);
+        setProducts(rawProducts.slice(0, 24));
+        const topCats = rawCats.filter((c) => !c.parentId);
+        const list = topCats.length > 0 ? topCats : rawCats;
 
-        const [catRes, prodRes] = await Promise.all([
-          fetch(`${API_BASE_URL}/api/categories/public`, {
-            cache: "no-store",
-          }),
-          fetch(`${API_BASE_URL}/api/products/public?limit=200`, {
-            cache: "no-store",
-          }).catch(() => null),
-        ]);
-
-        if (!catRes.ok) {
-          throw new Error(`Categories API returned ${catRes.status}`);
-        }
-
-        const catData = await catRes.json();
-        const rawCats: CategoryData[] = Array.isArray(catData)
-          ? catData
-          : catData?.categories || catData?.data || [];
-
-        let rawProducts: ProductData[] = [];
-        if (prodRes && prodRes.ok) {
-          try {
-            const prodData = await prodRes.json();
-            rawProducts = Array.isArray(prodData)
-              ? prodData
-              : prodData?.products || prodData?.data || [];
-          } catch {
-            rawProducts = [];
-          }
-        }
-
-        if (!isMounted) return;
-
-        if (!Array.isArray(rawCats) || rawCats.length === 0) {
-          setCategories([]);
-          return;
-        }
-
-        const top = rawCats.filter((c) => !c.parentId);
-        const toMap = top.length > 0 ? top : rawCats;
-
-        const mapped: CategoryItem[] = toMap.map((cat, i) => {
-          const slug = (cat.slug || cat.id || `category-${i}`)
-            .toString()
-            .toLowerCase();
-
-          const productsForCategory = rawProducts.filter((p) => {
-            const catObj =
-              typeof p.category === "object" && p.category ? p.category : null;
+        const mapped = list.map((cat) => {
+          const targets = [cat.id, cat.slug, cat.name]
+            .map((v) => (v ?? "").toString().trim().toLowerCase())
+            .filter(Boolean);
+          const matched = rawProducts.filter((p) => {
+            const cObj = typeof p.category === "object" && p.category ? p.category : null;
             const candidates = [
               p.categoryId,
-              catObj?.id,
-              catObj?.slug,
-              catObj?.name,
+              cObj?.id,
+              cObj?.slug,
+              cObj?.name,
               typeof p.category === "string" ? p.category : null,
             ]
               .map((v) => (v ?? "").toString().trim().toLowerCase())
               .filter(Boolean);
-            const targets = [cat.id, cat.slug, cat.name]
-              .map((v) => (v ?? "").toString().trim().toLowerCase())
-              .filter(Boolean);
             return candidates.some((c) => targets.includes(c));
           });
-
-          const { images, productCount, minPrice, maxPrice, priceCurrency } =
-            buildCategoryData(cat, productsForCategory);
-
-          return {
-            id: cat.id || slug,
-            title: cat.name || "Untitled",
-            slug,
-            images,
-            productCount,
-            minPrice,
-            maxPrice,
-            priceCurrency,
-          };
+          return buildCategoryItem(cat, matched);
         });
-
         setCategories(mapped);
-      } catch (err) {
-        console.error("Failed to fetch categories:", err);
-        if (isMounted) {
-          setCategories([]);
-          setError(
-            err instanceof Error ? err.message : "Failed to load categories"
-          );
-        }
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-
-    fetchData();
+      })
+      .catch((err) => {
+        if (!active) return;
+        setError(err instanceof Error ? err.message : "Failed to load storefront data");
+      })
+      .finally(() => {
+        if (active) setLoading(false);
+      });
 
     return () => {
-      isMounted = false;
+      active = false;
     };
   }, []);
+  const addToCart = (product: HomeProductData, image: string | null) => {
+    try {
+      const cart = readCart();
+      const existing = cart.find((item) => item.productId === product.id);
+      const nextQty = (existing?.quantity || 0) + 1;
+      const stock = Number(product.stock) || 0;
+      if (nextQty > stock) {
+        return setCartFeedback({ productId: product.id, message: t("checkout.stock_limit", "There is not enough stock for another item."), isError: true });
+      }
+      const { effectivePrice } = getPrimaryPricing(product);
+      const slug = product.slug || product.id;
+      const nextItem = { productId: product.id, name: product.name, slug, image, unitPrice: effectivePrice, quantity: nextQty };
+      writeCart(existing ? cart.map((item) => (item.productId === product.id ? nextItem : item)) : [...cart, nextItem]);
+      setCartFeedback({ productId: product.id, message: t("checkout.added_to_cart", "Added to your order."), isError: false });
+    } catch {
+      setCartFeedback({ productId: product.id, message: t("checkout.cart_save_error", "Could not save your order. Please try again."), isError: true });
+    }
+  };
 
   const productsLabel = t("home.products_label", "products");
   const fromLabel = t("home.from_label", "From");
 
-  if (loading) {
-    return (
-      <section
-        id="products"
-        className="w-full scroll-mt-20 overflow-hidden bg-[#fbf8f1] px-4 py-12 sm:px-6 lg:px-10"
-      >
+  return (
+    <>
+      <section id="products" className="w-full scroll-mt-20 overflow-hidden bg-[#fbf8f1] px-4 py-12 sm:px-6 lg:px-10">
         <div className="w-full">
           <div className="mb-6">
-            <h2 className="text-[20px] font-semibold leading-tight text-[#2a1f18]">
+            <h2 className="text-[20px] font-semibold leading-tight text-[#2a1f18] sm:text-[22px]">
               {t("home.featured_title", "Featured Categories")}
             </h2>
             <p className="mt-1 text-[12px] text-[#7a6a58]">
               {t("home.featured_subtitle", "Explore top categories")}
             </p>
           </div>
-          <div className="flex w-full snap-x snap-mandatory gap-4 overflow-x-auto pb-4">
-            {[1, 2, 3, 4, 5].map((i) => (
-              <div
-                key={i}
-                className="h-[270px] w-[220px] shrink-0 animate-pulse snap-start rounded-[14px] bg-gray-200 sm:w-[250px]"
-              />
-            ))}
-          </div>
-        </div>
-      </section>
-    );
-  }
 
-  if (error || categories.length === 0) {
-    return (
-      <section
-        id="products"
-        className="w-full scroll-mt-20 overflow-hidden bg-[#fbf8f1] px-4 py-12 sm:px-6 lg:px-10"
-      >
-        <div className="w-full text-center">
-          <h2 className="text-[20px] font-semibold leading-tight text-[#2a1f18]">
-            {t("home.featured_title", "Featured Categories")}
-          </h2>
-          <p className="mt-2 text-[13px] text-[#7a6a58]">
-            {t(
-              "home.no_categories",
-              "No categories available yet. Please check back soon."
-            )}
-          </p>
-        </div>
-      </section>
-    );
-  }
-
-  return (
-    <section
-      id="products"
-      className="w-full scroll-mt-20 overflow-hidden bg-[#fbf8f1] px-4 py-12 sm:px-6 lg:px-10"
-    >
-      <div className="w-full">
-        <div className="mb-6">
-          <h2 className="text-[20px] font-semibold leading-tight text-[#2a1f18] sm:text-[22px]">
-            {t("home.featured_title", "Featured Categories")}
-          </h2>
-          <p className="mt-1 text-[12px] text-[#7a6a58]">
-            {t("home.featured_subtitle", "Explore top categories")}
-          </p>
-        </div>
-
-        <nav
-          aria-label={t("home.featured_title", "Featured Categories")}
-          className="mb-5 flex snap-x snap-mandatory gap-2 overflow-x-auto pb-2"
-        >
-          {categories.map((category) => (
-            <a
-              key={category.id}
-              href={`/shop?category=${encodeURIComponent(category.slug)}`}
-              className="flex min-h-10 min-w-[110px] shrink-0 snap-start items-center justify-center rounded-full border border-[#eee6d8] bg-white px-4 text-center text-xs font-semibold text-[#2a1f18] transition hover:border-[#F47822] hover:text-[#F47822]"
-            >
-              <span className="line-clamp-1">{category.title}</span>
-            </a>
-          ))}
-        </nav>
-
-        <div className="flex w-full snap-x snap-mandatory gap-4 overflow-x-auto pb-4">
-          {categories.map((product, index) => (
-            <div
-              key={product.id}
-              className="w-[220px] shrink-0 snap-start sm:w-[250px]"
-            >
-              <CategoryCard
-                product={product}
-                productsLabel={productsLabel}
-                fromLabel={fromLabel}
-                priority={index === 0}
-              />
+          {loading ? (
+            <div className="flex w-full gap-4 overflow-x-auto pb-4">
+              {[1, 2, 3, 4, 5].map((i) => (
+                <div key={i} className="h-[270px] w-[220px] shrink-0 animate-pulse rounded-[14px] bg-gray-200 sm:w-[250px]" />
+              ))}
             </div>
-          ))}
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function HomeProducts() {
-  const { t } = useLanguage();
-  const [products, setProducts] = useState<HomeProductData[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
-  const [cartFeedback, setCartFeedback] = useState<{
-    productId: string;
-    message: string;
-    isError: boolean;
-  } | null>(null);
-
-  const addToCart = (product: HomeProductData, image: string | null) => {
-    try {
-      const cart = readCart();
-      const existing = cart.find((item) => item.productId === product.id);
-      const nextQuantity = (existing?.quantity || 0) + 1;
-      const stock = Number(product.stock) || 0;
-
-      if (nextQuantity > stock) {
-        setCartFeedback({
-          productId: product.id,
-          message: t(
-            "checkout.stock_limit",
-            "There is not enough stock for another item."
-          ),
-          isError: true,
-        });
-        return;
-      }
-
-      const resolvedPrice = resolvePrimaryPrice(product);
-      const price = resolvedPrice?.amount ?? 0;
-      const currency = resolvedPrice?.currency ?? "ETB";
-      // Use per-currency discount for the primary currency
-      let unitPrice = price;
-      if (Array.isArray(product.discountPrices)) {
-        const primaryDiscount = product.discountPrices.find(
-          (d) => d.currency.toUpperCase() === currency.toUpperCase()
-        );
-        if (primaryDiscount && primaryDiscount.amount > 0 && primaryDiscount.amount < price) {
-          unitPrice = primaryDiscount.amount;
-        }
-      } else if (product.discountPrice != null) {
-        const dp = Number(product.discountPrice);
-        if (dp > 0 && dp < price) unitPrice = dp;
-      }
-      const slug = product.slug || product.id;
-
-      writeCart(
-        existing
-          ? cart.map((item) =>
-              item.productId === product.id
-                ? {
-                    ...item,
-                    name: product.name,
-                    slug,
-                    image,
-                    unitPrice,
-                    quantity: nextQuantity,
-                  }
-                : item
-            )
-          : [
-              ...cart,
-              {
-                productId: product.id,
-                name: product.name,
-                slug,
-                image,
-                unitPrice,
-                quantity: 1,
-              },
-            ]
-      );
-      setCartFeedback({
-        productId: product.id,
-        message: t("checkout.added_to_cart", "Added to your order."),
-        isError: false,
-      });
-    } catch (cartError) {
-      console.error("Could not save product to the cart:", cartError);
-      setCartFeedback({
-        productId: product.id,
-        message: t(
-          "checkout.cart_save_error",
-          "Could not save your order. Please try again."
-        ),
-        isError: true,
-      });
-    }
-  };
-
-  useEffect(() => {
-    let isMounted = true;
-
-    const fetchProducts = async () => {
-      try {
-        const response = await fetch(
-          `${API_BASE_URL}/api/products/public?limit=24`,
-          { cache: "no-store" }
-        );
-        if (!response.ok) {
-          throw new Error(`Products API returned ${response.status}`);
-        }
-
-        const payload: unknown = await response.json();
-        const rawProducts: unknown = Array.isArray(payload)
-          ? payload
-          : payload &&
-            typeof payload === "object" &&
-            "products" in payload
-          ? (payload as { products?: unknown }).products
-          : [];
-
-        if (!Array.isArray(rawProducts)) {
-          throw new Error("Products API returned an invalid response");
-        }
-
-        if (isMounted) {
-          setProducts(rawProducts as HomeProductData[]);
-        }
-      } catch (fetchError) {
-        console.error("Failed to fetch home page products:", fetchError);
-        if (isMounted) {
-          setError(
-            fetchError instanceof Error
-              ? fetchError.message
-              : "Failed to load products"
-          );
-        }
-      } finally {
-        if (isMounted) setLoading(false);
-      }
-    };
-
-    fetchProducts();
-    return () => {
-      isMounted = false;
-    };
-  }, []);
-
-  return (
-    <section
-      id="featured-products"
-      className="scroll-mt-20 bg-white px-4 py-12 sm:px-6 sm:py-14 lg:px-10"
-    >
-      <div className="mx-auto max-w-7xl">
-        <div className="mb-6 flex items-end justify-between gap-4">
-          <div>
-            <h2 className="text-[20px] font-semibold leading-tight text-[#2a1f18] sm:text-[22px]">
-              {t("home.products_heading_prefix", "Browse our products")}{" "}
-              <span className="text-[#F47822]">
-                {t("home.products_heading_accent", "you will love.")}
-              </span>
-            </h2>
-            <p className="mt-1 text-[12px] text-[#7a6a58]">
-              {t("home.products_subtitle", "Explore our latest products.")}
+          ) : error || categories.length === 0 ? (
+            <p className="py-6 text-center text-[13px] text-[#7a6a58]">
+              {t("home.no_categories", "No categories available yet. Please check back soon.")}
             </p>
-          </div>
-          <Link
-            href="/shop"
-            className="shrink-0 text-xs font-semibold text-[#F47822] hover:underline"
-          >
-            {t("nav.view_all", "View all products")} <ArrowRight size={14} className="ml-1 inline" />
-          </Link>
-        </div>
-
-        {loading ? (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-            {Array.from({ length: 12 }, (_, index) => (
-              <div
-                key={index}
-                className="animate-pulse overflow-hidden rounded-2xl border border-[#eee6d8] bg-white p-2.5"
-              >
-                <div className="aspect-square rounded-xl bg-gray-200" />
-                <div className="mt-3 h-4 w-3/4 rounded bg-gray-200" />
-                <div className="mt-2 h-4 w-1/2 rounded bg-gray-100" />
-              </div>
-            ))}
-          </div>
-        ) : error ? (
-          <p className="rounded-xl bg-[#faf6ee] px-4 py-6 text-center text-sm text-[#7a6a58]">
-            {t("home.products_load_error", "Products could not be loaded right now. Please try again later.")}
-          </p>
-        ) : products.length === 0 ? (
-          <p className="rounded-xl bg-[#faf6ee] px-4 py-6 text-center text-sm text-[#7a6a58]">
-            {t("home.no_products", "No products are available yet. Please check back soon.")}
-          </p>
-        ) : (
-          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
-            {products.map((product, index) => {
-              const priceEntries = resolvePriceEntries(product);
-              const resolvedPrice = resolvePrimaryPrice(product);
-              const price = resolvedPrice?.amount ?? 0;
-              const currency = resolvedPrice?.currency ?? "ETB";
-              const otherPrices = priceEntries.filter(
-                (entry) => entry.currency !== currency
-              );
-              // Build per-currency discount lookup
-              const discountMap = new Map<string, number>();
-              if (Array.isArray(product.discountPrices)) {
-                for (const d of product.discountPrices) {
-                  if (d && typeof d.currency === "string" && Number(d.amount) > 0) {
-                    discountMap.set(d.currency.toUpperCase(), Number(d.amount));
-                  }
-                }
-              }
-              if (discountMap.size === 0 && product.discountPrice != null) {
-                const dp = Number(product.discountPrice);
-                if (dp > 0) discountMap.set(currency.toUpperCase(), dp);
-              }
-              const primaryDiscount = discountMap.get(currency.toUpperCase());
-              const hasDiscount =
-                primaryDiscount != null &&
-                primaryDiscount > 0 &&
-                primaryDiscount < price;
-              const effectivePrice = hasDiscount ? primaryDiscount : price;
-              const image =
-                (Array.isArray(product.images)
-                  ? product.images.map(resolveImage).find(Boolean)
-                  : null) || resolveImage(product.image);
-              const category =
-                typeof product.category === "string"
-                  ? product.category
-                  : product.category?.name;
-
-              const isTempOut =
-                product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY";
-              const isAvailable = Number(product.stock) > 0 && !isTempOut;
-
-              return (
-                <div
-                  key={product.id}
-                  className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-[#eee6d8] bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg"
-                >
+          ) : (
+            <>
+              <nav aria-label={t("home.featured_title", "Featured Categories")} className="mb-5 flex gap-2 overflow-x-auto pb-2">
+                {categories.map((cat) => (
                   <Link
-                    href={`/shop/${encodeURIComponent(product.slug || product.id)}`}
-                    className="group flex flex-1 flex-col"
+                    key={cat.id}
+                    href={`/shop?category=${encodeURIComponent(cat.slug)}`}
+                    className="flex min-h-10 min-w-[110px] shrink-0 items-center justify-center rounded-full border border-[#eee6d8] bg-white px-4 text-center text-xs font-semibold text-[#2a1f18] transition hover:border-[#F47822] hover:text-[#F47822]"
                   >
-                    <div className="relative aspect-square overflow-hidden bg-[#faf6ee]">
-                      {image ? (
-                        <Image
-                          src={image}
-                          alt={product.name}
-                          fill
-                          sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
-                          className="object-cover transition-transform duration-300 group-hover:scale-105"
-                          loading={index < 2 ? "eager" : "lazy"}
-                          fetchPriority={index < 2 ? "high" : "auto"}
-                          unoptimized
-                        />
-                      ) : (
-                        <div className="flex h-full items-center justify-center text-sm font-semibold text-[#b98a3e]">
-                          {product.name.slice(0, 2).toUpperCase()}
-                        </div>
-                      )}
-                      {category && (
-                        <span className="absolute left-2 top-2 max-w-[calc(100%-1rem)] truncate rounded-full bg-white/95 px-2 py-1 text-[10px] font-semibold text-[#2a1f18]">
-                          {category}
-                        </span>
-                      )}
-                      {!isAvailable && (
-                        <div className="absolute inset-0 flex items-center justify-center bg-[#1a1410]/55 backdrop-blur-[1px]">
-                          <span className="rounded-full bg-white/95 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#1a1410] shadow-lg">
-                            {isTempOut
-                              ? t("shop.out_of_stock_temp", "Out of stock temporarily")
-                              : t("shop.out_of_stock", "Out of stock")}
+                    <span className="line-clamp-1">{cat.title}</span>
+                  </Link>
+                ))}
+              </nav>
+
+              <div className="flex w-full gap-4 overflow-x-auto pb-4">
+                {categories.map((cat, idx) => (
+                  <div key={cat.id} className="w-[220px] shrink-0 sm:w-[250px]">
+                    <CategoryCard category={cat} productsLabel={productsLabel} fromLabel={fromLabel} priority={idx === 0} />
+                  </div>
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      </section>
+
+      <section id="featured-products" className="scroll-mt-20 bg-white px-4 py-12 sm:px-6 sm:py-14 lg:px-10">
+        <div className="mx-auto max-w-7xl">
+          <div className="mb-6 flex items-end justify-between gap-4">
+            <div>
+              <h2 className="text-[20px] font-semibold leading-tight text-[#2a1f18] sm:text-[22px]">
+                {t("home.products_heading_prefix", "Browse our products")}{" "}
+                <span className="text-[#F47822]">{t("home.products_heading_accent", "you will love.")}</span>
+              </h2>
+              <p className="mt-1 text-[12px] text-[#7a6a58]">
+                {t("home.products_subtitle", "Explore our latest products.")}
+              </p>
+            </div>
+            <Link href="/shop" className="shrink-0 text-xs font-semibold text-[#F47822] hover:underline">
+              {t("nav.view_all", "View all products")} <ArrowRight size={14} className="ml-1 inline" />
+            </Link>
+          </div>
+
+          {loading ? (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+              {Array.from({ length: 12 }, (_, idx) => (
+                <div key={idx} className="animate-pulse overflow-hidden rounded-2xl border border-[#eee6d8] bg-white p-2.5">
+                  <div className="aspect-square rounded-xl bg-gray-200" />
+                  <div className="mt-3 h-4 w-3/4 rounded bg-gray-200" />
+                  <div className="mt-2 h-4 w-1/2 rounded bg-gray-100" />
+                </div>
+              ))}
+            </div>
+          ) : error ? (
+            <p className="rounded-xl bg-[#faf6ee] px-4 py-6 text-center text-sm text-[#7a6a58]">
+              {t("home.products_load_error", "Products could not be loaded right now. Please try again later.")}
+            </p>
+          ) : products.length === 0 ? (
+            <p className="rounded-xl bg-[#faf6ee] px-4 py-6 text-center text-sm text-[#7a6a58]">
+              {t("home.no_products", "No products are available yet. Please check back soon.")}
+            </p>
+          ) : (
+            <div className="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
+              {products.map((product, index) => {
+                const { primary, effectivePrice, hasDiscount, otherPrices, discountMap } = getPrimaryPricing(product);
+                const image = (Array.isArray(product.images) ? product.images.map(resolveImage).find(Boolean) : null) || resolveImage(product.image);
+                const categoryName = typeof product.category === "string" ? product.category : product.category?.name;
+                const isTempOut = product.availabilityStatus === "OUT_OF_STOCK_TEMPORARY";
+                const isAvailable = Number(product.stock) > 0 && !isTempOut;
+                const fb = cartFeedback?.productId === product.id ? cartFeedback : null;
+
+                return (
+                  <div key={product.id} className="flex min-w-0 flex-col overflow-hidden rounded-2xl border border-[#eee6d8] bg-white shadow-sm transition hover:-translate-y-1 hover:shadow-lg">
+                    <Link href={`/shop/${encodeURIComponent(product.slug || product.id)}`} className="group flex flex-1 flex-col">
+                      <div className="relative aspect-square overflow-hidden bg-[#faf6ee]">
+                        {image ? (
+                          <Image
+                            src={image}
+                            alt={product.name}
+                            fill
+                            sizes="(max-width: 640px) 50vw, (max-width: 1024px) 33vw, 16vw"
+                            className="object-cover transition-transform duration-300 group-hover:scale-105"
+                            loading={index < 2 ? "eager" : "lazy"}
+                            fetchPriority={index < 2 ? "high" : "auto"}
+                            unoptimized
+                          />
+                        ) : (
+                          <div className="flex h-full items-center justify-center text-sm font-semibold text-[#b98a3e]">
+                            {product.name.slice(0, 2).toUpperCase()}
+                          </div>
+                        )}
+                        {categoryName && (
+                          <span className="absolute left-2 top-2 max-w-[calc(100%-1rem)] truncate rounded-full bg-white/95 px-2 py-1 text-[10px] font-semibold text-[#2a1f18]">
+                            {categoryName}
                           </span>
-                        </div>
-                      )}
-                    </div>
-                    <div className="flex flex-1 flex-col p-3">
-                      <h3 className="line-clamp-2 min-h-10 text-center text-sm font-semibold text-[#2a1f18] group-hover:text-[#F47822]">
-                        {product.name}
-                      </h3>
-                      <p className="mt-1 line-clamp-2 text-center text-xs leading-relaxed text-[#7a6a58]">
-                        {product.description?.trim() ||
-                          t(
-                            "shop.default_card_desc",
-                            "Explore product details and discover useful finds for everyday life."
-                          )}
-                      </p>
-                      <div className="mt-2 flex flex-col items-center gap-1 text-center">
-                        <span className="text-sm font-bold text-[#2a1f18]">
-                          {currency} {price.toLocaleString()}
-                        </span>
-                        {hasDiscount && (
-                          <div className="flex items-center gap-1.5">
-                            <span className="rounded bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-700">
-                              {currency} {effectivePrice.toLocaleString()} disc
-                            </span>
-                            <span className="text-[10px] font-semibold text-red-600">
-                              Save {currency} {(price - effectivePrice).toLocaleString()}
+                        )}
+                        {!isAvailable && (
+                          <div className="absolute inset-0 flex items-center justify-center bg-[#1a1410]/55 backdrop-blur-[1px]">
+                            <span className="rounded-full bg-white/95 px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-[#1a1410] shadow-lg">
+                              {isTempOut ? t("shop.out_of_stock_temp", "Out of stock temporarily") : t("shop.out_of_stock", "Out of stock")}
                             </span>
                           </div>
                         )}
                       </div>
-                      {otherPrices.length > 0 && (
-                        <div className="mt-1.5 space-y-1">
-                          {otherPrices.map((entry) => {
-                            const entryDiscount = discountMap.get(entry.currency.toUpperCase());
-                            const hasEntryDiscount =
-                              entryDiscount != null &&
-                              entryDiscount > 0 &&
-                              entryDiscount < entry.amount;
-                            const entrySaving = hasEntryDiscount ? entry.amount - entryDiscount : 0;
-                            return (
-                              <div
-                                key={entry.currency}
-                                className="flex flex-col items-center gap-0.5 text-[10px] text-[#7a6a58]"
-                              >
-                                <div className="flex items-center gap-1">
-                                  <span className="font-semibold uppercase tracking-wide">
-                                    {entry.currency}
-                                  </span>
-                                  <span className="font-semibold">
-                                    {entry.currency} {entry.amount.toLocaleString()}
-                                  </span>
-                                </div>
-                                {hasEntryDiscount && (
-                                  <div className="flex items-center gap-1">
-                                    <span className="rounded bg-red-100 px-1 py-0.5 text-[8px] font-bold text-red-700">
-                                      {entry.currency} {entryDiscount.toLocaleString()} disc
-                                    </span>
-                                    <span className="font-semibold text-red-600">
-                                      Save {entry.currency} {entrySaving.toLocaleString()}
-                                    </span>
-                                  </div>
-                                )}
-                              </div>
-                            );
-                          })}
+
+                      <div className="flex flex-1 flex-col p-3">
+                        <h3 className="line-clamp-2 min-h-10 text-center text-sm font-semibold text-[#2a1f18] group-hover:text-[#F47822]">
+                          {product.name}
+                        </h3>
+                        <p className="mt-1 line-clamp-2 text-center text-xs leading-relaxed text-[#7a6a58]">
+                          {product.description?.trim() || t("shop.default_card_desc", "Explore product details and discover useful finds for everyday life.")}
+                        </p>
+
+                        <div className="mt-2 flex flex-col items-center gap-1 text-center">
+                          <span className="text-sm font-bold text-[#2a1f18]">
+                            {primary.currency} {primary.amount.toLocaleString()}
+                          </span>
+                          {hasDiscount && (
+                            <div className="flex items-center gap-1.5">
+                              <span className="rounded bg-red-100 px-1.5 py-0.5 text-[9px] font-bold text-red-700">
+                                {primary.currency} {effectivePrice.toLocaleString()} disc
+                              </span>
+                              <span className="text-[10px] font-semibold text-red-600">
+                                Save {primary.currency} {(primary.amount - effectivePrice).toLocaleString()}
+                              </span>
+                            </div>
+                          )}
                         </div>
-                      )}
-                    </div>
-                  </Link>
-                  <div className="px-3 pb-3">
-                    <ProductCountdown
-                      stock={Number(product.stock) || 0}
-                      availableAt={product.availableAt}
-                      restockDate={product.restockDate}
-                      saleEndDate={product.saleEndDate}
-                      variant="card"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => addToCart(product, image)}
-                      disabled={!isAvailable}
-                      className={`inline-flex h-10 w-full items-center justify-center gap-2 rounded-xl px-3 text-xs font-bold transition ${
-                        isAvailable
-                          ? "bg-[#20283a] text-white hover:bg-[#30384f]"
-                          : isTempOut
-                          ? "bg-amber-100 text-amber-800 cursor-not-allowed"
-                          : "bg-slate-200 text-slate-500 cursor-not-allowed"
-                      }`}
-                    >
-                      <ShoppingCart size={15} />
-                      {isAvailable
-                        ? t("checkout.add_to_order", "Add to cart")
-                        : isTempOut
-                        ? t("shop.out_of_stock_temp", "Out of stock temporarily")
-                        : t("shop.out_of_stock", "Out of stock")}
-                    </button>
-                    {cartFeedback?.productId === product.id && (
-                      <p
-                        role="status"
-                        className={`mt-2 text-center text-xs ${
-                          cartFeedback.isError
-                            ? "text-red-600"
-                            : "text-green-700"
+
+                        {otherPrices.length > 0 && (
+                          <div className="mt-1.5 space-y-1">
+                            {otherPrices.map((entry) => {
+                              const entryDisc = discountMap.get(entry.currency.toUpperCase());
+                              const hasEntryDisc = entryDisc != null && entryDisc > 0 && entryDisc < entry.amount;
+                              return (
+                                <div key={entry.currency} className="flex flex-col items-center gap-0.5 text-[10px] text-[#7a6a58]">
+                                  <div className="flex items-center gap-1">
+                                    <span className="font-semibold uppercase tracking-wide">{entry.currency}</span>
+                                    <span className="font-semibold">{entry.currency} {entry.amount.toLocaleString()}</span>
+                                  </div>
+                                  {hasEntryDisc && (
+                                    <span className="text-[9px] font-semibold text-red-600">
+                                      Save {entry.currency} {(entry.amount - entryDisc!).toLocaleString()}
+                                    </span>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+
+                        <ProductCountdown
+                          stock={Number(product.stock) || 0}
+                          availableAt={product.availableAt}
+                          restockDate={product.restockDate}
+                          saleEndDate={product.saleEndDate}
+                        />
+                      </div>
+                    </Link>
+
+                    <div className="border-t border-[#f0e8d8] p-2.5">
+                      <button
+                        type="button"
+                        disabled={!isAvailable}
+                        onClick={() => addToCart(product, image)}
+                        className={`flex h-9 w-full items-center justify-center gap-1.5 rounded-xl text-xs font-bold transition ${
+                          isAvailable ? "bg-[#20283a] text-white hover:bg-[#30384f]" : "cursor-not-allowed bg-slate-200 text-slate-500"
                         }`}
                       >
-                        {cartFeedback.message}
-                        {!cartFeedback.isError && (
-                          <>
-                            {" "}
-                            <Link
-                              href="/checkout"
-                              className="ml-1 inline-block rounded-lg bg-[#cf5427] px-3 py-1 text-xs font-bold text-white shadow-sm transition hover:bg-[#b84520]"
-                            >
-                              {t("checkout.go_to_checkout", "Checkout")}
-                            </Link>
-                          </>
-                        )}
-                      </p>
-                    )}
+                        <ShoppingCart size={13} />
+                        <span>{t("checkout.add", "Add")}</span>
+                      </button>
+                      {fb && (
+                        <p className={`mt-1.5 text-center text-[10px] font-semibold ${fb.isError ? "text-red-600" : "text-emerald-700"}`}>
+                          {fb.message}
+                        </p>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
-    </section>
-  );
-}
-
-// ============================================================
-// Eyebrow
-// ============================================================
-function Eyebrow({
-  children,
-  light = false,
-}: {
-  children: React.ReactNode;
-  light?: boolean;
-}) {
-  return (
-    <div
-      className={`mb-3 flex items-center gap-2 text-[10px] font-semibold tracking-[0.16em] ${
-        light ? "text-[#f0c872]" : "text-[#b98a3e]"
-      }`}
-    >
-      <span className="h-px w-5 bg-current" />
-      {children}
-    </div>
-  );
-}
-
-// ============================================================
-// HomePage
-// ============================================================
-export default function HomePage() {
-  const [showBackTop, setShowBackTop] = useState(false);
-  const [videoFailed, setVideoFailed] = useState(false);
-  const [heroVideoIndex, setHeroVideoIndex] = useState(0);
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const mounted = useMounted();
-  const { settings } = useSettings();
-  const { t } = useLanguage();
-
-  const DEFAULT_PHONE = "+251 993 132 122";
-  const DEFAULT_EMAIL = "info@alemayehplastic.com";
-
-  const contactPhone = mounted
-    ? settings?.contactPhone || DEFAULT_PHONE
-    : DEFAULT_PHONE;
-  const contactEmail = mounted
-    ? settings?.contactEmail || DEFAULT_EMAIL
-    : DEFAULT_EMAIL;
-  const cleanPhone = contactPhone.replace(/\s/g, "");
-
-  useEffect(() => {
-    const video = videoRef.current;
-    if (!video) return;
-
-    video.muted = true;
-    video.defaultMuted = true;
-
-    const tryPlay = () => {
-      const p = video.play();
-      if (p && typeof p.catch === "function") {
-        p.catch(() => {});
-      }
-    };
-
-    tryPlay();
-
-    const handleVisibility = () => {
-      if (document.visibilityState === "visible") tryPlay();
-      else video.pause();
-    };
-    document.addEventListener("visibilitychange", handleVisibility);
-    return () =>
-      document.removeEventListener("visibilitychange", handleVisibility);
-  }, [heroVideoIndex, videoFailed]);
-
-  useEffect(() => {
-    const handleScroll = () => {
-      setShowBackTop(window.scrollY > 500);
-    };
-    handleScroll();
-    window.addEventListener("scroll", handleScroll, { passive: true });
-    return () => window.removeEventListener("scroll", handleScroll);
-  }, []);
-
-  return (
-    <main className="home-theme overflow-hidden bg-[var(--cream)] text-[var(--ink)]">
-      {/* HERO */}
-      <section
-        id="home"
-        className="relative flex min-h-[100svh] items-center overflow-hidden bg-[#1a1410] text-white"
-      >
-        <div className="absolute inset-0 z-0">
-          {videoFailed ? (
-            <div
-              className="absolute inset-0 bg-cover bg-center"
-              style={{ backgroundImage: `url('${HERO_POSTER}')` }}
-            />
-          ) : (
-            <video
-              ref={videoRef}
-              key={HERO_VIDEOS[heroVideoIndex]}
-              src={HERO_VIDEOS[heroVideoIndex]}
-              poster={HERO_POSTER}
-              className="absolute inset-0 h-full w-full object-cover"
-              autoPlay
-              muted
-              playsInline
-              preload="metadata"
-              disablePictureInPicture
-              onEnded={() =>
-                setHeroVideoIndex((index) => (index + 1) % HERO_VIDEOS.length)
-              }
-              onError={() => {
-                if (heroVideoIndex < HERO_VIDEOS.length - 1) {
-                  setHeroVideoIndex((index) => index + 1);
-                } else {
-                  setVideoFailed(true);
-                }
-              }}
-            />
+                );
+              })}
+            </div>
           )}
         </div>
-
-        <div
-          className="absolute inset-0 z-[1]"
-          style={{
-            background:
-              "linear-gradient(90deg, rgba(26,20,16,.72) 0%, rgba(26,20,16,.48) 45%, rgba(26,20,16,.18) 100%)",
-          }}
-        />
-        <div className="absolute inset-0 z-[2] bg-[radial-gradient(circle_at_72%_48%,rgba(224,168,60,.18),transparent_28%)]" />
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-[2] h-[140px] bg-gradient-to-b from-black/50 to-transparent" />
-
-        <div className="relative z-10 mx-auto flex w-[min(1180px,calc(100%-48px))] justify-center pb-[72px] pt-[110px]">
-          <div className="flex max-w-[620px] flex-col items-center text-center animate-fade-in-up">
-            <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-[#EB6D3D]/40 bg-[#2a1f18]/70 px-3.5 py-1.5 text-[10px] font-semibold tracking-[0.16em] text-[#F47822] backdrop-blur-sm">
-              <span className="h-1.5 w-1.5 rounded-full bg-[#EB6D3D]" />
-              {t("home.hero_badge", "YOUR DIGITAL MARKETPLACE")}
-            </div>
-
-            <h1 className="mb-5 max-w-[760px] text-[clamp(34px,4.2vw,56px)] font-bold leading-[1.1] tracking-[-0.02em] text-[#faf6ee]">
-              {t("home.hero_title_prefix", "Dream More")}
-              <span className="mt-2 block text-[clamp(22px,3vw,38px)] font-semibold tracking-[-0.01em] text-[#F47822]">
-                {t(
-                  "home.hero_title_accent",
-                  "Affiliate Market & Article Platform"
-                )}
-              </span>
-            </h1>
-
-            <p className="mb-7 max-w-[540px] text-[14px] leading-[1.75] text-white/80">
-              {t(
-                "home.hero_subtitle",
-                "Discover products from a range of categories, compare listings, and shop with confidence—all in one convenient digital marketplace."
-              )}
-            </p>
-
-            <div className="flex items-center justify-center gap-4 max-sm:flex-col max-sm:items-center">
-              <Link
-                href="/shop"
-                className="flex min-h-[44px] items-center justify-center gap-2.5 rounded-xl border border-[#EB6D3D] bg-[#EB6D3D] px-6 text-[13px] font-semibold text-white shadow-[0_10px_26px_rgba(235,109,61,0.32)] transition hover:-translate-y-0.5 hover:bg-[#cf5427] hover:shadow-[0_14px_32px_rgba(235,109,61,0.42)]"
-              >
-                <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-white/40 bg-white/15 text-[9px]">
-                  ✓
-                </span>
-                {t("home.hero_btn_explore", "Shop Collection")}
-              </Link>
-
-              <Link
-                href="#contact"
-                className="flex min-h-[44px] items-center justify-center gap-2.5 rounded-xl border border-white/25 bg-white/5 px-6 text-[13px] font-semibold text-white backdrop-blur-sm transition hover:border-[#f0c872]/70 hover:bg-white/10"
-              >
-                <span className="inline-flex h-4 w-4 items-center justify-center rounded border border-white/30 text-[9px]">
-                  ✦
-                </span>
-                {t("home.hero_btn_story", "Custom Order")}
-              </Link>
-            </div>
-          </div>
-        </div>
-
-        <div className="absolute bottom-7 left-1/2 z-10 hidden -translate-x-1/2 items-center gap-2 text-[10px] tracking-[0.2em] text-white/70 md:flex">
-          <span className="inline-flex h-4 w-4 items-center justify-center rounded-full border border-white/25 text-[9px]">
-            ◌
-          </span>
-          {t("home.hero_scroll", "SCROLL TO EXPLORE")}
-          <ArrowDown size={14} className="ml-1" />
-        </div>
       </section>
-
-      {/* INTRO */}
-      <section className="bg-white py-12 sm:py-14">
-        <div className="mx-auto grid w-[min(1180px,calc(100%-48px))] grid-cols-[1.1fr_.9fr] items-center gap-10 max-lg:grid-cols-1 max-lg:gap-5">
-          <div>
-            <Eyebrow>
-              {t("home.intro_eyebrow", "A BETTER WAY TO DISCOVER PRODUCTS")}
-            </Eyebrow>
-
-            <h2 className="text-[clamp(20px,2.1vw,28px)] font-semibold leading-[1.25] tracking-[-0.015em] text-[#2a1f18]">
-              {t("home.intro_heading_prefix", "Good finds")}{" "}
-              <em className="font-semibold not-italic text-[#F47822]">
-                {t("home.intro_heading_accent", "made easy to find")}
-              </em>{" "}
-              {t("home.intro_heading_suffix", "for everyday life.")}
-            </h2>
-          </div>
-
-          <div>
-            <p className="mb-3 text-[13px] leading-[1.7] text-[var(--muted)]">
-              {t(
-                "home.intro_p1",
-                "Dream More Affiliate Market brings product discovery online, helping shoppers browse listings, compare details, and connect with sellers from one convenient place."
-              )}
-            </p>
-
-            <Link
-              href="/about"
-              className="inline-flex items-center gap-1.5 border-b border-[#EB6D3D] pb-0.5 text-[12px] font-semibold text-[#F47822]"
-            >
-              {t(
-                "home.intro_btn",
-                "Learn more about Dream More Affiliate Market"
-              )}
-              <ArrowRight size={13} />
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* FEATURED CATEGORIES */}
-      <ProductCards />
-
-      {/* FEATURED PRODUCTS */}
-      <HomeProducts />
-
-      {/* FACILITY SECTION */}
-      <section id="facility" className="scroll-mt-20 bg-white py-14 sm:py-16">
-        <div className="mx-auto grid w-[min(1180px,calc(100%-48px))] grid-cols-[.95fr_1.05fr] items-center gap-12 max-lg:grid-cols-1 max-lg:gap-8">
-          <div className="relative h-[380px] w-full max-lg:h-[320px]">
-            <div className="relative h-full w-full overflow-hidden rounded-2xl bg-white">
-              <Image
-                src="/banners/images.jpeg"
-                alt="A team working together"
-                fill
-                sizes="(max-width: 1024px) 100vw, 50vw"
-                className="object-cover"
-                priority={false}
-                unoptimized
-              />
-            </div>
-
-            <div className="absolute bottom-4 left-0 z-10 flex w-[180px] items-center gap-2 rounded-r-xl bg-[#F4753E] p-3 shadow-[0_16px_36px_rgba(58,42,30,.25)] max-sm:bottom-0 max-sm:w-[160px] max-sm:p-2.5">
-              <div className="grid">
-                <strong className="text-[13px] font-semibold leading-tight text-[#1a1410]">
-                  {t("home.facility_title", "Dream More")}
-                </strong>
-                <small className="mt-0.5 text-[8px] uppercase tracking-wider text-[#1a1410]/80">
-                  {t("home.facility_motto", "Right work at right time")}
-                </small>
-              </div>
-            </div>
-          </div>
-
-          <div>
-            <Eyebrow>{t("home.facility_eyebrow", "SHOP SMARTER ONLINE")}</Eyebrow>
-
-            <h2 className="text-[clamp(20px,2.1vw,28px)] font-semibold leading-[1.25] tracking-[-0.015em] text-[#2a1f18]">
-              {t("home.facility_heading_prefix", "Your marketplace")}{" "}
-              <em className="font-semibold not-italic text-[#F47822]">
-                {t("home.facility_heading_accent", "for everyday discoveries.")}
-              </em>
-            </h2>
-
-            <p className="mt-4 text-[15px] leading-[1.65] text-[#3a2a1e]">
-              {t("home.facility_lead_1", "At")}{" "}
-              <strong className="font-semibold">
-                {t("home.facility_title", "Dream More Affiliate Market")}
-              </strong>
-              {t(
-                "home.facility_lead_2",
-                " connects shoppers with product listings from across the marketplace."
-              )}
-            </p>
-
-            <p className="mt-3 max-w-[520px] text-[13px] leading-[1.75] text-[var(--muted)]">
-              {t(
-                "home.facility_body",
-                "Browse available products, review the details that matter, and reach out when you need help. Dream More makes discovering and shopping online simple."
-              )}
-            </p>
-
-            <Link
-              href="#contact"
-              className="mt-6 inline-flex items-center gap-4 rounded-lg border border-[#EB6D3D] px-4 py-2.5 text-[12px] font-semibold text-[#cf5427] transition hover:bg-[#EB6D3D] hover:text-[#20283a]"
-            >
-              {t("home.facility_btn", "Explore Products")}
-              <ArrowRight size={15} />
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* CONTACT CTA */}
-      <section
-        id="contact"
-        className="relative overflow-hidden bg-[#2a1f18] py-14 text-white sm:py-16"
-      >
-        <div className="pointer-events-none absolute -right-[250px] -top-[270px] h-[700px] w-[700px] rounded-full border border-[rgba(224,168,60,.1)]">
-          <div className="absolute inset-[70px] rounded-full border border-[rgba(224,168,60,.08)]" />
-        </div>
-
-        <div className="relative mx-auto max-w-[720px] px-6 text-center">
-          <h2 className="text-[clamp(22px,2.6vw,32px)] font-semibold leading-[1.2] tracking-[-0.015em] text-white">
-            {t("home.cta_heading_prefix", "Ready to discover")}{" "}
-            <em className="font-semibold not-italic text-[#F47822]">
-              {t("home.cta_heading_accent", "at scale?")}
-            </em>
-          </h2>
-
-          <p className="mx-auto mt-3 max-w-[480px] text-[13px] leading-[1.75] text-white/65">
-            {t(
-              "home.cta_subtitle",
-              "Explore marketplace listings or contact our team if you have a question. We’re here to help make your shopping experience easier."
-            )}
-          </p>
-
-          <div className="mt-6 flex justify-center gap-4 max-sm:flex-col max-sm:items-center">
-            <Link
-              href={`tel:${cleanPhone}`}
-              className="flex min-h-[44px] w-[150px] items-center justify-center gap-4 rounded-lg bg-white px-4 text-[12px] font-semibold text-[#2a1f18] transition hover:-translate-y-0.5"
-            >
-              {t("home.cta_btn_call", "Call Us")}
-              <ArrowRight size={15} />
-            </Link>
-
-            <Link
-              href={`mailto:${contactEmail}`}
-              className="flex min-h-[44px] w-[150px] items-center justify-center gap-4 rounded-lg border border-white/35 px-4 text-[12px] font-semibold text-white transition hover:bg-white/10"
-            >
-              {t("home.cta_btn_email", "Send an Email")}
-              <ArrowUpRight size={14} />
-            </Link>
-          </div>
-        </div>
-      </section>
-
-      {/* BACK TO TOP */}
-      <button
-        type="button"
-        aria-label={t("home.back_to_top", "Back to top")}
-        onClick={() => window.scrollTo({ top: 0, behavior: "smooth" })}
-        className={`fixed bottom-5 right-5 z-40 grid h-[40px] w-[40px] place-items-center rounded-full bg-[#e0a83c] text-[#1a1410] shadow-lg transition-all duration-300 ${
-          showBackTop
-            ? "visible translate-y-0 opacity-100"
-            : "invisible translate-y-4 opacity-100"
-        }`}
-      >
-        <ArrowUp size={17} />
-      </button>
-    </main>
+    </>
   );
 }

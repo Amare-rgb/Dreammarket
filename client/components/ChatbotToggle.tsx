@@ -1,21 +1,15 @@
-// components/ChatbotToggle.tsx
 "use client";
-
 import React, { useState, useCallback, FC } from "react";
 import Chatbot from "./Chatbot";
-
 interface ChatbotToggleProps {
   position?: "bottom-right" | "bottom-left" | "top-right" | "top-left";
   theme?: "light" | "dark" | "auto";
 }
-
 const ChatbotToggle: FC<ChatbotToggleProps> = ({
   position = "bottom-right",
   theme = "auto",
 }) => {
   const [isOpen, setIsOpen] = useState<boolean>(false);
-
-  // ============== TOGGLE CHAT ==============
   const toggleChat = useCallback((): void => {
     setIsOpen((prev) => !prev);
   }, []);
@@ -70,8 +64,6 @@ const ChatbotToggle: FC<ChatbotToggleProps> = ({
           </svg>
         )}
       </button>
-
-      {/* Chatbot Component */}
       <Chatbot
         isOpen={isOpen}
         onToggle={toggleChat}

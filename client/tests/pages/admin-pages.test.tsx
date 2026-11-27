@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from "vitest";
 import { renderToString } from "react-dom/server";
-
 vi.mock("next/navigation", async () => {
   const m = await import("../helpers/mocks");
   return m.nextNavigation();
@@ -25,7 +24,6 @@ vi.mock("react-hot-toast", async () => {
   const m = await import("../helpers/mocks");
   return m.toastModule();
 });
-
 import AdminDashboardPage from "../../app/admin/dashboard/page";
 import AdminProductsPage from "../../app/admin/products/page";
 import AdminProductNewPage from "../../app/admin/products/new/page";
@@ -43,12 +41,6 @@ import AdminArticleCategoriesPage from "../../app/admin/articles/categories/page
 import AdminArticleNewNotePage from "../../app/admin/articles/new/note/page";
 import AdminArticleNewVideoPage from "../../app/admin/articles/new/video/page";
 import AdminArticleEditPage from "../../app/admin/articles/[id]/edit/page";
-
-/**
- * Smoke tests for admin pages.
- * Admin auth is enforced by admin/layout.tsx (not the page), so pages
- * render directly. api/axios calls resolve empty data.
- */
 describe("admin pages", () => {
   it("dashboard renders", () => {
     expect(renderToString(<AdminDashboardPage />).length).toBeGreaterThan(0);
@@ -58,10 +50,8 @@ describe("admin pages", () => {
   });
   it("product create renders", () => {
     expect(renderToString(<AdminProductNewPage />).length).toBeGreaterThan(0);
-  });
+  })
   it("product detail renders", () => {
-    // Next.js 15 pages receive `params` as a promise unwrapped via React.use().
-    // A fulfilled thenable lets React.use() resolve synchronously in SSR.
     const params = {
       status: "fulfilled",
       value: { id: "prod-1" },
@@ -117,7 +107,6 @@ describe("admin pages", () => {
     expect(renderToString(<AdminArticleNewVideoPage />).length).toBeGreaterThan(0);
   });
   it("article edit renders", () => {
-    // Page is currently a stub returning undefined — assert no throw.
     expect(() => AdminArticleEditPage()).not.toThrow();
   });
 });

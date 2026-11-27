@@ -35,12 +35,6 @@ import ArticlesPage from "../../app/articles/page";
 import ArticlesVideosPage from "../../app/articles/videos/page";
 import ArticleDetailPage from "../../app/articles/[slug]/page";
 
-/**
- * Smoke tests for public-facing pages.
- * renderToString runs the component body once (effects do not run),
- * so these verify each page renders its initial/loading state
- * without throwing.
- */
 describe("public pages", () => {
   it("home page renders", () => {
     const html = renderToString(<HomePage />);

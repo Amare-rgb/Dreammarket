@@ -1,11 +1,4 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-
-/**
- * Tests for the NextAuth credentials provider and JWT/session callbacks
- * in app/lib/auth.ts. The module throws at import time without a valid
- * NEXTAUTH_SECRET, so the env var is set before the dynamic import.
- */
-
 process.env.NEXTAUTH_SECRET = "test-nextauth-secret-that-is-long-enough";
 process.env.NEXT_PUBLIC_API_URL = "http://localhost:5000";
 

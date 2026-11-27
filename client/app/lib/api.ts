@@ -1,15 +1,9 @@
-// lib/api.ts
 import axios, {
   AxiosInstance,
   AxiosError,
   InternalAxiosRequestConfig,
 } from 'axios';
-
-// ============================================================
-// Base URL (normalized)
-// ============================================================
-// ✅ FIXED: Removed all production/Railway fallbacks.
-// It will now use localhost by default, or your .env variable.
+import { hardNavigate } from '@/lib/navigation';
 const rawUrl =
   process.env.NEXT_PUBLIC_API_URL || 'http://localhost:5000';
 
@@ -17,8 +11,6 @@ export const API_URL = rawUrl
   .trim()
   .replace(/\/+$/, '')
   .replace(/\/api$/i, '');
-
-// ✅ Instance for the EXTERNAL backend (Express)
 export const api: AxiosInstance = axios.create({
   baseURL: API_URL,
   headers: { 'Content-Type': 'application/json' },
@@ -26,13 +18,11 @@ export const api: AxiosInstance = axios.create({
   timeout: 30000,
 });
 
-// ✅ Instance for NEXT.JS internal API routes (/api/...)
 const nextApi: AxiosInstance = axios.create({
   headers: { 'Content-Type': 'application/json' },
   withCredentials: true,
 });
 
-// ---------- Request interceptor (shared) ----------
 const attachAuth = (
   config: InternalAxiosRequestConfig
 ): InternalAxiosRequestConfig => {
@@ -71,8 +61,7 @@ const handleAuthError = (error: AxiosError) => {
     localStorage.removeItem('user');
     sessionStorage.removeItem('user');
 
-    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
-    window.location.href = '/auth/signin';
+    hardNavigate('/auth/signin');
   }
 
   if (error.response?.status === 404) {

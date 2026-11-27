@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { ArrowUpRight, BookOpen, LoaderCircle } from "lucide-react";
@@ -10,7 +9,6 @@ export interface SitePageLink {
   description?: string;
   url: string;
 }
-
 export interface SitePageData {
   slug: string;
   title: string;
@@ -19,12 +17,10 @@ export interface SitePageData {
   body?: string | null;
   links?: SitePageLink[];
 }
-
 export function SitePageContent({ slug }: { slug: string }) {
   const [page, setPage] = useState<SitePageData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-
   useEffect(() => {
     let cancelled = false;
     api

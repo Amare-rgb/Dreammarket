@@ -1,25 +1,12 @@
 // context/SettingsContext.tsx
 "use client";
 
-import React, {
-  createContext,
-  useContext,
-  useEffect,
-  useRef,
-  useState,
-  useCallback,
-} from "react";
+import React, { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 
-// ============================================================
-// API base — strip trailing slash
-// ============================================================
-const API_URL = (
-  process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000"
-).replace(/\/+$/, "");
+const API_URL = (process.env.NEXT_PUBLIC_API_URL || "http://localhost:5000").replace(/\/+$/, "");
+const CACHE_KEY = "site_settings";
+const LEGACY_THEMES = ["#e0a83c", "#f3733c", "#d85d32", "#eb6d3d"];
 
-// ============================================================
-// Types
-// ============================================================
 export interface SettingsData {
   id?: string;
   siteName: string;
@@ -43,9 +30,6 @@ export interface SettingsData {
   infoEmail: string;
 }
 
-// ============================================================
-// Dream More brand defaults
-// ============================================================
 export const defaultSettings: SettingsData = {
   siteName: "Dream More Affiliate Market",
   siteDescription: "Discover trusted products and great deals.",
@@ -67,37 +51,46 @@ export const defaultSettings: SettingsData = {
   infoEmail: "info@alemayehplastic.com",
 };
 
-function normalizeBrandSettings(raw: Partial<SettingsData>): SettingsData {
-  const settings = { ...defaultSettings, ...raw };
+export const getFullLogoUrl = (logoPath: unknown): string => {
+  if (typeof logoPath !== "string") return "";
+  const s = logoPath.trim();
+  if (!s) return "";
+  if (s.startsWith("data:") || s.startsWith("http://") || s.startsWith("https://")) return s;
+  return s.startsWith("res.cloudinary.com/") ? `https://${s}` : "";
+};
+
+function normalizeSettings(raw: Partial<SettingsData>): SettingsData {
+  const m = { ...defaultSettings, ...raw };
   return {
-    ...settings,
-    siteName:
-      settings.siteName === "Alemayehu Plastic Manufacturing"
-        ? defaultSettings.siteName
-        : settings.siteName,
-    siteDescription:
-      settings.siteDescription ===
-      "Quality plastic products manufactured in Ethiopia"
-        ? defaultSettings.siteDescription
-        : settings.siteDescription,
-    storeName:
-      settings.storeName === "Alemayehu Plastic Manufacturing"
-        ? defaultSettings.storeName
-        : settings.storeName,
-    themeColor:
-      ["#e0a83c", "#f3733c", "#d85d32", "#eb6d3d"].includes(
-        settings.themeColor?.toLowerCase()
-      )
-        ? defaultSettings.themeColor
-        : settings.themeColor,
-    logo: getFullLogoUrl(settings.logo),
+    ...m,
+    siteName: m.siteName === "Alemayehu Plastic Manufacturing" ? defaultSettings.siteName : m.siteName,
+    siteDescription: m.siteDescription === "Quality plastic products manufactured in Ethiopia" ? defaultSettings.siteDescription : m.siteDescription,
+    storeName: m.storeName === "Alemayehu Plastic Manufacturing" ? defaultSettings.storeName : m.storeName,
+    themeColor: LEGACY_THEMES.includes(m.themeColor?.toLowerCase()) ? defaultSettings.themeColor : m.themeColor,
+    emergencyPhone: m.emergencyPhone || defaultSettings.emergencyPhone,
+    supportEmail: m.supportEmail || defaultSettings.supportEmail,
+    infoEmail: m.infoEmail || defaultSettings.infoEmail,
+    logo: getFullLogoUrl(m.logo),
   };
 }
 
-// ============================================================
-// Context
-// ============================================================
-interface SettingsContextType {
+function readCachedSettings(): SettingsData | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    return raw ? normalizeSettings(JSON.parse(raw)) : null;
+  } catch {
+    return null;
+  }
+}
+
+function persistSettings(next: SettingsData, notify = true) {
+  if (typeof window === "undefined") return;
+  localStorage.setItem(CACHE_KEY, JSON.stringify(next));
+  if (notify) window.dispatchEvent(new Event("settings-change"));
+}
+
+interface SettingsContextValue {
   settings: SettingsData;
   loading: boolean;
   error: string | null;
@@ -106,7 +99,7 @@ interface SettingsContextType {
   updateSettings: (partial: Partial<SettingsData>) => void;
 }
 
-const SettingsContext = createContext<SettingsContextType>({
+const SettingsContext = createContext<SettingsContextValue>({
   settings: defaultSettings,
   loading: true,
   error: null,
@@ -115,269 +108,105 @@ const SettingsContext = createContext<SettingsContextType>({
   updateSettings: () => {},
 });
 
-// ============================================================
-// Logo URL helper — Cloudinary ONLY
-//   • Full https URL       → as-is (works for Cloudinary + any absolute URL)
-//   • res.cloudinary.com/  → prefixed with https://
-//   • Anything else        → '' (caller shows fallback)
-// ============================================================
-export const getFullLogoUrl = (logoPath: unknown): string => {
-  if (typeof logoPath !== "string") return "";
-  const s = logoPath.trim();
-  if (!s) return "";
-
-  if (s.startsWith("data:")) return s;
-  if (s.startsWith("http://") || s.startsWith("https://")) return s;
-  if (s.startsWith("res.cloudinary.com/")) return `https://${s}`;
-
-  // ❌ Legacy `/uploads/...` paths, bare filenames → no logo
-  return "";
-};
-
-// ============================================================
-// Provider
-// ============================================================
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
-  // Initialize from cache without a setState-in-effect
-  const [settings, setSettings] = useState<SettingsData>(() => {
-    if (typeof window === "undefined") return defaultSettings;
-
-    try {
-      const cached = localStorage.getItem("site_settings");
-      if (!cached) return defaultSettings;
-
-      const parsed = JSON.parse(cached);
-      return normalizeBrandSettings(parsed);
-    } catch (e) {
-      console.error("Error reading cached settings:", e);
-      return defaultSettings;
-    }
-  });
-
-  // Loading is only true if there's NO cache
-  const [loading, setLoading] = useState<boolean>(() => {
-    if (typeof window === "undefined") return true;
-    return !localStorage.getItem("site_settings");
-  });
-
+  const [settings, setSettings] = useState<SettingsData>(() => readCachedSettings() ?? defaultSettings);
+  const [loading, setLoading] = useState<boolean>(() => (typeof window === "undefined" ? true : !localStorage.getItem(CACHE_KEY)));
   const [error, setError] = useState<string | null>(null);
 
-  // Refs so `fetchSettings` never depends on state
-  const isMountedRef = useRef(true);
-  const hasFetchedRef = useRef(false);
+  const mountedRef = useRef(true);
   const abortRef = useRef<AbortController | null>(null);
 
-  // ============================================================
-  // fetchSettings — stable across renders (no state deps)
-  // ============================================================
   const fetchSettings = useCallback(async (forceRefresh = false) => {
-    if (!isMountedRef.current) return;
-
-    // Cancel any in-flight request
-    if (abortRef.current) {
-      abortRef.current.abort();
-    }
+    if (!mountedRef.current) return;
+    abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
-
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    const timer = setTimeout(() => controller.abort(), 8000);
 
     try {
-      const url = forceRefresh
-        ? `${API_URL}/api/admin/settings/public?_=${Date.now()}`
-        : `${API_URL}/api/admin/settings/public`;
-
-      const response = await fetch(url, {
-        method: "GET",
+      const query = forceRefresh ? `?_=${Date.now()}` : "";
+      const res = await fetch(`${API_URL}/api/admin/settings/public${query}`, {
         headers: { "Content-Type": "application/json" },
         cache: "no-store",
         signal: controller.signal,
       });
+      clearTimeout(timer);
+      if (!mountedRef.current) return;
 
-      clearTimeout(timeoutId);
-      if (!isMountedRef.current) return;
-
-      if (!response.ok) {
-        // Don't spam the console for 5xx — treat as "keep cached value"
-        if (response.status >= 500) {
-          console.warn(
-            `Settings API returned ${response.status}; keeping cached settings`
-          );
-        }
+      if (!res.ok) {
+        if (res.status >= 500) console.warn(`Settings API returned ${res.status}; keeping cache`);
         setError("Failed to fetch settings");
         return;
       }
 
-      const data = await response.json();
-      const settingsData = data.data || data;
-
-      const updatedSettings: SettingsData = normalizeBrandSettings({
-        ...settingsData,
-      });
-      updatedSettings.emergencyPhone =
-        settingsData.emergencyPhone || defaultSettings.emergencyPhone;
-      updatedSettings.supportEmail =
-        settingsData.supportEmail || defaultSettings.supportEmail;
-      updatedSettings.infoEmail =
-        settingsData.infoEmail || defaultSettings.infoEmail;
-
-      setSettings(updatedSettings);
+      const payload = await res.json();
+      const updated = normalizeSettings(payload?.data || payload || {});
+      setSettings(updated);
       setError(null);
-
-      if (typeof window !== "undefined") {
-        localStorage.setItem("site_settings", JSON.stringify(updatedSettings));
-        window.dispatchEvent(new Event("settings-change"));
-      }
+      persistSettings(updated);
     } catch (err) {
-      // Silently ignore abort errors (they're expected)
+      clearTimeout(timer);
       if (err instanceof Error && err.name === "AbortError") return;
-
-      // A network error here usually means: backend is down, CORS blocked,
-      // or NEXT_PUBLIC_API_URL points to the wrong host.
-      console.warn(
-        "Could not fetch public settings, using fallback/cache:",
-        err instanceof Error ? err.message : err
-      );
-      if (isMountedRef.current) {
-        setError("Failed to load settings");
-      }
+      console.warn("Could not fetch public settings:", err instanceof Error ? err.message : err);
+      if (mountedRef.current) setError("Failed to load settings");
     } finally {
-      if (isMountedRef.current) {
-        setLoading(false);
-      }
+      if (mountedRef.current) setLoading(false);
     }
   }, []);
 
-  // ============================================================
-  // forceUpdate — re-read from localStorage
-  // ============================================================
   const forceUpdate = useCallback(() => {
-    if (typeof window === "undefined") return;
-
-    try {
-      const cached = localStorage.getItem("site_settings");
-      if (cached) {
-        const parsed = JSON.parse(cached);
-        setSettings(normalizeBrandSettings(parsed));
-      } else {
-        setSettings({ ...defaultSettings });
-      }
-    } catch (e) {
-      console.error("Error reading cached settings:", e);
-    }
-
+    setSettings(readCachedSettings() ?? { ...defaultSettings });
     setLoading(false);
   }, []);
 
-  // ============================================================
-  // updateSettings — merge + persist + broadcast
-  // ============================================================
   const updateSettings = useCallback((partial: Partial<SettingsData>) => {
     setSettings((prev) => {
-      const merged: SettingsData = {
-        ...prev,
-        ...partial,
-        logo:
-          partial.logo !== undefined
-            ? getFullLogoUrl(partial.logo)
-            : prev.logo,
-      };
-
-      if (typeof window !== "undefined") {
-        localStorage.setItem("site_settings", JSON.stringify(merged));
-        window.dispatchEvent(new Event("settings-change"));
-      }
-
+      const merged = normalizeSettings({ ...prev, ...partial, logo: partial.logo !== undefined ? partial.logo : prev.logo });
+      persistSettings(merged);
       return merged;
     });
   }, []);
 
-  // ============================================================
-  // Mount: initial fetch + listeners
-  // ============================================================
   useEffect(() => {
-    isMountedRef.current = true;
+    mountedRef.current = true;
+    const initialFetch = setTimeout(() => void fetchSettings(), 0);
 
-    // Initial fetch (once)
-    if (!hasFetchedRef.current) {
-      hasFetchedRef.current = true;
-      void fetchSettings();
-    }
-
-    // Safety timeout — force loading=false after 4s even if the
-    // network is stuck, so the spinner never spins forever
-    const safetyTimer = setTimeout(() => {
-      if (isMountedRef.current) setLoading(false);
-    }, 4000);
-
-    const handleSettingsChange = () => {
-      if (isMountedRef.current) void fetchSettings(true);
-    };
-
-    const handleVisibilityChange = () => {
-      if (document.visibilityState === "visible" && isMountedRef.current) {
-        void fetchSettings();
-      }
-    };
-
-    const handleFocus = () => {
-      if (isMountedRef.current) void fetchSettings();
-    };
-
-    const handleStorageChange = (e: StorageEvent) => {
-      if (e.key === "site_settings" && e.newValue && isMountedRef.current) {
+    const safety = setTimeout(() => mountedRef.current && setLoading(false), 4000);
+    const interval = setInterval(() => mountedRef.current && void fetchSettings(), 5 * 60 * 1000);
+    const onChange = () => mountedRef.current && void fetchSettings(true);
+    const onVisible = () => document.visibilityState === "visible" && mountedRef.current && void fetchSettings();
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === CACHE_KEY && e.newValue && mountedRef.current) {
         try {
-          const parsed = JSON.parse(e.newValue);
-          setSettings(normalizeBrandSettings(parsed));
+          setSettings(normalizeSettings(JSON.parse(e.newValue)));
           setLoading(false);
-        } catch {
-          // ignore parse errors
-        }
+        } catch {}
       }
     };
 
-    window.addEventListener("settings-change", handleSettingsChange);
-    window.addEventListener("visibilitychange", handleVisibilityChange);
-    window.addEventListener("focus", handleFocus);
-    window.addEventListener("storage", handleStorageChange);
-
-    // Poll every 5 minutes
-    const interval = setInterval(() => {
-      if (isMountedRef.current) void fetchSettings();
-    }, 5 * 60 * 1000);
+    window.addEventListener("settings-change", onChange);
+    window.addEventListener("visibilitychange", onVisible);
+    window.addEventListener("focus", onVisible);
+    window.addEventListener("storage", onStorage);
 
     return () => {
-      isMountedRef.current = false;
-      clearTimeout(safetyTimer);
+      mountedRef.current = false;
+      clearTimeout(initialFetch);
+      clearTimeout(safety);
       clearInterval(interval);
-      if (abortRef.current) abortRef.current.abort();
-
-      window.removeEventListener("settings-change", handleSettingsChange);
-      window.removeEventListener("visibilitychange", handleVisibilityChange);
-      window.removeEventListener("focus", handleFocus);
-      window.removeEventListener("storage", handleStorageChange);
+      abortRef.current?.abort();
+      window.removeEventListener("settings-change", onChange);
+      window.removeEventListener("visibilitychange", onVisible);
+      window.removeEventListener("focus", onVisible);
+      window.removeEventListener("storage", onStorage);
     };
   }, [fetchSettings]);
 
-  return (
-    <SettingsContext.Provider
-      value={{
-        settings,
-        loading,
-        error,
-        refetch: () => fetchSettings(true),
-        forceUpdate,
-        updateSettings,
-      }}
-    >
-      {children}
-    </SettingsContext.Provider>
+  const value = useMemo<SettingsContextValue>(
+    () => ({ settings, loading, error, refetch: () => fetchSettings(true), forceUpdate, updateSettings }),
+    [settings, loading, error, fetchSettings, forceUpdate, updateSettings]
   );
-}
 
-// ============================================================
-// Hook
-// ============================================================
-export function useSettings() {
-  return useContext(SettingsContext);
+  return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 }
+export const useSettings = () => useContext(SettingsContext);

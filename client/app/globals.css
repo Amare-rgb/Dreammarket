@@ -1,44 +1,33 @@
 @import url('https://fonts.googleapis.com/css2?family=DM+Sans:ital,opsz,wght@0,9..40,100..1000;1,9..40,100..1000&family=Playfair+Display:ital,wght@0,400..900;1,400..900&display=swap');
-
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
 
 :root {
-  /* ============================================================
-     DREAM MORE — ORANGE / NAVY BRAND THEME
-     ============================================================ */
-
-  /* Brand navy */
   --green-950: #20283a;
   --green-900: #30384f;
   --green-800: #3c465f;
   --green-700: #58627a;
   --green-500: #F47822;
 
-  /* Brand orange */
   --lime: #F47822;
   --gold: #F47822;
   --gold-light: #f28a63;
   --gold-deep: #cf5427;
 
-  /* Creams */
   --cream: #faf6ee;
   --cream-dark: #f0e8d8;
   --white: #ffffff;
 
-  /* Text */
   --ink: #20283a;
   --muted: #667085;
   --line: rgba(32, 40, 58, .12);
 
-  /* Fonts */
   --serif: "Playfair Display", Georgia, serif;
   --sans: "DM Sans", Arial, sans-serif;
 
   --shadow: 0 25px 60px rgba(32, 40, 58, .15);
 
-  /* shadcn tokens */
   --background: 0 0% 98%;
   --foreground: 225 29% 17%;
   --card: 0 0% 100%;

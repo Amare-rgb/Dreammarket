@@ -1,5 +1,4 @@
 "use client";
-
 import React, {
   createContext,
   useCallback,
@@ -8,14 +7,11 @@ import React, {
   useMemo,
   useSyncExternalStore,
 } from "react";
-
 export type Theme = "light" | "dark";
-
 interface ThemeContextValue {
   theme: Theme;
   toggleTheme: () => void;
 }
-
 const STORAGE_KEY = "dreammore-theme";
 const ThemeContext = createContext<ThemeContextValue>({
   theme: "light",
@@ -30,7 +26,6 @@ function subscribe(callback: () => void) {
     window.removeEventListener("theme-change", callback);
   };
 }
-
 function getClientSnapshot(): Theme {
   try {
     return localStorage.getItem(STORAGE_KEY) === "dark" ? "dark" : "light";
@@ -38,11 +33,9 @@ function getClientSnapshot(): Theme {
     return "light";
   }
 }
-
 function getServerSnapshot(): Theme {
   return "light";
 }
-
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const theme = useSyncExternalStore(
     subscribe,

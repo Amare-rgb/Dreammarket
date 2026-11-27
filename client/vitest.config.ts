@@ -1,5 +1,7 @@
-import { defineConfig } from "vitest/config";
 import path from "path";
+import { defineConfig } from "vitest/config";
+
+const resolveDir = (...segments: string[]) => path.resolve(__dirname, ...segments);
 
 export default defineConfig({
   esbuild: {
@@ -11,11 +13,12 @@ export default defineConfig({
   },
   resolve: {
     alias: [
-      // Specific prefixes first — order matters
-      { find: "@/lib", replacement: path.resolve(__dirname, "app/lib") },
-      { find: "@/components", replacement: path.resolve(__dirname, "components") },
-      { find: "@/context", replacement: path.resolve(__dirname, "context") },
-      { find: "@", replacement: path.resolve(__dirname, ".") },
+      { find: "@/lib/navigation", replacement: resolveDir("lib/navigation.ts") },
+      { find: "@/lib/launchers", replacement: resolveDir("lib/launchers.ts") },
+      { find: "@/lib", replacement: resolveDir("app/lib") },
+      { find: "@/components", replacement: resolveDir("components") },
+      { find: "@/context", replacement: resolveDir("context") },
+      { find: "@", replacement: resolveDir(".") },
     ],
   },
 });

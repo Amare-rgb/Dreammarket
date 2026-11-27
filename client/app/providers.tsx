@@ -3,8 +3,10 @@
 
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
 } from "react";
 import { useRouter } from "next/navigation";
@@ -13,43 +15,67 @@ import { SettingsProvider, useSettings } from "@/context/SettingsContext";
 import { LanguageProvider, useLanguage } from "@/context/LanguageContext";
 import { ThemeProvider } from "@/context/ThemeContext";
 
-// ============================================================
-// API base — strip trailing slash
-// ============================================================
-const RAW_API_BASE =
+const API_BASE_URL = (
   process.env.NEXT_PUBLIC_API_URL ||
   process.env.NEXT_PUBLIC_API_BASE_URL ||
-  "http://localhost:5000";
-const API_BASE_URL = RAW_API_BASE.replace(/\/+$/, "");
+  "http://localhost:5000"
+).replace(/\/+$/, "");
 
-// ============================================================
-// Axios instance
-// ============================================================
-const api = axios.create({
+export const api = axios.create({
   baseURL: API_BASE_URL,
   headers: { "Content-Type": "application/json" },
 });
 
+const TOKEN_KEYS = ["token", "authToken"] as const;
+const AUTH_KEYS = ["token", "authToken", "user", "userRole"] as const;
+
+function getStoredToken(): string | null {
+  if (typeof window === "undefined") return null;
+  for (const k of TOKEN_KEYS) {
+    const val = localStorage.getItem(k) || sessionStorage.getItem(k);
+    if (val && val !== "undefined" && val !== "null") return val;
+  }
+  return null;
+}
+
+function getStoredUserRaw(): string | null {
+  if (typeof window === "undefined") return null;
+  return localStorage.getItem("user") || sessionStorage.getItem("user");
+}
+
+function clearStoredAuth(): void {
+  if (typeof window === "undefined") return;
+  for (const k of AUTH_KEYS) {
+    localStorage.removeItem(k);
+    sessionStorage.removeItem(k);
+  }
+}
+
+function persistSession(token?: string, user?: User | null): void {
+  if (typeof window === "undefined") return;
+  if (token) {
+    for (const k of TOKEN_KEYS) {
+      localStorage.setItem(k, token);
+      sessionStorage.setItem(k, token);
+    }
+  }
+  if (user) {
+    const serialized = JSON.stringify(user);
+    localStorage.setItem("user", serialized);
+    sessionStorage.setItem("user", serialized);
+    if (user.role) localStorage.setItem("userRole", user.role);
+  }
+}
+
 api.interceptors.request.use(
   (config: InternalAxiosRequestConfig) => {
-    if (typeof window !== "undefined") {
-      const token =
-        localStorage.getItem("token") ||
-        localStorage.getItem("authToken") ||
-        sessionStorage.getItem("token") ||
-        sessionStorage.getItem("authToken");
-      if (token) {
-        config.headers.Authorization = `Bearer ${token}`;
-      }
-    }
+    const token = getStoredToken();
+    if (token) config.headers.Authorization = `Bearer ${token}`;
     return config;
   },
   (error: AxiosError) => Promise.reject(error)
 );
 
-// ============================================================
-// Types
-// ============================================================
 export interface User {
   id: string;
   name: string;
@@ -70,9 +96,11 @@ export interface ProfileUpdatePayload {
   avatar?: string;
 }
 
+type AuthStatus = "loading" | "authenticated" | "unauthenticated";
+
 interface AuthContextType {
   user: User | null;
-  status: "loading" | "authenticated" | "unauthenticated";
+  status: AuthStatus;
   login: (email: string, password: string) => Promise<void>;
   logout: () => void;
   register: (
@@ -85,394 +113,240 @@ interface AuthContextType {
   uploadAvatar: (file: File) => Promise<User>;
 }
 
-interface LoginResponse {
-  token: string;
-  user: User;
+interface AuthResponse {
+  token?: string;
+  user?: User;
+  data?: User;
 }
 
-interface RegisterResponse {
-  token: string;
-  user: User;
+function buildUser(raw: Record<string, unknown>): User {
+  return {
+    id: String(raw.id),
+    name: String(raw.name || ""),
+    email: String(raw.email || ""),
+    role: String(raw.role || "USER"),
+    avatar: (raw.avatar as string | null | undefined) ?? null,
+    phone: (raw.phone as string | null | undefined) ?? null,
+    address: (raw.address as string | null | undefined) ?? null,
+    bio: (raw.bio as string | null | undefined) ?? null,
+    createdAt: raw.createdAt as string | undefined,
+  };
 }
 
-interface UserPayload {
-  id: string;
-  name: string;
-  email: string;
-  role: string;
-  avatar?: string | null;
-  phone?: string | null;
-  address?: string | null;
-  bio?: string | null;
-  createdAt?: string;
-}
-
-// ============================================================
-// Extract user from various response shapes
-// ============================================================
-const extractUserData = (payload: unknown): User | null => {
+function extractUserData(payload: unknown): User | null {
   if (!payload || typeof payload !== "object") return null;
-
   const data = payload as Record<string, unknown>;
 
-  const buildUser = (u: UserPayload): User => ({
-    id: u.id,
-    name: u.name || "",
-    email: u.email || "",
-    role: u.role || "USER",
-    avatar: u.avatar || null,
-    phone: u.phone || null,
-    address: u.address || null,
-    bio: u.bio || null,
-    createdAt: u.createdAt,
-  });
-
-  if (
-    data.data &&
-    typeof data.data === "object" &&
-    (data.data as Record<string, unknown>).id
-  ) {
-    return buildUser(data.data as UserPayload);
+  for (const key of ["data", "user"] as const) {
+    const nested = data[key];
+    if (nested && typeof nested === "object" && (nested as Record<string, unknown>).id) {
+      return buildUser(nested as Record<string, unknown>);
+    }
   }
-
-  if (
-    data.user &&
-    typeof data.user === "object" &&
-    (data.user as Record<string, unknown>).id
-  ) {
-    return buildUser(data.user as UserPayload);
-  }
-
-  if (data.id && typeof data.id === "string") {
-    return buildUser(data as unknown as UserPayload);
-  }
-
+  if (typeof data.id === "string") return buildUser(data);
   return null;
-};
+}
 
-// ============================================================
-// Auth Context
-// ============================================================
+function parseStoredUser(): User | null {
+  const raw = getStoredUserRaw();
+  if (!raw) return null;
+  try {
+    return extractUserData(JSON.parse(raw));
+  } catch (err) {
+    console.error("Error parsing stored user:", err);
+    return null;
+  }
+}
+
+function getApiErrorMessage(error: unknown, fallback: string): string {
+  if (axios.isAxiosError(error)) {
+    const data = error.response?.data as { error?: string; message?: string } | undefined;
+    return data?.error || data?.message || fallback;
+  }
+  return error instanceof Error ? error.message : fallback;
+}
+
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
-  const [status, setStatus] = useState<
-    "loading" | "authenticated" | "unauthenticated"
-  >("loading");
+  const [status, setStatus] = useState<AuthStatus>("loading");
   const router = useRouter();
 
-  // ── Initialize auth on mount ──────────────────────────────
+  const applySession = useCallback((nextUser: User | null, token?: string) => {
+    if (nextUser) {
+      persistSession(token, nextUser);
+      setUser(nextUser);
+      setStatus("authenticated");
+    } else {
+      clearStoredAuth();
+      setUser(null);
+      setStatus("unauthenticated");
+    }
+  }, []);
+
   useEffect(() => {
+    let active = true;
+
     const initAuth = async () => {
       try {
-        const token =
-          localStorage.getItem("token") ||
-          localStorage.getItem("authToken") ||
-          sessionStorage.getItem("token") ||
-          sessionStorage.getItem("authToken");
-
-        if (!token || token === "undefined" || token === "null") {
-          setStatus("unauthenticated");
-          setUser(null);
+        const token = getStoredToken();
+        if (!token) {
+          if (active) {
+            setUser(null);
+            setStatus("unauthenticated");
+          }
           return;
         }
 
-        // Try stored user first (fast path)
-        const storedUser =
-          localStorage.getItem("user") || sessionStorage.getItem("user");
-        if (storedUser) {
-          try {
-            const parsedUser = extractUserData(JSON.parse(storedUser));
-            if (parsedUser) {
-              setUser(parsedUser);
-              setStatus("authenticated");
-            }
-          } catch (e) {
-            console.error("Error parsing stored user:", e);
-          }
+        const cached = parseStoredUser();
+        if (cached && active) {
+          setUser(cached);
+          setStatus("authenticated");
         }
 
-        // Verify with the backend
         try {
           const response = await api.get("/api/auth/me");
-          const fetchedUser = extractUserData(response.data);
-          if (fetchedUser) {
-            setUser(fetchedUser);
-            setStatus("authenticated");
-            localStorage.setItem("user", JSON.stringify(fetchedUser));
-            if (fetchedUser.role) {
-              localStorage.setItem("userRole", fetchedUser.role);
-            }
+          const fetched = extractUserData(response.data);
+          if (fetched && active) {
+            applySession(fetched);
           }
         } catch (err) {
+          if (!active) return;
           if (axios.isAxiosError(err) && err.response?.status === 401) {
-            // Token invalid — clear everything
-            localStorage.removeItem("token");
-            localStorage.removeItem("authToken");
-            localStorage.removeItem("user");
-            localStorage.removeItem("userRole");
-            sessionStorage.removeItem("token");
-            sessionStorage.removeItem("authToken");
-            sessionStorage.removeItem("user");
-            sessionStorage.removeItem("userRole");
-            setUser(null);
-            setStatus("unauthenticated");
+            applySession(null);
           } else {
-            // Network error — trust local data
-            const localUser =
-              localStorage.getItem("user") || sessionStorage.getItem("user");
-            if (localUser) {
-              try {
-                const parsed = extractUserData(JSON.parse(localUser));
-                if (parsed) {
-                  setUser(parsed);
-                  setStatus("authenticated");
-                } else {
-                  setStatus("unauthenticated");
-                }
-              } catch {
-                setStatus("unauthenticated");
-              }
-            } else {
-              setStatus("unauthenticated");
-            }
+            const fallbackUser = parseStoredUser();
+            setUser(fallbackUser);
+            setStatus(fallbackUser ? "authenticated" : "unauthenticated");
           }
         }
-      } catch (error) {
-        console.error("Auth initialization error:", error);
-        setStatus("unauthenticated");
+      } catch (err) {
+        console.error("Auth initialization error:", err);
+        if (active) setStatus("unauthenticated");
       }
     };
 
     initAuth();
 
-    const handleAuthChange = () => {
-      initAuth();
-    };
-
-    window.addEventListener("storage", handleAuthChange);
-    window.addEventListener("auth-change", handleAuthChange);
-
+    window.addEventListener("storage", initAuth);
+    window.addEventListener("auth-change", initAuth);
     return () => {
-      window.removeEventListener("storage", handleAuthChange);
-      window.removeEventListener("auth-change", handleAuthChange);
+      active = false;
+      window.removeEventListener("storage", initAuth);
+      window.removeEventListener("auth-change", initAuth);
     };
-  }, []);
+  }, [applySession]);
 
-  // ── Login ─────────────────────────────────────────────────
-  const login = async (email: string, password: string): Promise<void> => {
-    try {
-      const response = await api.post<LoginResponse>("/api/auth/login", {
-        email,
-        password,
-      });
-
-      const token = response.data.token;
-      const userData = extractUserData(response.data);
-
-      if (token) {
-        localStorage.setItem("token", token);
-        localStorage.setItem("authToken", token);
-        sessionStorage.setItem("token", token);
-        sessionStorage.setItem("authToken", token);
-      }
-
-      if (userData) {
-        localStorage.setItem("user", JSON.stringify(userData));
-        sessionStorage.setItem("user", JSON.stringify(userData));
-        if (userData.role) {
-          localStorage.setItem("userRole", userData.role);
+  const authenticate = useCallback(
+    async (
+      endpoint: "/api/auth/login" | "/api/auth/register",
+      body: Record<string, unknown>,
+      fallbackError: string,
+      userRedirect: string
+    ): Promise<void> => {
+      try {
+        const response = await api.post<AuthResponse>(endpoint, body);
+        const userData = extractUserData(response.data);
+        if (response.data?.token) {
+          persistSession(response.data.token, userData);
+        } else if (userData) {
+          persistSession(undefined, userData);
         }
         setUser(userData);
+        setStatus("authenticated");
+
+        const role = userData?.role?.toUpperCase();
+        router.push(role === "ADMIN" ? "/admin/dashboard" : userRedirect);
+      } catch (error) {
+        throw new Error(getApiErrorMessage(error, fallbackError));
       }
+    },
+    [router]
+  );
 
-      setStatus("authenticated");
+  const login = useCallback(
+    (email: string, password: string) =>
+      authenticate("/api/auth/login", { email, password }, "Login failed", "/shop"),
+    [authenticate]
+  );
 
-      const userRole = userData?.role?.toUpperCase();
-      if (userRole === "ADMIN") {
-        router.push("/admin/dashboard");
-      } else {
-        router.push("/shop");
-      }
-    } catch (error: unknown) {
-      const err = error as AxiosError<{ error: string }>;
-      throw new Error(err.response?.data?.error || "Login failed");
-    }
-  };
+  const register = useCallback(
+    (name: string, email: string, password: string, role = "USER") =>
+      authenticate(
+        "/api/auth/register",
+        { name, email, password, role },
+        "Registration failed",
+        "/"
+      ),
+    [authenticate]
+  );
 
-  // ── Logout ────────────────────────────────────────────────
-  const logout = (): void => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("authToken");
-    localStorage.removeItem("user");
-    localStorage.removeItem("userRole");
-
-    sessionStorage.removeItem("token");
-    sessionStorage.removeItem("authToken");
-    sessionStorage.removeItem("user");
-    sessionStorage.removeItem("userRole");
-
+  const logout = useCallback(() => {
+    clearStoredAuth();
     setUser(null);
     setStatus("unauthenticated");
-  };
+  }, []);
 
-  // ── Register ──────────────────────────────────────────────
-  const register = async (
-    name: string,
-    email: string,
-    password: string,
-    role: string = "USER"
-  ): Promise<void> => {
-    try {
-      const response = await api.post<RegisterResponse>("/api/auth/register", {
-        name,
-        email,
-        password,
-        role,
-      });
+  const updateProfile = useCallback(
+    async (payload: ProfileUpdatePayload): Promise<User> => {
+      try {
+        const response = await api.patch("/api/auth/profile", payload);
+        const updated =
+          extractUserData(response.data) || (user ? { ...user, ...payload } : null);
+        if (!updated) throw new Error("Failed to parse updated user");
 
-      const token = response.data.token;
-      const userData = extractUserData(response.data);
-
-      if (token) {
-        localStorage.setItem("token", token);
-        localStorage.setItem("authToken", token);
-        sessionStorage.setItem("token", token);
-        sessionStorage.setItem("authToken", token);
-      }
-
-      if (userData) {
-        localStorage.setItem("user", JSON.stringify(userData));
-        sessionStorage.setItem("user", JSON.stringify(userData));
-        if (userData.role) {
-          localStorage.setItem("userRole", userData.role);
-        }
-        setUser(userData);
-      }
-
-      setStatus("authenticated");
-
-      const userRole = userData?.role?.toUpperCase();
-      if (userRole === "ADMIN") {
-        router.push("/admin/dashboard");
-      } else {
-        router.push("/");
-      }
-    } catch (error: unknown) {
-      const err = error as AxiosError<{ error: string }>;
-      throw new Error(err.response?.data?.error || "Registration failed");
-    }
-  };
-
-  // ── Update profile ────────────────────────────────────────
-  const updateProfile = async (
-    payload: ProfileUpdatePayload
-  ): Promise<User> => {
-    try {
-      // Uses the shared Express route: PATCH /api/auth/profile
-      const response = await api.patch("/api/auth/profile", payload);
-
-      const updated =
-        extractUserData(response.data) ||
-        (user ? { ...user, ...payload } : null);
-      if (!updated) throw new Error("Failed to parse updated user");
-
-      setUser(updated);
-      localStorage.setItem("user", JSON.stringify(updated));
-      sessionStorage.setItem("user", JSON.stringify(updated));
-      if (updated.role) {
-        localStorage.setItem("userRole", updated.role);
-      }
-
-      if (typeof window !== "undefined") {
+        applySession(updated);
         window.dispatchEvent(new Event("auth-change"));
+        return updated;
+      } catch (error) {
+        throw new Error(getApiErrorMessage(error, "Failed to update profile"));
       }
+    },
+    [user, applySession]
+  );
 
-      return updated;
-    } catch (error: unknown) {
-      const err = error as AxiosError<{ error?: string; message?: string }>;
-      throw new Error(
-        err.response?.data?.error ||
-          err.response?.data?.message ||
-          "Failed to update profile"
-      );
-    }
-  };
+  const uploadAvatar = useCallback(
+    async (file: File): Promise<User> => {
+      try {
+        const formData = new FormData();
+        formData.append("avatar", file);
+        const uploadRes = await api.post("/api/upload/avatar", formData, {
+          timeout: 120000,
+        });
 
-  // ── Upload avatar ─────────────────────────────────────────
-  const uploadAvatar = async (file: File): Promise<User> => {
-    try {
-      const formData = new FormData();
-      // Field name matches backend avatar route: "avatar"
-      formData.append("avatar", file);
+        const url: string | undefined =
+          uploadRes.data?.url ||
+          uploadRes.data?.secure_url ||
+          uploadRes.data?.data?.url;
+        if (!url) throw new Error("Upload succeeded but no URL returned");
 
-      // ✅ Do NOT set Content-Type manually — axios sets
-      //    multipart/form-data with the correct boundary.
-      // ✅ Endpoint: /api/upload/avatar → Cloudinary avatars folder
-      const uploadRes = await api.post("/api/upload/avatar", formData, {
-        timeout: 120000,
-      });
-
-      const url: string | undefined =
-        uploadRes.data?.url ||
-        uploadRes.data?.secure_url ||
-        uploadRes.data?.data?.url;
-
-      if (!url) {
-        throw new Error("Upload succeeded but no URL returned");
+        return await updateProfile({ avatar: url });
+      } catch (error) {
+        throw new Error(getApiErrorMessage(error, "Failed to upload avatar"));
       }
+    },
+    [updateProfile]
+  );
 
-      // ✅ url is a full Cloudinary URL — save it as-is.
-      const updated = await updateProfile({ avatar: url });
-      return updated;
-    } catch (error: unknown) {
-      const err = error as AxiosError<{ error?: string; message?: string }>;
-      throw new Error(
-        err.response?.data?.error ||
-          err.response?.data?.message ||
-          "Failed to upload avatar"
-      );
-    }
-  };
-
-  const value: AuthContextType = {
-    user,
-    status,
-    login,
-    logout,
-    register,
-    updateProfile,
-    uploadAvatar,
-  };
+  const value = useMemo<AuthContextType>(
+    () => ({ user, status, login, logout, register, updateProfile, uploadAvatar }),
+    [user, status, login, logout, register, updateProfile, uploadAvatar]
+  );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
-// ============================================================
-// Hook
-// ============================================================
 export function useAuth(): AuthContextType {
   const context = useContext(AuthContext);
-  if (context === undefined) {
+  if (!context) {
     throw new Error("useAuth must be used within an AuthProvider");
   }
   return context;
 }
 
-// ============================================================
-// Re-export other providers
-// ============================================================
-export {
-  useSettings,
-  SettingsProvider,
-  useLanguage,
-  LanguageProvider,
-};
+export { useSettings, SettingsProvider, useLanguage, LanguageProvider };
 
-// ============================================================
-// Combined Providers wrapper
-// ============================================================
 export function Providers({ children }: { children: React.ReactNode }) {
   return (
     <ThemeProvider>

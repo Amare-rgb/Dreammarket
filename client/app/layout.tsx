@@ -1,4 +1,3 @@
-// app/layout.tsx
 import type { Metadata, Viewport } from "next";
 import { Toaster } from "react-hot-toast";
 import { Navbar } from "@/components/layout/Navbar";
@@ -8,11 +7,6 @@ import ChatbotToggle from "@/components/ChatbotToggle";
 import InstallPrompt from "@/components/InstallPrompt";
 import "./globals.css";
 
-// Using system fonts to avoid Google Fonts SSL issues during build
-
-// ============================================================
-// Site metadata
-// ============================================================
 export const metadata: Metadata = {
   title: {
     default: "Dream More Affiliate Market",
@@ -41,17 +35,14 @@ export const metadata: Metadata = {
   },
 };
 
-// ============================================================
-// Viewport — controls the browser chrome / status bar theme
-// ============================================================
 export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   maximumScale: 5,
   themeColor: [
-    // Light mode browser UI
+  
     { media: "(prefers-color-scheme: light)", color: "#F47822" },
-    // Dark mode browser UI
+   
     { media: "(prefers-color-scheme: dark)", color: "#20283a" },
   ],
 };
@@ -72,15 +63,11 @@ export default function RootLayout({
         style={{ fontFamily: "system-ui, -apple-system, sans-serif" }}
       >
         <Providers>
-          {/* Navbar is fixed + transparent on /, /about, /shop, /contact
-              so do NOT add top padding around {children} */}
           <Navbar />
           {children}
           <Footer />
           <Toaster position="top-right" />
           <ChatbotToggle />
-
-          {/* PWA Install Prompt — appears bottom-right when installable */}
           <InstallPrompt />
         </Providers>
       </body>
