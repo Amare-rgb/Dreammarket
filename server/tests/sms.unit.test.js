@@ -1,14 +1,7 @@
-/**
- * Unit tests for lib/sms.js — AfroMessage SMS helper.
- * axios is mocked; no network calls are made.
- */
-
 const mockPost = jest.fn();
 jest.mock('axios', () => ({ post: mockPost }));
 
 const { normalizePhone, sendSms, sendOrderApprovalSms } = require('../lib/sms');
-
-// AfroMessage expects a JWT-style token: exactly 2 dots.
 const TEST_KEY = 'header.payload.signature';
 
 describe('lib/sms — normalizePhone', () => {

@@ -1,12 +1,4 @@
 'use strict';
-
-/**
- * Transcription providers:
- *  - openai    : OpenAI Whisper API (whisper-1, verbose_json w/ timestamps)
- *  - whispercpp: local whisper.cpp binary
- *  - none      : skip
- * Returns segments: [{ start, end, text }]
- */
 const fs = require('fs');
 const path = require('path');
 const { execFile } = require('child_process');
@@ -46,8 +38,6 @@ function runCli(cmd, args, timeoutMs = 30 * 60 * 1000) {
       (err, stdout, stderr) => (err ? reject(err) : resolve(stdout || stderr || '')));
   });
 }
-
-/** whisper.cpp outputs .srt next to the wav when -osrt is passed. */
 async function transcribeWhisperCpp(audioPath, workDir) {
   const cli = config.transcribe.whisperCli;
   if (!cli || !fs.existsSync(cli)) {
@@ -63,8 +53,6 @@ async function transcribeWhisperCpp(audioPath, workDir) {
   if (!fs.existsSync(srtPath)) throw new Error('whisper.cpp produced no .srt');
   return parseSrt(fs.readFileSync(srtPath, 'utf8'));
 }
-
-/** Parse an SRT file into [{start,end,text}] (seconds). */
 function parseSrt(srt) {
   const toSec = (t) => {
     const [h, m, rest] = t.split(':');
@@ -83,10 +71,6 @@ function parseSrt(srt) {
   }
   return out;
 }
-
-/**
- * Main entry. Returns { provider, segments } — segments may be [].
- */
 async function transcribe(inputPath, workDir) {
   const provider = config.transcribe.provider;
   if (provider === 'none') return { provider, segments: [] };

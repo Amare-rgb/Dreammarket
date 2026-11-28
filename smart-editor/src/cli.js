@@ -1,19 +1,4 @@
-#!/usr/bin/env node
 'use strict';
-
-/**
- * smart-edit CLI
- *
- *   node src/cli.js analyze <input-video> [--preset name] [--out dir]
- *   node src/cli.js plan    <input-video> [--preset name] [--out dir]
- *   node src/cli.js captions <input-video> [--out dir]
- *   node src/cli.js render  <edit-plan.json> [--input video] [--out video]
- *
- * analyze = probe + silence + scenes + transcription → edit-plan.json + exports
- * plan    = same as analyze (alias kept for clarity)
- * captions= transcription only → captions.srt/.vtt
- * render  = generate render.sh from an existing edit-plan.json
- */
 const fs = require('fs');
 const path = require('path');
 const { config } = require('./config');

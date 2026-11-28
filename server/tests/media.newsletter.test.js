@@ -1,9 +1,4 @@
-/**
- * Tests for the Edit Smarter newsletter system in routes/media.routes.js.
- * Prisma and email fully mocked — no database or network needed.
- */
 process.env.JWT_SECRET = 'test-secret-key-that-is-long-enough-32chars!!';
-
 const express = require('express');
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
@@ -88,7 +83,6 @@ describe('POST /api/media/newsletter/subscribe', () => {
         types: 'edit-smarter,news',
       }),
     });
-    // Confirmation email is fire-and-forget — flush microtasks
     await new Promise((r) => setImmediate(r));
     expect(sendEmail).toHaveBeenCalledWith(
       expect.objectContaining({ to: 'abebe@x.com' })

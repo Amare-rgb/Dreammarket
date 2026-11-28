@@ -1,17 +1,8 @@
-/**
- * Integration tests for the customer orders API (routes/orders.routes.js).
- * Express + supertest with the Prisma layer fully mocked — no database needed.
- */
-
-// middleware/auth.js reads JWT_SECRET at require time
 process.env.JWT_SECRET =
   'test-secret-key-that-is-long-enough-32chars!!';
-
 const express = require('express');
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
-
-// ── Prisma mock ──────────────────────────────────────────────
 const mockPrisma = {
   user: { findUnique: jest.fn() },
   order: {
@@ -224,7 +215,6 @@ describe('POST /api/orders', () => {
     expect(res.status).toBe(201);
     expect(res.body.success).toBe(true);
     expect(res.body.order.orderNumber).toBe('ORD-123-4567');
-    // discounted price (125) × quantity (2) = 250
     expect(res.body.order.total).toBe(250);
     expect(mockPrisma.product.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({

@@ -1,20 +1,11 @@
-// routes/settings.routes.js
 const express = require('express');
 const router = express.Router();
 const prisma = require('../lib/prisma');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 const bcrypt = require('bcryptjs');
 const { upload } = require('../middleware/upload');
-
-// ═══════════════════════════════════════════════════════════
-// Settings API — Dream More Affiliate Market
-//  • Logo storage: local disk
-//  • Database: Neon (PostgreSQL) via Prisma
-// ═══════════════════════════════════════════════════════════
-
 const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS) || 10;
 
-// ── Parsers ─────────────────────────────────────────────────
 const parseBoolean = (value) => {
   if (value === 'true' || value === true) return true;
   if (value === 'false' || value === false) return false;
@@ -27,10 +18,8 @@ const parseNumber = (value) => {
   return isNaN(num) ? undefined : num;
 };
 
-// ── Auth user helper (matches middleware/auth.js) ───────────
 const getUserId = (req) => req.user?.id || null;
 
-// Same password rule as auth.routes.js
 const passwordError = (pw) => {
   if (typeof pw !== 'string' || pw.length < 8) {
     return 'Password must be at least 8 characters';
@@ -44,7 +33,6 @@ const passwordError = (pw) => {
   return null;
 };
 
-// ── Default settings — every field on the Settings model ────
 const DEFAULT_SETTINGS = {
   siteName: 'Dream More Affiliate Market',
   siteDescription: 'Discover trusted products and great deals.',
@@ -108,9 +96,6 @@ function normalizeBrandSettings(settings) {
   };
 }
 
-// ============================================================
-// PUBLIC — GET /api/admin/settings/public
-// ============================================================
 router.get('/public', async (req, res) => {
   try {
     let settings = await prisma.settings.findFirst();
@@ -149,9 +134,6 @@ router.get('/public', async (req, res) => {
   }
 });
 
-// ============================================================
-// ADMIN — GET /api/admin/settings
-// ============================================================
 router.get('/', requireAuth, requireAdmin, async (req, res) => {
   try {
     let settings = await prisma.settings.findFirst();
@@ -175,10 +157,6 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-// ============================================================
-// ADMIN — POST /api/admin/settings (save + optional logo upload)
-// Logo is uploaded to local disk.
-// ============================================================
 router.post(
   '/',
   requireAuth,
@@ -188,7 +166,6 @@ router.post(
     try {
       let settings = await prisma.settings.findFirst();
 
-      // ── Handle logo upload ────────────────────────────────
       let logoUrl = settings?.logo || '';
 
       if (req.file) {
@@ -197,7 +174,6 @@ router.post(
         logoUrl = '';
       }
 
-      // ── Build update payload ──────────────────────────────
       const updateData = {
         siteName:
           req.body.siteName ?? settings?.siteName ?? DEFAULT_SETTINGS.siteName,
@@ -330,7 +306,6 @@ router.post(
           req.body.infoEmail ??
           settings?.infoEmail ??
           DEFAULT_SETTINGS.infoEmail,
-        // ── Delivery zone & distance pricing ──
         storeLatitude:
           parseNumber(req.body.storeLatitude) ?? settings?.storeLatitude ?? null,
         storeLongitude:
@@ -388,9 +363,6 @@ router.post(
   }
 );
 
-// ============================================================
-// ADMIN — POST /api/admin/settings/change-password
-// ============================================================
 router.post(
   '/change-password',
   requireAuth,
@@ -451,9 +423,6 @@ router.post(
   }
 );
 
-// ============================================================
-// ADMIN — POST /api/admin/settings/reset
-// ============================================================
 router.post('/reset', requireAuth, requireAdmin, async (req, res) => {
   try {
     const settings = await prisma.settings.findFirst();

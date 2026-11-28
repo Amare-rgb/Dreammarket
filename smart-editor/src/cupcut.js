@@ -1,29 +1,10 @@
 'use strict';
-
-/**
- * CapCut ( / CapCut CN "cupcut") draft exporter.
- *
- * Generates a draft folder CapCut can open directly:
- *   <draftsDir>/<draftName>/
- *     draft_content.json
- *     draft_meta_info.json
- *
- * The draft contains:
- *   - one video track built from the plan's "keeps" segments
- *     (each keep-range becomes a clip pointing at the source file)
- *   - one text track built from plan captions (.srt-equivalent text clips)
- *
- * CapCut resolves material "path" as an absolute local path, so the
- * source video stays untouched on disk ("smart cuts + manual polish").
- */
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const us = (sec) => Math.round(sec * 1_000_000); // seconds → microseconds
+const us = (sec) => Math.round(sec * 1_000_000); 
 const uid = () => crypto.randomUUID();
-
-/** Default CapCut drafts directory (Windows). Override with CUPCUT_DRAFTS_DIR. */
 function defaultDraftsDir() {
   if (process.env.CUPCUT_DRAFTS_DIR) return process.env.CUPCUT_DRAFTS_DIR;
   const local = process.env.LOCALAPPDATA || '';
@@ -113,12 +94,12 @@ function textSegment({ id, materialId, srcStart, srcDur, timelineStart }) {
  * Build a CapCut draft folder from an edit plan.
  *
  * @param {object} opts
- * @param {string} opts.name        Draft display name
- * @param {string} opts.videoPath   Absolute path to the source video
- * @param {object} opts.meta        { duration, width, height, fps }
- * @param {Array}  opts.keeps       [{start,end}] keep ranges (seconds)
- * @param {Array}  opts.captions    [{start,end,text}] caption segments
- * @param {string} [opts.draftsDir] Override drafts directory
+ * @param {string} opts.name        
+ * @param {string} opts.videoPath   
+ * @param {object} opts.meta        
+ * @param {Array}  opts.keeps       
+ * @param {Array}  opts.captions    
+ * @param {string} [opts.draftsDir] 
  * @returns {{ draftDir, draftName, files }}
  */
 function buildCapCutDraft({ name, videoPath, meta, keeps, captions = [], draftsDir }) {
@@ -131,8 +112,6 @@ function buildCapCutDraft({ name, videoPath, meta, keeps, captions = [], draftsD
   const draftId = uid();
   const nowUs = Date.now() * 1000;
   const fps = meta.fps || 30;
-
-  // ── Video track: one segment per keep-range, back-to-back ──
   const videoMatId = uid();
   const videoSegments = [];
   let cursor = 0;
@@ -151,9 +130,6 @@ function buildCapCutDraft({ name, videoPath, meta, keeps, captions = [], draftsD
     cursor += dur;
   }
   const totalDur = cursor;
-
-  // ── Text track: captions positioned on the new timeline ──
-  // Map original timestamps → edited timeline by walking keeps.
   const textMaterials = [];
   const textSegments = [];
   const mapTime = (t) => {

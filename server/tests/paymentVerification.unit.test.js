@@ -1,7 +1,3 @@
-/**
- * Unit tests for paymentVerification.service.js parsing helpers.
- * No OCR / DB / network needed — pure functions only.
- */
 const {
   parseAmount,
   parseTransactionRef,

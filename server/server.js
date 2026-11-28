@@ -1,4 +1,3 @@
-// server.js
 const path = require('path');
 require('dotenv').config({ path: path.join(__dirname, '.env') });
 console.log(
@@ -19,10 +18,6 @@ const platformName = 'dreamhost';
 const isServerless = false;
 
 app.set('trust proxy', 1);
-
-// ═══════════════════════════════════════════════════════════
-// PRODUCTION ORIGINS — EDIT to your real DreamHost domains
-// ═══════════════════════════════════════════════════════════
 const PRODUCTION_FRONTEND_ORIGINS = [
   'https://dreamhost.com',
   'https://www.dreamhost.com',
@@ -32,10 +27,6 @@ const PRODUCTION_BACKEND_ORIGINS = [
   'https://api.dreamhost.com',
   'https://dreamhost.com',
 ];
-
-// ═══════════════════════════════════════════════════════════
-// Collapse double slashes in the URL PATH
-// ═══════════════════════════════════════════════════════════
 app.use((req, res, next) => {
   const i = req.url.indexOf('?');
   const p = i === -1 ? req.url : req.url.slice(0, i);
@@ -46,9 +37,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// ═══════════════════════════════════════════════════════════
-// Slow request logger
-// ═══════════════════════════════════════════════════════════
 const SLOW_REQUEST_MS = Number(process.env.SLOW_REQUEST_MS) || 2000;
 
 app.use((req, res, next) => {
@@ -64,9 +52,6 @@ app.use((req, res, next) => {
   next();
 });
 
-// ═══════════════════════════════════════════════════════════
-// CORS
-// ═══════════════════════════════════════════════════════════
 const stripSlash = (o) => String(o).trim().replace(/\/+$/, '');
 
 const extraOrigins = (process.env.ALLOWED_ORIGINS || '')
@@ -85,8 +70,6 @@ const allowedOrigins = new Set(
     process.env.VITE_API_URL,
     process.env.URL,
     process.env.DEPLOY_PRIME_URL,
-
-    // Local dev
     'http://localhost:3000',
     'http://localhost:3001',
     'http://localhost:5173',
@@ -100,26 +83,20 @@ const allowedOrigins = new Set(
     .filter(Boolean)
     .map(stripSlash)
 );
-
-// Regex fallbacks
 const CUSTOM_DOMAIN_REGEX = /^https?:\/\/([a-z0-9-]+\.)+[a-z]{2,}$/i;
 const NGROK_REGEX = /^https?:\/\/[a-z0-9-]+(\.[a-z0-9-]+)*\.ngrok(-free)?\.(io|app|dev)$/i;
 const LAN_REGEX = /^https?:\/\/(localhost|127\.0\.0\.1|10\.\d+\.\d+\.\d+|192\.168\.\d+\.\d+|172\.(1[6-9]|2\d|3[01])\.\d+\.\d+)(:\d+)?$/;
 
-// Any domain is allowed by default (your current behavior).
-// Set CORS_ALLOW_ANY_DOMAIN=false in .env to allow only the listed origins.
 const ALLOW_ANY_DOMAIN = process.env.CORS_ALLOW_ANY_DOMAIN !== 'false';
 
 function isOriginAllowed(origin) {
-  if (!origin) return true; // curl / Postman / server-to-server
+  if (!origin) return true; 
 
   const cleaned = stripSlash(origin);
   if (allowedOrigins.has(cleaned)) return true;
 
-  // Custom domain (DreamHost)
   if (ALLOW_ANY_DOMAIN && CUSTOM_DOMAIN_REGEX.test(cleaned)) return true;
 
-  // Dev-only
   if (!isProd) {
     if (NGROK_REGEX.test(cleaned)) return true;
     if (LAN_REGEX.test(cleaned)) return true;
@@ -153,24 +130,10 @@ const corsOptions = {
   preflightContinue: false,
 };
 
-// The cors middleware also answers OPTIONS preflight requests,
-// so no separate app.options(...) routes are needed.
 app.use(cors(corsOptions));
-
-// ═══════════════════════════════════════════════════════════
-// BODY PARSERS
-// ═══════════════════════════════════════════════════════════
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
-
-// ═══════════════════════════════════════════════════════════
-// STATIC UPLOADS (local disk)
-// ═══════════════════════════════════════════════════════════
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
-
-// ═══════════════════════════════════════════════════════════
-// IMPORT ROUTES
-// ═══════════════════════════════════════════════════════════
 const authRoutes = require('./routes/auth.routes');
 const adminRoutes = require('./routes/admin.routes');
 const adminDashboardRoutes = require('./routes/admin.dashboard');
@@ -182,7 +145,6 @@ const settingsRoutes = require('./routes/settings.routes');
 const profileRoutes = require('./routes/profile.routes');
 const adminOrdersRoutes = require('./routes/admin.orders.routes');
 const ordersRoutes = require('./routes/orders.routes');
-// Article categories live inside this router (/api/articles/admin/categories)
 const articlesRoutes = require('./routes/articles.routes');
 const chatbotRoutes = require('./routes/chatbot.routes');
 const feedbackRoutes = require('./routes/feedback.routes');
@@ -193,12 +155,7 @@ const { publicRouter: mediaPublicRoutes, adminRouter: mediaAdminRoutes } = requi
 const reviewRewardRoutes = require('./routes/reviewReward.routes');
 const { router: paymentsRoutes, adminRouter: paymentsAdminRoutes } = require('./routes/payments.routes');
 const smartEditRoutes = require('./routes/smartEdit.routes');
-
-// ═══════════════════════════════════════════════════════════
-// API ROUTER
-// ═══════════════════════════════════════════════════════════
 const apiRouter = express.Router();
-
 apiRouter.use('/auth', authRoutes);
 apiRouter.use('/admin/dashboard', adminDashboardRoutes);
 apiRouter.use('/admin/settings', settingsRoutes);
@@ -224,10 +181,6 @@ apiRouter.use('/admin/review-reward', reviewRewardRoutes);
 apiRouter.use('/payments', paymentsRoutes);
 apiRouter.use('/admin/payments', paymentsAdminRoutes);
 apiRouter.use('/admin/smart-edit', smartEditRoutes);
-
-// ═══════════════════════════════════════════════════════════
-// HEALTH CHECK
-// ═══════════════════════════════════════════════════════════
 const healthHandler = async (req, res) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
@@ -263,10 +216,6 @@ app.get('/healthz', (req, res) => {
 });
 
 app.use('/api', apiRouter);
-
-// ═══════════════════════════════════════════════════════════
-// ROOT ROUTE
-// ═══════════════════════════════════════════════════════════
 const rootInfo = (req, res) => {
   res.json({
     name: 'DreamHost API Server',
@@ -295,13 +244,8 @@ const rootInfo = (req, res) => {
 };
 app.get('/', rootInfo);
 app.get('/api', rootInfo);
-
-// ═══════════════════════════════════════════════════════════
-// 404 HANDLER
-// ═══════════════════════════════════════════════════════════
 app.use((req, res) => {
   const url = req.originalUrl || '';
-  // Common internet scanner / bot probes — don't spam the logs for these.
   const isScannerProbe =
     /\/(mcp|cgi|\.env|wp-|wordpress|phpmyadmin|vendor\/|\.git|loginMsg|boaform|hudson|solr|actuator|server-status|HNAP1|sdk\/|console\/)/i.test(
       url
@@ -319,10 +263,6 @@ app.use((req, res) => {
     method: req.method,
   });
 });
-
-// ═══════════════════════════════════════════════════════════
-// GLOBAL ERROR HANDLER
-// ═══════════════════════════════════════════════════════════
 app.use((err, req, res, next) => {
   console.error('❌ Global error handler:', err);
   if (res.headersSent) return next(err);
@@ -350,10 +290,6 @@ app.use((err, req, res, next) => {
     message: process.env.NODE_ENV === 'development' ? err.message : undefined,
   });
 });
-
-// ═══════════════════════════════════════════════════════════
-// PROCESS-LEVEL SAFETY NETS
-// ═══════════════════════════════════════════════════════════
 process.on('unhandledRejection', (reason) => {
   console.error('❌ Unhandled Promise Rejection:', reason);
 });
@@ -361,10 +297,6 @@ process.on('uncaughtException', (err) => {
   console.error('❌ Uncaught Exception:', err);
   process.exit(1);
 });
-
-// ═══════════════════════════════════════════════════════════
-// STARTUP (DreamHost runs a persistent Node process)
-// ═══════════════════════════════════════════════════════════
 if (!isServerless) {
   let server;
 
@@ -462,8 +394,6 @@ if (!isServerless) {
           process.exitCode = portAlreadyInUse ? 0 : 1;
         });
     });
-
-    // ✅ Bind 0.0.0.0 so DreamHost's reverse proxy can reach the app
     server.listen(PORT, '0.0.0.0', () => {
       const backendUrl = process.env.BACKEND_URL || `http://localhost:${PORT}`;
       console.log('\n🏭 DreamHost Server running on ' + backendUrl);

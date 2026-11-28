@@ -1,21 +1,12 @@
-// routes/upload.routes.js
 const express = require('express');
 const router = express.Router();
 const multer = require('multer');
 const fs = require('fs');
 const path = require('path');
 const { randomUUID } = require('crypto');
-
-/* ────────────────────────────────────────────────────────────────
-   AUTH
-   ──────────────────────────────────────────────────────────────── */
 const { requireAuth, requireAdmin } = require('../middleware/auth');
 
 const UPLOAD_ROOT = path.resolve(__dirname, '..', 'uploads');
-
-/* ────────────────────────────────────────────────────────────────
-   FILE-TYPE GUARDS
-   ──────────────────────────────────────────────────────────────── */
 const IMAGE_TYPES = [
   'image/jpeg',
   'image/jpg',
@@ -29,9 +20,9 @@ const IMAGE_TYPES = [
 const VIDEO_TYPES = [
   'video/mp4',
   'video/webm',
-  'video/quicktime', // .mov
-  'video/x-msvideo', // .avi
-  'video/x-matroska', // .mkv
+  'video/quicktime', 
+  'video/x-msvideo', 
+  'video/x-matroska', 
 ];
 
 const PDF_TYPES = ['application/pdf'];
@@ -76,10 +67,6 @@ function makeFileFilter({
     cb(new Error(`Invalid file type: ${mime}. Allowed: ${allowed || 'none'}`), false);
   };
 }
-
-/* ────────────────────────────────────────────────────────────────
-   LOCAL DISK STORAGE
-   ──────────────────────────────────────────────────────────────── */
 function buildStorage(subfolder) {
   const destination = path.resolve(UPLOAD_ROOT, subfolder);
   const relativeDestination = path.relative(UPLOAD_ROOT, destination);
@@ -121,9 +108,6 @@ function buildUploader({
   });
 }
 
-/* ────────────────────────────────────────────────────────────────
-   PRE-BUILT UPLOADERS
-   ──────────────────────────────────────────────────────────────── */
 const imageUploader = buildUploader({
   subfolder: 'uploads',
   maxSizeMB: 10,
@@ -147,9 +131,6 @@ const singleImage = imageUploader.fields([
 
 const singlePdf = pdfUploader.single('file');
 
-/* ────────────────────────────────────────────────────────────────
-   HELPERS
-   ──────────────────────────────────────────────────────────────── */
 function pickSingleFile(req) {
   if (req.file) return req.file;
   if (!req.files || typeof req.files !== 'object') return null;
@@ -170,8 +151,6 @@ function fileToUrl(req, file) {
     .map((segment) => encodeURIComponent(segment))
     .join('/')}`;
 
-  // Prefer a publicly reachable base URL so external services
-  // (Telegram, social previews, etc.) can fetch the file.
   const publicBase = (
     process.env.PUBLIC_API_URL ||
     process.env.API_PUBLIC_URL ||
@@ -245,15 +224,7 @@ function handleMulterErrors(err, res) {
   });
 }
 
-/* ════════════════════════════════════════════════════════════════
-   ROUTES
-   ════════════════════════════════════════════════════════════════ */
 
-/* ────────────────────────────────────────────────────────────────
-   PRODUCT IMAGE — single   (ADMIN ONLY)
-   POST /api/upload/product-image
-   field: "image" | "file"
-   ──────────────────────────────────────────────────────────────── */
 router.post('/product-image', requireAuth, requireAdmin, (req, res) => {
   const uploader = buildUploader({
     subfolder: 'products',
@@ -294,11 +265,6 @@ router.post('/product-image', requireAuth, requireAdmin, (req, res) => {
   });
 });
 
-/* ────────────────────────────────────────────────────────────────
-   PRODUCT IMAGE — multiple   (ADMIN ONLY)
-   POST /api/upload/product-image/multiple
-   field: "images"
-   ──────────────────────────────────────────────────────────────── */
 router.post('/product-image/multiple', requireAuth, requireAdmin, (req, res) => {
   const uploader = buildUploader({
     subfolder: 'products',
@@ -338,12 +304,6 @@ router.post('/product-image/multiple', requireAuth, requireAdmin, (req, res) => 
     return res.json({ success: true, files: results });
   });
 });
-
-/* ────────────────────────────────────────────────────────────────
-   PRODUCT VIDEO — single   (ADMIN ONLY)
-   POST /api/upload/product-video
-   field: "video" | "file"
-   ──────────────────────────────────────────────────────────────── */
 router.post('/product-video', requireAuth, requireAdmin, (req, res) => {
   const uploader = buildUploader({
     subfolder: 'products/videos',
@@ -384,11 +344,6 @@ router.post('/product-video', requireAuth, requireAdmin, (req, res) => {
   });
 });
 
-/* ────────────────────────────────────────────────────────────────
-   ARTICLE VIDEO — single   (ADMIN ONLY)
-   POST /api/upload/article-video
-   field: "video" | "file"
-   ──────────────────────────────────────────────────────────────── */
 router.post('/article-video', requireAuth, requireAdmin, (req, res) => {
   const uploader = buildUploader({
     subfolder: 'articles/videos',
@@ -429,10 +384,6 @@ router.post('/article-video', requireAuth, requireAdmin, (req, res) => {
   });
 });
 
-/* ────────────────────────────────────────────────────────────────
-   BACKWARD-COMPAT: PRODUCT IMAGE (old endpoint)
-   POST /api/upload/product
-   ──────────────────────────────────────────────────────────────── */
 router.post('/product', requireAuth, requireAdmin, (req, res) => {
   const uploader = buildUploader({
     subfolder: 'products',
@@ -473,10 +424,6 @@ router.post('/product', requireAuth, requireAdmin, (req, res) => {
   });
 });
 
-/* ────────────────────────────────────────────────────────────────
-   BACKWARD-COMPAT: PRODUCT IMAGES (old endpoint)
-   POST /api/upload/products
-   ──────────────────────────────────────────────────────────────── */
 router.post('/products', requireAuth, requireAdmin, (req, res) => {
   const uploader = buildUploader({
     subfolder: 'products',
@@ -517,10 +464,6 @@ router.post('/products', requireAuth, requireAdmin, (req, res) => {
   });
 });
 
-/* ────────────────────────────────────────────────────────────────
-   GENERIC — POST /api/upload
-   fields: "file" | "image" | "avatar"
-   ──────────────────────────────────────────────────────────────── */
 router.post('/', requireAuth, (req, res) => {
   singleImage(req, res, async (err) => {
     const mErr = handleMulterErrors(err, res);
@@ -556,9 +499,6 @@ router.post('/', requireAuth, (req, res) => {
   });
 });
 
-/* ────────────────────────────────────────────────────────────────
-   AVATAR — any logged-in user
-   ──────────────────────────────────────────────────────────────── */
 router.post('/avatar', requireAuth, (req, res) => {
   const uploader = buildUploader({
     subfolder: 'avatars',
@@ -597,9 +537,6 @@ router.post('/avatar', requireAuth, (req, res) => {
   });
 });
 
-/* ────────────────────────────────────────────────────────────────
-   FOLDER-SCOPED SINGLE IMAGE ENDPOINTS
-   ──────────────────────────────────────────────────────────────── */
 function makeFolderRoute(folder) {
   return (req, res) => {
     const uploader = buildUploader({
@@ -645,11 +582,6 @@ function makeFolderRoute(folder) {
 router.post('/settings', requireAuth, requireAdmin, makeFolderRoute('settings'));
 router.post('/category', requireAuth, requireAdmin, makeFolderRoute('categories'));
 
-/* ────────────────────────────────────────────────────────────────
-   FEEDBACK IMAGE — any authenticated user
-   POST /api/upload/feedback
-   field: "image" | "file"
-   ──────────────────────────────────────────────────────────────── */
 router.post('/feedback', requireAuth, (req, res) => {
   const uploader = buildUploader({
     subfolder: 'feedback',
@@ -689,11 +621,6 @@ router.post('/feedback', requireAuth, (req, res) => {
     });
   });
 });
-/* ────────────────────────────────────────────────────────────────
-   COMMENT PDF — any authenticated user
-   POST /api/upload/comment-pdf
-   field: "file" — PDF only, max 5MB
-   ──────────────────────────────────────────────────────────────── */
 router.post('/comment-pdf', requireAuth, (req, res) => {
   const uploader = buildUploader({
     subfolder: 'comments',
@@ -743,10 +670,6 @@ router.post('/comment-pdf', requireAuth, (req, res) => {
 
 router.post('/blog', requireAuth, requireAdmin, makeFolderRoute('blog'));
 router.post('/profile', requireAuth, makeFolderRoute('profiles'));
-
-/* ────────────────────────────────────────────────────────────────
-   PAYMENT — image OR pdf
-   ──────────────────────────────────────────────────────────────── */
 router.post('/payment', requireAuth, (req, res) => {
   const uploader = buildUploader({
     subfolder: 'payments',
@@ -787,10 +710,6 @@ router.post('/payment', requireAuth, (req, res) => {
     });
   });
 });
-
-/* ────────────────────────────────────────────────────────────────
-   PDF — ADMIN ONLY
-   ──────────────────────────────────────────────────────────────── */
 router.post('/pdf', requireAuth, requireAdmin, (req, res) => {
   singlePdf(req, res, (err) => {
     const mErr = handleMulterErrors(err, res);
@@ -818,10 +737,6 @@ router.post('/pdf', requireAuth, requireAdmin, (req, res) => {
     });
   });
 });
-
-/* ────────────────────────────────────────────────────────────────
-   DELETE a locally stored upload — ADMIN ONLY
-   ──────────────────────────────────────────────────────────────── */
 router.delete('/:publicId(*)', requireAuth, requireAdmin, async (req, res) => {
   try {
     const publicId = (req.params.publicId || '').replace(/\\/g, '/');

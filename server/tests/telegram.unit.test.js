@@ -1,8 +1,3 @@
-/**
- * Unit tests for lib/telegram.js — article announcements.
- * https.request is mocked; no real Telegram API calls are made.
- */
-
 const https = require('https');
 const { EventEmitter } = require('events');
 const { sendArticleAnnouncement } = require('../lib/telegram');
@@ -17,8 +12,6 @@ const ARTICLE = {
   image: 'https://res.cloudinary.com/demo/image/upload/photo.jpg',
   videoUrl: null,
 };
-
-// Fake https.request that records calls and responds via the callback.
 function mockHttps(handler) {
   const calls = [];
   jest.spyOn(https, 'request').mockImplementation((options, callback) => {

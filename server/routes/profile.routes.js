@@ -1,19 +1,11 @@
-// routes/profile.routes.js
+
 const express = require('express');
 const router = express.Router();
 const bcrypt = require('bcryptjs');
 const prisma = require('../lib/prisma');
 const { requireAuth } = require('../middleware/auth');
-
-// ═══════════════════════════════════════════════════════════
-// Profile API — Dream More Affiliate Market
-//  • Uses the shared auth middleware (same as the rest of the app)
-//  • No Order/Article/Cart references
-// ═══════════════════════════════════════════════════════════
-
 const BCRYPT_ROUNDS = Number(process.env.BCRYPT_ROUNDS) || 10;
 
-// Same password rule as auth.routes.js
 const passwordError = (pw) => {
   if (typeof pw !== 'string' || pw.length < 8) {
     return 'Password must be at least 8 characters';
@@ -26,10 +18,6 @@ const passwordError = (pw) => {
   }
   return null;
 };
-
-// ============================================================
-// GET /api/profile/me — current user profile
-// ============================================================
 router.get('/me', requireAuth, async (req, res) => {
   try {
     const userId = req.user?.id;
@@ -71,9 +59,6 @@ router.get('/me', requireAuth, async (req, res) => {
   }
 });
 
-// ============================================================
-// PUT /api/profile/update — update user profile
-// ============================================================
 router.put('/update', requireAuth, async (req, res) => {
   try {
     const userId = req.user?.id;
@@ -144,9 +129,6 @@ router.put('/update', requireAuth, async (req, res) => {
   }
 });
 
-// ============================================================
-// PUT /api/profile/change-password
-// ============================================================
 router.put('/change-password', requireAuth, async (req, res) => {
   try {
     const userId = req.user?.id;

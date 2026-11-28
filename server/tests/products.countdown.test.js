@@ -1,9 +1,4 @@
-/**
- * Tests for product approval status + stock/arrival countdown dates.
- * Prisma fully mocked — no database needed.
- */
 process.env.JWT_SECRET = 'test-secret-key-that-is-long-enough-32chars!!';
-
 const express = require('express');
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
@@ -113,7 +108,7 @@ describe('PUT /api/products/:id — countdown dates', () => {
     const data = mockPrisma.product.update.mock.calls[0][0].data;
     expect(data.saleEndDate).toEqual(new Date('2026-12-01T00:00:00.000Z'));
     expect(data.availableAt).toBeNull();
-    expect(data.restockDate).toBeUndefined(); // untouched
+    expect(data.restockDate).toBeUndefined();
   });
 });
 

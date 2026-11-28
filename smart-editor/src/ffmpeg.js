@@ -1,9 +1,4 @@
 'use strict';
-
-/**
- * ffmpeg/ffprobe wrappers: probe metadata, silence detection,
- * scene-change detection. All functions return plain JS data.
- */
 const { execFile } = require('child_process');
 const { config } = require('./config');
 
@@ -15,7 +10,6 @@ function run(cmd, args, { timeoutMs = 10 * 60 * 1000 } = {}) {
       { timeout: timeoutMs, maxBuffer: 64 * 1024 * 1024, windowsHide: true },
       (err, stdout, stderr) => {
         if (err) {
-          // ffmpeg writes progress/info to stderr; silencedetect output is on stderr too
           const out = `${stdout || ''}\n${stderr || ''}`;
           if (out.trim()) return resolve(out);
           return reject(err);
@@ -25,8 +19,6 @@ function run(cmd, args, { timeoutMs = 10 * 60 * 1000 } = {}) {
     );
   });
 }
-
-/** Probe duration (seconds), resolution, fps. */
 async function probe(inputPath) {
   const out = await run(config.ffprobe, [
     '-v', 'quiet',
@@ -49,11 +41,6 @@ async function probe(inputPath) {
       : null,
   };
 }
-
-/**
- * Detect silent gaps via ffmpeg silencedetect.
- * Returns [{ start, end, duration }] sorted ascending.
- */
 async function detectSilence(inputPath, opts = {}) {
   const noise = opts.noise || config.silence.noise;
   const minDur = opts.minDuration ?? config.silence.minDuration;
@@ -75,8 +62,6 @@ async function detectSilence(inputPath, opts = {}) {
     if (s) starts.push(Number(s[1]));
     if (e) ends.push(Number(e[1]));
   }
-
-  // Pair starts/ends; a silence running to EOF has no end → use duration
   const gaps = [];
   for (let i = 0; i < starts.length; i++) {
     const start = starts[i];
@@ -85,11 +70,6 @@ async function detectSilence(inputPath, opts = {}) {
   }
   return gaps;
 }
-
-/**
- * Detect scene changes via ffmpeg select+showinfo.
- * Returns [{ time, score }] sorted ascending.
- */
 async function detectScenes(inputPath, threshold) {
   const th = threshold ?? config.scenes.threshold;
   const out = await run(
@@ -112,8 +92,6 @@ async function detectScenes(inputPath, threshold) {
   }
   return scenes;
 }
-
-/** Extract audio to wav for transcription (16kHz mono). */
 async function extractAudio(inputPath, outWav) {
   await run(config.ffmpeg, [
     '-y', '-hide_banner', '-loglevel', 'error',

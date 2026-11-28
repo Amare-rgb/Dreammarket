@@ -1,9 +1,4 @@
-/**
- * Tests for admin order status transitions (routes/admin.orders.routes.js).
- * Prisma, email and SMS fully mocked — no database or network needed.
- */
 process.env.JWT_SECRET = 'test-secret-key-that-is-long-enough-32chars!!';
-
 const express = require('express');
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
@@ -35,12 +30,10 @@ const order = (status, items = []) => ({
   customerEmail: 'c@x.com', customerName: 'C', customerPhone: '+251',
   shippingAddress: 'Addis', items,
 });
-
-// Wire $transaction to run the callback against the mock prisma
 function setupTransaction(existingOrder, updatedOrder) {
   mockPrisma.order.findUnique
-    .mockResolvedValueOnce(existingOrder)   // inside transaction
-    .mockResolvedValue(updatedOrder);       // final fetch
+    .mockResolvedValueOnce(existingOrder)   
+    .mockResolvedValue(updatedOrder);       
   mockPrisma.order.updateMany.mockResolvedValue({ count: 1 });
   mockPrisma.$transaction.mockImplementation(async (cb) => cb(mockPrisma));
 }
@@ -69,7 +62,6 @@ describe('PATCH /api/admin/orders/:id/status', () => {
     expect(mockPrisma.order.updateMany).toHaveBeenCalledWith(
       expect.objectContaining({ data: { status: 'CONFIRMED' } })
     );
-    // fire-and-forget: called asynchronously, may need a tick
     await new Promise((r) => setImmediate(r));
     expect(sendOrderApprovalEmail).toHaveBeenCalled();
     expect(sendOrderApprovalSms).toHaveBeenCalled();

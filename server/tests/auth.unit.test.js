@@ -1,12 +1,5 @@
-/**
- * Unit tests for lib/auth.js — JWT token generation and verification.
- * No database or network required: prisma is mocked.
- */
-
-// JWT_SECRET must be set BEFORE lib/auth.js is required (it validates at load time)
 process.env.JWT_SECRET =
   'test-secret-key-that-is-long-enough-32chars!!';
-
 jest.mock('../lib/prisma', () => ({
   user: { findUnique: jest.fn() },
 }));

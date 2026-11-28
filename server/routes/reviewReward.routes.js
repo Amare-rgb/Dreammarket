@@ -4,13 +4,7 @@ const { requireAuth, requireAdmin } = require('../middleware/auth');
 const { getConfig } = require('../services/reviewReward.service');
 
 const router = express.Router();
-
-// ═══════════════════════════════════════════════════════════
-// ADMIN — review reward configuration (singleton)
-// ═══════════════════════════════════════════════════════════
 router.use(requireAuth, requireAdmin);
-
-// GET /api/admin/review-reward — current config
 router.get('/', async (req, res) => {
   try {
     const config = await getConfig();
@@ -21,7 +15,6 @@ router.get('/', async (req, res) => {
   }
 });
 
-// PUT /api/admin/review-reward — update config
 router.put('/', async (req, res) => {
   try {
     const body = req.body || {};

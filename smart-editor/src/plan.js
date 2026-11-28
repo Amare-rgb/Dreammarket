@@ -1,19 +1,4 @@
 'use strict';
-
-/**
- * Edit-plan builder + exporters.
- *
- * edit-plan.json schema:
- * {
- *   version, source, duration,
- *   cuts:      [{ start, end, reason }],          // ranges to REMOVE
- *   keeps:     [{ start, end, label, score }],    // ranges to KEEP
- *   highlights: [{ start, end, label, score }],   // scene-change markers
- *   captions:  [{ start, end, text }],
- *   transitions: [...],
- *   exports:   { srt, vtt, edl, csv, ffmpegScript }
- * }
- */
 const fs = require('fs');
 const path = require('path');
 const { config } = require('./config');
@@ -32,8 +17,6 @@ function fmtSrtTime(sec) {
 function fmtVttTime(sec) {
   return fmtSrtTime(sec).replace(',', '.');
 }
-
-/** Merge silence gaps closer than mergeGap; apply padding. */
 function silenceToCuts(gaps, duration, opts = {}) {
   const mergeGap = opts.mergeGap ?? config.silence.mergeGap;
   const pad = opts.padding ?? config.silence.padding;
@@ -57,8 +40,6 @@ function silenceToCuts(gaps, duration, opts = {}) {
     reason: 'silence',
   }));
 }
-
-/** Invert cuts → keep ranges. */
 function cutsToKeeps(cuts, duration) {
   const keeps = [];
   let cursor = 0;
@@ -70,7 +51,6 @@ function cutsToKeeps(cuts, duration) {
   return keeps.filter((k) => k.end - k.start > 0.05);
 }
 
-/** Group scene changes into highlight segments (scene → next scene). */
 function scenesToHighlights(scenes, duration, minDur) {
   const pts = [0, ...scenes.map((s) => s.time), duration]
     .filter((t) => t >= 0 && t <= duration)
@@ -91,7 +71,6 @@ function scenesToHighlights(scenes, duration, minDur) {
   return out;
 }
 
-/** Split long caption segments into caption-sized chunks. */
 function chunkCaptions(segments, maxChars = 84) {
   const out = [];
   for (const seg of segments) {
@@ -108,8 +87,8 @@ function chunkCaptions(segments, maxChars = 84) {
     for (const w of words) {
       const candidate = [...buf, w].join(' ');
       if (candidate.length > maxChars && buf.length) {
-        push(seg.start); // approximate; refined below by proportional split
-        bufStart = seg.start; // keep simple — timing precision from whisper is per-segment
+        push(seg.start); 
+        bufStart = seg.start;
         buf = [w];
       } else {
         buf.push(w);
@@ -131,8 +110,6 @@ function toVtt(captions) {
       .map((c) => `${fmtVttTime(c.start)} --> ${fmtVttTime(c.end)}\n${c.text}\n`)
       .join('\n');
 }
-
-/** EDL (CMX3600-ish) for timeline editors. */
 function toEdl(keeps, title = 'smart-edit') {
   const lines = [
     `TITLE: ${title}`,
@@ -157,8 +134,6 @@ function fmtEdlTime(sec) {
   const p = (n, l = 2) => String(n).padStart(l, '0');
   return `${p(h)}:${p(m)}:${p(s)}:${p(f)}`;
 }
-
-/** CSV marker list for Premiere/FCP/DaVinci import. */
 function toCsv(markers) {
   const esc = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`;
   const rows = [['marker_id', 'start_sec', 'end_sec', 'label', 'type', 'score']];
@@ -167,11 +142,6 @@ function toCsv(markers) {
   });
   return rows.map((r) => r.map(esc).join(',')).join('\n') + '\n';
 }
-
-/**
- * FFmpeg render script: builds a concat list of keep-segments and
- * renders with optional burned subtitles. Keeps source untouched.
- */
 function buildFfmpegScript({ inputPath, keeps, captionsPath, outputPath, opts = {} }) {
   const crf = opts.crf ?? config.render.crf;
   const preset = opts.preset ?? config.render.preset;
@@ -201,7 +171,6 @@ function buildFfmpegScript({ inputPath, keeps, captionsPath, outputPath, opts = 
 
   let vf = '';
   if (burn && captionsPath) {
-    // escape for ffmpeg filter: subtitles=filename (path with : needs escaping on Windows)
     const subPath = captionsPath.replace(/\\/g, '/').replace(/:/g, '\\:');
     vf = `[vc]subtitles='${subPath}'[vout]`;
   } else {
@@ -223,10 +192,6 @@ function buildFfmpegScript({ inputPath, keeps, captionsPath, outputPath, opts = 
   );
   return lines.join('\n');
 }
-
-/**
- * Assemble the full edit plan object.
- */
 function buildEditPlan({ source, meta, silenceGaps, scenes, captions, preset }) {
   const duration = meta.duration || 0;
   const cuts = silenceToCuts(silenceGaps, duration);
@@ -271,7 +236,6 @@ function buildEditPlan({ source, meta, silenceGaps, scenes, captions, preset }) 
   };
 }
 
-/** Write all export files into outDir; returns map of filenames. */
 function writeExports(plan, outDir, { inputPath, outputPath } = {}) {
   fs.mkdirSync(outDir, { recursive: true });
   const files = {};

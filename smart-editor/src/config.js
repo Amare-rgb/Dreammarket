@@ -1,9 +1,4 @@
 'use strict';
-
-/**
- * Minimal .env loader (no dependencies) + shared config.
- * Loads smart-editor/.env then server/.env if present.
- */
 const fs = require('fs');
 const path = require('path');
 

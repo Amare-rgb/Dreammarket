@@ -171,16 +171,14 @@ function parseAmount(text) {
   }
 
   if (candidates.length === 0) return null;
-  // Prefer currency-marked candidates; take the highest-weighted, then largest
   candidates.sort((a, b) => b.weight - a.weight || b.value - a.value);
   return candidates[0].value;
 }
 
-// Transaction reference patterns used by Ethio telecom / banks
 const REF_PATTERNS = [
   /(?:transaction\s*(?:id|ref(?:erence)?)|ref(?:erence)?\s*(?:no|number|id)?|confirmation\s*(?:no|number)|receipt\s*(?:no|number)|trans\s*id)\s*[:#\-]?\s*([A-Za-z0-9][A-Za-z0-9\-]{4,29})/gi,
   /\b(ETB-TXN-[A-Za-z0-9]+)\b/gi,
-  /\b(\d{10,20})\b/g, // long numeric refs
+  /\b(\d{10,20})\b/g, 
 ];
 
 function parseTransactionRef(text) {
@@ -190,7 +188,6 @@ function parseTransactionRef(text) {
     const m = re.exec(text);
     if (m && m[1]) {
       const ref = m[1].trim();
-      // Skip pure dates / amounts
       if (/^\d{4}[-/]\d{1,2}[-/]\d{1,2}$/.test(ref)) continue;
       if (/^\d{1,3}(,\d{3})*(\.\d+)?$/.test(ref)) continue;
       return ref.slice(0, 64);
@@ -264,7 +261,6 @@ function compareAmount(paid, expected) {
   };
 }
 
-// ── Main orchestration ──────────────────────────────────────────────────
 /**
  * Verify a payment screenshot for an order.
  *
@@ -276,7 +272,7 @@ function compareAmount(paid, expected) {
  * @returns {Promise<{status:number, body:object}>}
  */
 async function verifyPayment({ orderRef, user, imagePath, screenshotUrl }) {
-  // 1. Load order + ownership check
+  
   const order = await prisma.order.findFirst({
     where: {
       OR: [{ id: orderRef }, { orderNumber: orderRef }],
@@ -302,8 +298,6 @@ async function verifyPayment({ orderRef, user, imagePath, screenshotUrl }) {
   }
 
   const expected = Number(order.total);
-
-  // 2. OCR
   let ocrText = '';
   let ocrError = null;
   try {
@@ -316,20 +310,15 @@ async function verifyPayment({ orderRef, user, imagePath, screenshotUrl }) {
   const transactionRef = parseTransactionRef(ocrText);
   const receiptUrls = parseReceiptUrls(ocrText);
 
-  // 3. Optional official receipt check (best-effort, never blocks)
   let receiptCheck = null;
   if (receiptUrls.length > 0) {
     receiptCheck = await fetchReceiptInfo(receiptUrls[0]);
-    // Receipt page data can fill gaps OCR missed
     if (extractedAmount == null && receiptCheck?.amount != null) {
-      // re-parse below via comparison using receipt amount
     }
   }
 
   const effectiveAmount = extractedAmount ?? receiptCheck?.amount ?? null;
   const effectiveRef = transactionRef ?? receiptCheck?.ref ?? null;
-
-  // 4. Duplicate transactionRef protection
   if (effectiveRef) {
     const existing = await prisma.order.findFirst({
       where: {
@@ -362,11 +351,7 @@ async function verifyPayment({ orderRef, user, imagePath, screenshotUrl }) {
       };
     }
   }
-
-  // 5. Amount comparison
   const comparison = compareAmount(effectiveAmount, expected);
-
-  // 6. Decide payment status
   let paymentStatus;
   let verificationMethod = 'OCR';
   const notes = [];
@@ -380,12 +365,10 @@ async function verifyPayment({ orderRef, user, imagePath, screenshotUrl }) {
     verificationMethod = 'OCR+RECEIPT_URL';
     notes.push('Official receipt page reachable.');
   }
-
   if (comparison.status === 'AMOUNT_MATCHED' && effectiveRef) {
     paymentStatus = 'VERIFIED';
     notes.push('Amount and reference verified.');
   } else if (comparison.status === 'AMOUNT_MATCHED') {
-    // Amount OK but no reference — don't auto-approve blindly
     paymentStatus = 'PENDING_ADMIN_REVIEW';
     notes.push('Amount matched but no transaction reference found; needs admin review.');
   } else if (comparison.status === 'UNDERPAID' || comparison.status === 'OVERPAID') {
@@ -398,7 +381,6 @@ async function verifyPayment({ orderRef, user, imagePath, screenshotUrl }) {
     notes.push('Receipt unclear; flagged for admin review.');
   }
 
-  // 7. Persist result (P2002 = race-condition duplicate → treat as duplicate)
   try {
     await prisma.order.update({
       where: { id: order.id },
@@ -462,12 +444,6 @@ async function verifyPayment({ orderRef, user, imagePath, screenshotUrl }) {
     },
   };
 }
-
-/**
- * Pre-order screenshot inspection — OCR only, no order required.
- * Returns extracted amount / transaction ref / receipt URLs so the
- * checkout page can show instant feedback before ordering.
- */
 async function inspectScreenshot(imagePath) {
   const text = await extractTextFromImage(imagePath);
   return {
@@ -481,7 +457,6 @@ async function inspectScreenshot(imagePath) {
 module.exports = {
   verifyPayment,
   inspectScreenshot,
-  // exported for unit tests
   parseAmount,
   parseTransactionRef,
   parseReceiptUrls,

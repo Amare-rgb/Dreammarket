@@ -8,8 +8,6 @@ const toNumber = (value) => {
   const num = Number(value);
   return Number.isFinite(num) ? num : null;
 };
-
-// GET /api/rewards/me — current user's reward rules, progress, qualified orders, dispatches
 router.get('/me', requireAuth, async (req, res) => {
   try {
     const userId = req.user.id;
@@ -79,7 +77,6 @@ router.get('/me', requireAuth, async (req, res) => {
       }),
     ]);
 
-    // ── Compute per-rule progress ──
     const totalSpend = orders.reduce((sum, o) => sum + (toNumber(o.total) || 0), 0);
 
     const rulesWithProgress = rules.map((rule) => {
@@ -88,7 +85,6 @@ router.get('/me', requireAuth, async (req, res) => {
       let qualified = false;
 
       if (rule.scope === 'PRODUCT' && rule.productId) {
-        // Quantity of that product across non-cancelled orders
         const qty = orders.reduce((sum, o) => {
           const match = o.items.find((i) => i.productId === rule.productId);
           return sum + (match ? match.quantity : 0);
@@ -101,7 +97,6 @@ router.get('/me', requireAuth, async (req, res) => {
               (toNumber(o.total) || 0) >= threshold
             );
       } else {
-        // ALL_ORDERS scope
         if (rule.triggerType === 'MIN_QUANTITY') {
           progress = orders.reduce((sum, o) => sum + o.items.reduce((s, i) => s + i.quantity, 0), 0);
         } else {
@@ -153,7 +148,6 @@ router.get('/me', requireAuth, async (req, res) => {
   }
 });
 
-// GET /api/rewards/me/wallet — reward wallet balance + transaction history
 router.get('/me/wallet', requireAuth, async (req, res) => {
   try {
     const transactions = await prisma.rewardTransaction.findMany({
@@ -167,7 +161,6 @@ router.get('/me/wallet', requireAuth, async (req, res) => {
       },
     });
 
-    // Balance per currency
     const balance = {};
     for (const tx of transactions) {
       const cur = tx.currency || 'ETB';

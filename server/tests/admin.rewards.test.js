@@ -1,7 +1,3 @@
-/**
- * Tests for POST /api/admin/rewards/dispatch (routes/admin.routes.js).
- * Prisma, SMS and email fully mocked — no database or network needed.
- */
 process.env.JWT_SECRET = 'test-secret-key-that-is-long-enough-32chars!!';
 delete process.env.AT_API_KEY;
 delete process.env.AT_USERNAME;
@@ -144,8 +140,6 @@ describe('POST /api/admin/rewards/dispatch', () => {
     expect(sendSms).toHaveBeenCalledWith(
       expect.objectContaining({ to: '0919999999', message: expect.any(String) })
     );
-    // Order is still loaded to link the dispatch record, but its contact
-    // details must not override the explicit recipient.
     expect(mockPrisma.order.findUnique).toHaveBeenCalledWith(
       expect.objectContaining({ where: { id: 'o1' } })
     );

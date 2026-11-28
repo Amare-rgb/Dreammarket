@@ -1,19 +1,4 @@
-/**
- * paymentGateway.service.js
- *
- * Real-time transaction reference verification against the configured
- * payment provider. Supported providers via env:
- *   PAYMENT_PROVIDER=chapa   + CHAPA_SECRET_KEY
- *   PAYMENT_PROVIDER=telebirr + TELEBIRR_APP_ID + TELEBIRR_APP_KEY
- *   PAYMENT_PROVIDER=mock    (dev — accepts refs prefixed with "MOCK-OK-")
- *
- * When no provider is configured the function returns
- * { verified:false, reason:'provider_not_configured' } so callers can
- * fall back to admin escalation instead of failing hard.
- */
-
 const https = require('https');
-
 function httpJson(url, { method = 'GET', headers = {}, body = null, timeoutMs = 10000 } = {}) {
   return new Promise((resolve, reject) => {
     const u = new URL(url);
@@ -80,7 +65,6 @@ async function verifyTransactionRef(transactionRef) {
       if (!appId || !appKey) {
         return { verified: false, provider, reason: 'provider_not_configured' };
       }
-      // Telebirr merchant API — adjust endpoint/headers to your integration.
       const res = await httpJson(
         `https://transaction.core.telebirr.com/api/merchant/v1/transactions/${encodeURIComponent(ref)}`,
         {
@@ -92,7 +76,6 @@ async function verifyTransactionRef(transactionRef) {
       return { verified: ok, provider, raw: res.data, reason: ok ? undefined : 'provider_rejected' };
     }
 
-    // Mock provider for development: refs starting with MOCK-OK- verify true.
     if (provider === 'mock') {
       return {
         verified: ref.toUpperCase().startsWith('MOCK-OK-'),

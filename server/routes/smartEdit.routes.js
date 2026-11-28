@@ -1,15 +1,4 @@
 'use strict';
-
-/**
- * Smart Edit routes — run the smart-editor pipeline on uploaded videos.
- *
- *   POST /api/admin/smart-edit/analyze   (multipart, field "video")
- *   GET  /api/admin/smart-edit/:id       → edit-plan.json
- *   GET  /api/admin/smart-edit/:id/files/:name → raw file download
- *
- * Outputs are stored under <UPLOAD_ROOT>/smart-edit/<jobId>/ and are also
- * reachable via the public /uploads/smart-edit/<jobId>/<file> URL.
- */
 const express = require('express');
 const multer = require('multer');
 const path = require('path');
@@ -22,8 +11,6 @@ router.use(requireAuth, requireAdmin);
 
 const UPLOAD_ROOT = path.resolve(__dirname, '..', 'uploads');
 const SMART_ROOT = path.join(UPLOAD_ROOT, 'smart-edit');
-
-// ── multer: video uploads up to 2 GB into a staging folder ──
 const videoFilter = (req, file, cb) => {
   const ok =
     (file.mimetype || '').startsWith('video/') ||
@@ -55,7 +42,6 @@ function publicUrl(req, relFromUploads) {
   return `${base}${publicPath}`;
 }
 
-// POST /analyze — upload video, run pipeline, return plan + file links
 router.post('/analyze', upload.single('video'), async (req, res) => {
   if (!req.file) {
     return res.status(400).json({ success: false, error: 'No video file uploaded (field "video").' });
@@ -66,7 +52,6 @@ router.post('/analyze', upload.single('video'), async (req, res) => {
   const workDir = path.join(jobDir, '_work');
 
   try {
-    // Lazy-load pipeline (keeps server boot fast, isolates ffmpeg errors)
     const { probe, detectSilence, detectScenes } = require('../../smart-editor/src/ffmpeg');
     const { transcribe } = require('../../smart-editor/src/transcribe');
     const { buildEditPlan, writeExports } = require('../../smart-editor/src/plan');
@@ -129,8 +114,6 @@ router.post('/analyze', upload.single('video'), async (req, res) => {
     });
   }
 });
-
-// GET /:id — full edit plan JSON
 router.get('/:id', (req, res) => {
   const id = path.basename(req.params.id);
   const planPath = path.join(SMART_ROOT, id, 'edit-plan.json');
@@ -139,8 +122,6 @@ router.get('/:id', (req, res) => {
   }
   res.type('application/json').send(fs.readFileSync(planPath));
 });
-
-// POST /:id/export/cupcut — generate a CapCut draft from the edit plan
 router.post('/:id/export/cupcut', (req, res) => {
   try {
     const id = path.basename(req.params.id);
@@ -183,7 +164,6 @@ router.post('/:id/export/cupcut', (req, res) => {
   }
 });
 
-// GET /:id/files/:name — download a generated artifact
 router.get('/:id/files/:name', (req, res) => {
   const id = path.basename(req.params.id);
   const name = path.basename(req.params.name);

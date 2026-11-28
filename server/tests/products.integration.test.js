@@ -1,11 +1,5 @@
-/**
- * Integration tests for the products API (routes/products.routes.js).
- * Prisma is fully mocked — no database needed.
- */
-
 process.env.JWT_SECRET =
   'test-secret-key-that-is-long-enough-32chars!!';
-
 const express = require('express');
 const request = require('supertest');
 const jwt = require('jsonwebtoken');

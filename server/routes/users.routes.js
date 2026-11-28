@@ -1,19 +1,8 @@
-// routes/users.routes.js
 const express = require('express');
 const router = express.Router();
 const prisma = require('../lib/prisma');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
-
-// ═══════════════════════════════════════════════════════════
-// Users API — Dream More Affiliate Market
-//  • Uses Neon via Prisma
-//  • No Order/OrderItem/Article/Cart/CartItem references
-// ═══════════════════════════════════════════════════════════
-
-// ── Auth user helper (matches middleware/auth.js) ──────────
 const getAuthUserId = (req) => req.user?.id || null;
-
-// ── Shared user select — matches schema fields only ─────────
 const USER_SELECT = {
   id: true,
   name: true,
@@ -26,10 +15,6 @@ const USER_SELECT = {
   createdAt: true,
   updatedAt: true,
 };
-
-// ============================================================
-// GET /api/users — list all users (Admin only)
-// ============================================================
 router.get('/', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { page = 1, limit = 10, role, search } = req.query;
@@ -76,10 +61,6 @@ router.get('/', requireAuth, requireAdmin, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch users' });
   }
 });
-
-// ============================================================
-// GET /api/users/:id — single user (Admin only)
-// ============================================================
 router.get('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -99,10 +80,6 @@ router.get('/:id', requireAuth, requireAdmin, async (req, res) => {
     res.status(500).json({ error: 'Failed to fetch user' });
   }
 });
-
-// ============================================================
-// PATCH /api/users/:id — update user (Admin only)
-// ============================================================
 router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -152,13 +129,6 @@ router.patch('/:id', requireAuth, requireAdmin, async (req, res) => {
     res.status(500).json({ error: 'Failed to update user' });
   }
 });
-
-// ============================================================
-// DELETE /api/users/:id — delete user (Admin only)
-// Deletes related records that still exist on the schema:
-//   reviews, addresses, chatMessages
-// Order/OrderItem/Cart/CartItem have been removed from the schema.
-// ============================================================
 router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -173,16 +143,11 @@ router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
     if (!existingUser) {
       return res.status(404).json({ error: 'User not found' });
     }
-
-    // ── Delete related records first ────────────────────────
     await prisma.$transaction([
       prisma.review.deleteMany({ where: { userId: id } }),
       prisma.address.deleteMany({ where: { userId: id } }),
-      prisma.chatMessage.deleteMany({ where: { userId: id } }),
-      // Cascade in schema also removes profile / adminProfile
+      prisma.chatMessage.deleteMany({ where: { userId: id } })
     ]);
-
-    // ── Delete the user ─────────────────────────────────────
     await prisma.user.delete({ where: { id } });
 
     res.json({

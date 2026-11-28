@@ -610,7 +610,6 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
     if (body.name !== undefined) updateData.name = body.name;
     if (body.description !== undefined) updateData.description = body.description;
     
-    // ── Update Prices ───────────────────────────────────────
     let effectivePrices = null;
     if (body.prices !== undefined) {
       effectivePrices = normalizePrices(
@@ -627,17 +626,13 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       updateData.price = parseFloat(body.price);
     }
 
-    // ── Per-currency discount prices ─────────────────────────
     if (body.discountPrices !== undefined) {
-      // Use the prices being saved, or fall back to existing product prices
       const pricesForValidation = effectivePrices ||
         (Array.isArray(existingProduct.prices) && existingProduct.prices.length > 0
           ? existingProduct.prices
           : [{ currency: existingProduct.currency || 'ETB', amount: Number(existingProduct.price) }]);
       const normalizedDiscountPrices = normalizeDiscountPrices(body.discountPrices, pricesForValidation);
       updateData.discountPrices = normalizedDiscountPrices.length > 0 ? normalizedDiscountPrices : null;
-      // Always derive discountPrice from the primary currency's discount
-      // Set to null when no primary discount exists — never leave stale
       const primaryCurrency = updateData.currency || existingProduct.currency || 'ETB';
       const primaryDiscount = normalizedDiscountPrices.find((d) => d.currency === primaryCurrency);
       updateData.discountPrice = primaryDiscount ? primaryDiscount.amount : null;
@@ -658,10 +653,8 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
           : body.stock;
     }
 
-    // ── Availability status ─────────────────────────────────
     const VALID_STATUSES = ['AVAILABLE', 'OUT_OF_STOCK_TEMPORARY'];
 
-    // Explicit admin override of availability status
     if (
       body.availabilityStatus !== undefined &&
       typeof body.availabilityStatus === 'string' &&
@@ -674,7 +667,7 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
         updateData.outOfStockAt = null;
       }
     } else if (body.stock !== undefined) {
-      // Auto-derive from stock change
+
       const newStock = updateData.stock;
       if (newStock <= 0) {
         updateData.availabilityStatus = 'OUT_OF_STOCK_TEMPORARY';
@@ -709,7 +702,6 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       );
     }
 
-    // ── Stock & arrival countdown dates (optional; empty string clears) ──
     for (const field of ['availableAt', 'restockDate', 'saleEndDate']) {
       if (body[field] !== undefined) {
         updateData[field] =
@@ -761,7 +753,6 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       if (subCat) updateData.subCategoryId = subCat.id;
     }
 
-    // ── Side / add-on products (replace set) ────────────────
     if (body.sideProducts !== undefined) {
       const sideProducts = Array.isArray(body.sideProducts) ? body.sideProducts : [];
       await prisma.productSide.deleteMany({ where: { mainProductId: id } });
@@ -784,7 +775,6 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       }
     }
 
-    // ── Per-size stock variants (replace set) ───────────────
     if (body.sizeVariants !== undefined) {
       const sizeVariants = Array.isArray(body.sizeVariants) ? body.sizeVariants : [];
       await prisma.productSize.deleteMany({ where: { productId: id } });
@@ -821,7 +811,6 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       },
     });
 
-    // ── Delete orphaned local images ─────────────────────────
     if (updateData.images !== undefined) {
       const oldImages = Array.isArray(existingProduct.images)
         ? existingProduct.images
@@ -835,7 +824,6 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
       }
     }
 
-    // ── Optionally set category image if it was empty ───────
     try {
       const firstImage = Array.isArray(updated.images) ? updated.images[0] : null;
       if (updated.category && !updated.category.image && firstImage) {
@@ -862,9 +850,6 @@ router.put('/:id', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-// ============================================================
-// PATCH /api/products/:id/availability — Quick availability toggle (ADMIN ONLY)
-// ============================================================
 router.patch('/:id/availability', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -888,7 +873,7 @@ router.patch('/:id/availability', requireAuth, requireAdmin, async (req, res) =>
 
     if (stock !== undefined) {
       updateData.stock = typeof stock === 'string' ? parseInt(stock, 10) : stock;
-      // Auto-derive status from stock if no explicit status given
+
       if (updateData.availabilityStatus === undefined) {
         if (updateData.stock <= 0) {
           updateData.availabilityStatus = 'OUT_OF_STOCK_TEMPORARY';
@@ -932,9 +917,6 @@ router.patch('/:id/availability', requireAuth, requireAdmin, async (req, res) =>
   }
 });
 
-// ============================================================
-// PATCH /api/products/:id/status — Approve / publish toggle (ADMIN ONLY)
-// ============================================================
 router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -974,9 +956,6 @@ router.patch('/:id/status', requireAuth, requireAdmin, async (req, res) => {
   }
 });
 
-// ============================================================
-// DELETE /api/products/:id — Delete product (ADMIN ONLY)
-// ============================================================
 router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
   try {
     const { id } = req.params;
@@ -994,13 +973,11 @@ router.delete('/:id', requireAuth, requireAdmin, async (req, res) => {
       return res.status(404).json({ error: 'Product not found' });
     }
 
-    // ── 1. Delete from Neon (reviews + product) ─────────────
     await prisma.$transaction([
       prisma.review.deleteMany({ where: { productId: id } }),
       prisma.product.delete({ where: { id } }),
     ]);
 
-    // ── 2. Delete local images (fire-and-forget) ────────────
     if (Array.isArray(existingProduct.images) && existingProduct.images.length) {
       deleteLocalImages(existingProduct.images).catch((err) =>
         console.warn('Local product image cleanup failed on delete:', err.message)
